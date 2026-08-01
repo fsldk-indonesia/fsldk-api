@@ -2,11 +2,10 @@
 // Bila SMTP belum dikonfigurasi (pengembangan), tautan dicetak ke log alih-alih
 // dikirim, agar alur tetap dapat diuji tanpa server email.
 //
-// Template email berupa berkas .html terpisah pada folder assets/email_template/
-// (dimuat saat runtime via os.ReadFile), mengikuti pola pada go-core-api
-// (base/helpers/email_helper — GenerateMessageFromAsset). Logo FSLDK pada
-// assets/logo-fsldk.png disematkan sebagai lampiran inline (Content-ID) agar
-// selalu tampil tanpa bergantung pada URL eksternal.
+// Template email berupa berkas .html terpisah pada folder assets/email_template/,
+// dimuat saat runtime via os.ReadFile. Logo FSLDK pada assets/logo-fsldk.png
+// disematkan sebagai lampiran inline (Content-ID) agar selalu tampil tanpa
+// bergantung pada URL eksternal.
 package mailer
 
 import (
@@ -84,8 +83,7 @@ func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
 }
 
 // generateFromAsset memuat berkas template .html dari assets/email_template/
-// dan merender-nya dengan data yang diberikan (pola GenerateMessageFromAsset
-// pada go-core-api).
+// dan merender-nya dengan data yang diberikan.
 func generateFromAsset(assetName string, data map[string]string) (string, error) {
 	path := filepath.Join(assetsDir, "email_template", assetName+".html")
 	templateData, err := os.ReadFile(path)

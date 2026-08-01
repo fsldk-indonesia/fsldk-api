@@ -1,6 +1,6 @@
 # FSLDK API (`fsldk-api`)
 
-REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + GORM)** dan **MySQL**, mengikuti [Technical Specification](../.claude/techspec/Technical%20Specification%20-%20FSLDK%20Website.md).
+REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + GORM)** dan **MySQL**.
 
 📖 **Dokumentasi lengkap:**
 
@@ -8,6 +8,7 @@ REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + GORM)** 
 |---|---|
 | [**docs/INSTALLATION.md**](./docs/INSTALLATION.md) | Panduan instalasi langkah-demi-langkah — prasyarat, konfigurasi, menjalankan server, **kredensial Admin FSLDK**, troubleshooting |
 | [**docs/ARCHITECTURE.md**](./docs/ARCHITECTURE.md) | Penjelasan arsitektur & alur sistem — pola berlapis, struktur modul, dependency injection, request lifecycle, alur autentikasi |
+| [**docs/API.md**](./docs/API.md) | Referensi lengkap seluruh endpoint REST — request/response, permission, rate limit |
 
 ---
 
@@ -37,7 +38,7 @@ Mengikuti pola `ldksyahid-app` — password lokal (wajib verifikasi email) & Goo
 
 ## Ringkasan Endpoint
 
-Base URL: `/api/v1`. Detail lengkap pada [`06-API.md`](../.claude/techspec/06-API.md).
+Base URL: `/api/v1`. Detail lengkap pada [`docs/API.md`](./docs/API.md).
 
 | Grup | Contoh |
 |---|---|

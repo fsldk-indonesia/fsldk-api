@@ -184,15 +184,14 @@ Tidak ada logika seed di kode Go (`EnsureSuperAdmin` dkk. sudah dihapus) — **m
 
 ## 10. Menu Sidebar CMS Dinamis
 
-Sesuai TechSpec, sidebar CMS **tidak hardcode**. Item menu (selain Dashboard) diambil dari `GET /me/menus`, yang meng-query `lk_permission` (kolom `menuLabel`/`menuIcon`/`menuRoute`/`sortOrder`) di-`JOIN` `map_role_permission` sesuai role pengguna yang login — lihat [`modules/permission`](../modules/permission). Permission yang tidak berelasi ke menu (`menuRoute IS NULL`) tidak pernah muncul sebagai item menu.
+Sidebar CMS **tidak hardcode**. Item menu (selain Dashboard) diambil dari `GET /me/menus`, yang meng-query `lk_permission` (kolom `menuLabel`/`menuIcon`/`menuRoute`/`sortOrder`) di-`JOIN` `map_role_permission` sesuai role pengguna yang login — lihat [`modules/permission`](../modules/permission). Permission yang tidak berelasi ke menu (`menuRoute IS NULL`) tidak pernah muncul sebagai item menu.
 
 ---
 
 ## Referensi Terkait
 
 - [Panduan Instalasi](./INSTALLATION.md) — langkah menjalankan server dari nol
-- [Technical Specification](../../.claude/techspec/Technical%20Specification%20-%20FSLDK%20Website.md) — spesifikasi lengkap sistem (database, API, security, dsb.)
-- [`06-API.md`](../../.claude/techspec/06-API.md) — kontrak endpoint lengkap
+- [Referensi API](./API.md) — kontrak endpoint lengkap (request/response, permission, rate limit)
 
 ---
 
