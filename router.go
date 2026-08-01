@@ -6,16 +6,48 @@ import (
 	"fsldk-api/base/token"
 	"fsldk-api/config"
 	"fsldk-api/middlewares"
-	"fsldk-api/modules/article"
-	"fsldk-api/modules/auth"
-	"fsldk-api/modules/content"
-	"fsldk-api/modules/dashboard"
-	"fsldk-api/modules/news"
-	"fsldk-api/modules/permission"
-	"fsldk-api/modules/role"
-	"fsldk-api/modules/user"
 	"fsldk-api/pkg/googleauth"
 	"fsldk-api/pkg/mailer"
+
+	"fsldk-api/modules/auth"
+	"fsldk-api/modules/auth/auth_handler"
+	"fsldk-api/modules/auth/auth_repository"
+	"fsldk-api/modules/auth/auth_service"
+
+	"fsldk-api/modules/permission"
+	"fsldk-api/modules/permission/permission_handler"
+	"fsldk-api/modules/permission/permission_repository"
+	"fsldk-api/modules/permission/permission_service"
+
+	"fsldk-api/modules/user"
+	"fsldk-api/modules/user/user_handler"
+	"fsldk-api/modules/user/user_repository"
+	"fsldk-api/modules/user/user_service"
+
+	"fsldk-api/modules/role"
+	"fsldk-api/modules/role/role_handler"
+	"fsldk-api/modules/role/role_repository"
+	"fsldk-api/modules/role/role_service"
+
+	"fsldk-api/modules/news"
+	"fsldk-api/modules/news/news_handler"
+	"fsldk-api/modules/news/news_repository"
+	"fsldk-api/modules/news/news_service"
+
+	"fsldk-api/modules/article"
+	"fsldk-api/modules/article/article_handler"
+	"fsldk-api/modules/article/article_repository"
+	"fsldk-api/modules/article/article_service"
+
+	"fsldk-api/modules/content"
+	"fsldk-api/modules/content/content_handler"
+	"fsldk-api/modules/content/content_repository"
+	"fsldk-api/modules/content/content_service"
+
+	"fsldk-api/modules/dashboard"
+	"fsldk-api/modules/dashboard/dashboard_handler"
+	"fsldk-api/modules/dashboard/dashboard_repository"
+	"fsldk-api/modules/dashboard/dashboard_service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -30,36 +62,37 @@ func setupRouter(db *sqlx.DB, cfg config.AppConfig) *gin.Engine {
 	mail := mailer.New(cfg)
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID)
 
-	// Repository
-	permRepo := permission.NewRepository(db)
-	userRepo := user.NewRepository(db)
-	roleRepo := role.NewRepository(db)
-	newsRepo := news.NewRepository(db)
-	articleRepo := article.NewRepository(db)
-	contentRepo := content.NewRepository(db)
-	tokenStore := auth.NewTokenStore(db)
+	// Repository (lapisan akses data)
+	permRepo := permission_repository.NewRepository(db)
+	userRepo := user_repository.NewRepository(db)
+	roleRepo := role_repository.NewRepository(db)
+	newsRepo := news_repository.NewRepository(db)
+	articleRepo := article_repository.NewRepository(db)
+	contentRepo := content_repository.NewRepository(db)
+	dashRepo := dashboard_repository.NewRepository(db)
+	tokenStore := auth_repository.NewTokenStore(db)
 
-	// Service
-	permSvc := permission.NewService(permRepo)
-	authSvc := auth.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
-	userSvc := user.NewService(userRepo)
-	roleSvc := role.NewService(roleRepo)
-	newsSvc := news.NewService(newsRepo)
-	articleSvc := article.NewService(articleRepo)
-	contentSvc := content.NewService(contentRepo)
-	dashSvc := dashboard.NewService(db)
+	// Service (logika bisnis)
+	permSvc := permission_service.NewService(permRepo)
+	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
+	userSvc := user_service.NewService(userRepo)
+	roleSvc := role_service.NewService(roleRepo)
+	newsSvc := news_service.NewService(newsRepo)
+	articleSvc := article_service.NewService(articleRepo)
+	contentSvc := content_service.NewService(contentRepo)
+	dashSvc := dashboard_service.NewService(dashRepo)
 
-	// Handler
-	authH := auth.NewHandler(authSvc)
-	permH := permission.NewHandler(permSvc)
-	userH := user.NewHandler(userSvc)
-	roleH := role.NewHandler(roleSvc)
-	newsH := news.NewHandler(newsSvc)
-	articleH := article.NewHandler(articleSvc)
-	contentH := content.NewHandler(contentSvc)
-	dashH := dashboard.NewHandler(dashSvc)
+	// Handler (presentasi HTTP)
+	authH := auth_handler.NewHandler(authSvc)
+	permH := permission_handler.NewHandler(permSvc)
+	userH := user_handler.NewHandler(userSvc)
+	roleH := role_handler.NewHandler(roleSvc)
+	newsH := news_handler.NewHandler(newsSvc)
+	articleH := article_handler.NewHandler(articleSvc)
+	contentH := content_handler.NewHandler(contentSvc)
+	dashH := dashboard_handler.NewHandler(dashSvc)
 
-	// Middleware bersama
+	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
 	mw := middlewares.New(tm, cfg, permSvc)
 
 	// Engine

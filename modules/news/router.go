@@ -1,14 +1,16 @@
+// Package news merangkai routing modul news (publik & CMS).
 package news
 
 import (
 	"fsldk-api/constants"
 	"fsldk-api/middlewares"
+	"fsldk-api/modules/news/news_handler"
 
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterPublicRoutes mendaftarkan endpoint publik berita (tanpa autentikasi).
-func RegisterPublicRoutes(pub *gin.RouterGroup, h *Handler) {
+func RegisterPublicRoutes(pub *gin.RouterGroup, h news_handler.Handler) {
 	pub.GET("/news", h.PublicList)
 	pub.GET("/news-featured", h.PublicFeatured)
 	pub.GET("/news-categories", h.Categories)
@@ -16,7 +18,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h *Handler) {
 }
 
 // RegisterCMSRoutes mendaftarkan endpoint CMS berita (terproteksi).
-func RegisterCMSRoutes(rg *gin.RouterGroup, h *Handler, mw *middlewares.Middleware) {
+func RegisterCMSRoutes(rg *gin.RouterGroup, h news_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/news")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{

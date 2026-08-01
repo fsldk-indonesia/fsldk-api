@@ -1,14 +1,16 @@
+// Package role merangkai routing modul role.
 package role
 
 import (
 	"fsldk-api/constants"
 	"fsldk-api/middlewares"
+	"fsldk-api/modules/role/role_handler"
 
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterRoutes mendaftarkan endpoint modul role.
-func RegisterRoutes(rg *gin.RouterGroup, h *Handler, mw *middlewares.Middleware) {
+func RegisterRoutes(rg *gin.RouterGroup, h role_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/roles")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{

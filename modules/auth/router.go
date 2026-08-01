@@ -1,14 +1,16 @@
+// Package auth merangkai routing modul auth.
 package auth
 
 import (
 	"fsldk-api/middlewares"
+	"fsldk-api/modules/auth/auth_handler"
 
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterRoutes mendaftarkan seluruh endpoint modul auth.
 // Rate limit disesuaikan dengan TechSpec bagian 27.2.
-func RegisterRoutes(rg *gin.RouterGroup, h *Handler, mw *middlewares.Middleware) {
+func RegisterRoutes(rg *gin.RouterGroup, h auth_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/auth")
 	{
 		g.POST("/register", middlewares.RateLimit(0.5, 5), h.Register) // 5 / 10 menit
@@ -19,14 +21,14 @@ func RegisterRoutes(rg *gin.RouterGroup, h *Handler, mw *middlewares.Middleware)
 		g.POST("/reset-password", middlewares.RateLimit(6, 6), h.ResetPassword)
 
 		// Endpoint terautentikasi (tidak mensyaratkan email terverifikasi).
-		auth := g.Group("")
-		auth.Use(mw.Auth())
+		authed := g.Group("")
+		authed.Use(mw.Auth())
 		{
-			auth.POST("/logout", h.Logout)
-			auth.POST("/refresh-token", h.Refresh)
-			auth.GET("/me", h.Me)
-			auth.POST("/email/resend", middlewares.RateLimit(6, 6), h.ResendVerification)
-			auth.POST("/change-password", h.ChangePassword)
+			authed.POST("/logout", h.Logout)
+			authed.POST("/refresh-token", h.Refresh)
+			authed.GET("/me", h.Me)
+			authed.POST("/email/resend", middlewares.RateLimit(6, 6), h.ResendVerification)
+			authed.POST("/change-password", h.ChangePassword)
 		}
 	}
 }

@@ -1,15 +1,16 @@
+// Package user merangkai routing modul user.
 package user
 
 import (
 	"fsldk-api/constants"
 	"fsldk-api/middlewares"
+	"fsldk-api/modules/user/user_handler"
 
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterRoutes mendaftarkan endpoint modul user (seluruhnya terproteksi
-// autentikasi + verifikasi email + permission).
-func RegisterRoutes(rg *gin.RouterGroup, h *Handler, mw *middlewares.Middleware) {
+// RegisterRoutes mendaftarkan endpoint modul user (terproteksi auth + verifikasi + permission).
+func RegisterRoutes(rg *gin.RouterGroup, h user_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/users")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
