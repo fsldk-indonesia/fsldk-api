@@ -120,9 +120,9 @@ func (r *RepositoryImpl) SetActive(ctx context.Context, id int64, active bool, u
 
 func (r *RepositoryImpl) SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
-		"password":            hashed,
-		"mustChangePassword":  mustChange,
-		"updatedDate":         time.Now(),
+		"password":           hashed,
+		"mustChangePassword": mustChange,
+		"updatedDate":        time.Now(),
 	}).Error
 }
 

@@ -1,42 +1,60 @@
 # FSLDK API (`fsldk-api`)
 
-REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + sqlx)** dan **MySQL**, mengikuti [Technical Specification](../.claude/techspec/Technical%20Specification%20-%20FSLDK%20Website.md).
+REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + GORM)** dan **MySQL**, mengikuti [Technical Specification](../.claude/techspec/Technical%20Specification%20-%20FSLDK%20Website.md).
 
 ## Arsitektur
 
-Arsitektur berlapis (layered) mengikuti pola `go-core-api`:
+Arsitektur berlapis (layered) mengikuti pola **`go-core-api`**: setiap modul memiliki subfolder per layer, dengan pemisahan **interface** (kontrak) dan **`_impl.go`** (implementasi).
 
 ```
-handler  →  service  →  repository  →  MySQL
+handler  →  service  →  repository (GORM)  →  MySQL
 ```
+
+Aturan lapisan yang dijaga konsisten di seluruh modul:
+
+- **`_model/` & `_dto/`** — murni struct data (tanpa function/method apa pun).
+- **`_handler/`, `_service/`, `_repository/`** — murni logika (tanpa deklarasi struct data; struct baru yang dibutuhkan diletakkan di `_dto`/`_model`). Satu-satunya struct yang boleh ada di sini adalah receiver DI (`XxxImpl`) pada berkas `_impl.go`, karena itu bagian dari pola interface+implementasi itu sendiri.
+- **Repository** mengakses data via **GORM** (`.Table()/.Where()/.Joins()/.Select()`), bukan raw SQL string manual.
 
 Struktur direktori:
 
 ```
 fsldk-api/
 ├── main.go                 # Titik masuk
-├── router.go               # Dependency injection manual + registrasi route
-├── config/                 # Pemuatan konfigurasi (viper)
-├── database/               # Koneksi MySQL (sqlx)
-├── constants/              # Kode error, role, permission, nama tabel
-├── base/                   # Fondasi reusable
-│   ├── apperror/           # Tipe error terstruktur
-│   ├── httphelper/         # Format response standar
-│   ├── security/           # bcrypt & token acak
-│   ├── token/              # JWT access & refresh
-│   ├── validation/         # Validasi struct
-│   ├── appctx/             # Pembaca identitas dari context
-│   ├── dto/                # DTO umum (paginasi)
-│   └── slug/               # Generator slug
-├── middlewares/            # Recovery, CORS, Auth, Verified, Permission, RateLimit
+├── router.go                # Dependency injection manual + registrasi route
+├── config/                  # Pemuatan konfigurasi (viper)
+├── database/                # Koneksi MySQL (GORM)
+├── constants/                # Kode error, role, permission, nama tabel
+├── assets/                   # Aset runtime (dimuat via os.ReadFile, pola go-core-api)
+│   ├── logo-fsldk.png        #   → disematkan inline (CID) pada email
+│   └── email_template/       #   → verification.html, password_reset.html
+├── base/                     # Fondasi reusable
+│   ├── apperror/              # Tipe error terstruktur
+│   ├── httphelper/            # Format response standar
+│   ├── security/               # bcrypt & token acak
+│   ├── token/                  # JWT access & refresh
+│   ├── validation/             # Validasi struct
+│   ├── appctx/                 # Pembaca identitas dari context
+│   ├── dto/                    # DTO umum (paginasi)
+│   ├── ptr/                    # Helper konversi ke pointer
+│   └── slug/                   # Generator slug
+├── middlewares/               # Recovery, CORS, Auth, Verified, Permission, RateLimit
 ├── pkg/
-│   ├── mailer/             # Pengiriman email (SMTP) + template
-│   └── googleauth/         # Verifikasi Google ID Token
-├── migrations/             # Skema & seed (embed SQL + runner)
-└── modules/                # Modul fitur
-    ├── auth/  user/  role/  permission/
-    └── news/  article/  content/  dashboard/
+│   ├── mailer/                 # Pengiriman email (SMTP) — memuat template dari assets/
+│   └── googleauth/             # Verifikasi Google ID Token
+├── migrations/                 # Skema & seed (embed SQL + runner GORM)
+└── modules/                    # Modul fitur — tiap modul contoh struktur (auth):
+    └── auth/
+        ├── auth_model/          # Struct entitas (mis. EmailToken)
+        ├── auth_dto/            # Struct request/response
+        ├── auth_repository/     # Interface Repository + RepositoryImpl (GORM)
+        ├── auth_service/        # Interface Service + ServiceImpl
+        ├── auth_handler/        # Interface Handler + HandlerImpl
+        └── router.go            # Registrasi route modul
+    # Pola yang sama berlaku pada: user, role, permission, news, article, content, dashboard
 ```
+
+> **Catatan runtime:** Folder `assets/` dibaca via path relatif (`os.ReadFile("assets/...")`) saat aplikasi berjalan — jalankan `go run .` / binary dari root proyek ini (atau salin folder `assets/` bersebelahan dengan binary saat deploy), persis seperti konvensi `go-core-api`.
 
 ## Prasyarat
 
@@ -78,7 +96,7 @@ Bila `SMTP_HOST` kosong, tautan verifikasi & reset **dicetak ke log** (tidak dik
 Mengikuti pola `ldksyahid-app`:
 
 - **Password lokal** (registrasi mandiri) — wajib verifikasi email sebelum akses penuh.
-- **Google OAuth** — auto-link ke akun email yang cocok / auto-provision akun baru, langsung terverifikasi.
+- **Google OAuth** — auto-link ke akun email yang cocok / auto-provision akun baru, langsung terverifikasi. Endpoint verifikasi token diatur via `GOOGLE_TOKENINFO_URL` (default `https://oauth2.googleapis.com/tokeninfo`), tidak di-hardcode di kode.
 - Satu akun dapat memiliki keduanya (dual-login); metode ditentukan dari kolom `password` & `googleID` (tanpa enum `authProvider`).
 
 ## Ringkasan Endpoint

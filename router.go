@@ -60,7 +60,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Infrastruktur & utilitas
 	tm := token.NewManager(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.JWTAccessExpireMinutes, cfg.JWTRefreshExpireMinutes)
 	mail := mailer.New(cfg)
-	gverify := googleauth.NewVerifier(cfg.GoogleClientID)
+	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)

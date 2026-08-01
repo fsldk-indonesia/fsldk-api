@@ -35,6 +35,7 @@ type AppConfig struct {
 	GoogleClientID       string `mapstructure:"GOOGLE_CLIENT_ID"`
 	GoogleAllowedDomains string `mapstructure:"GOOGLE_ALLOWED_DOMAINS"`
 	GoogleDefaultRole    string `mapstructure:"GOOGLE_DEFAULT_ROLE"`
+	GoogleTokenInfoURL   string `mapstructure:"GOOGLE_TOKENINFO_URL"`
 
 	EmailVerificationExpireMinutes int    `mapstructure:"EMAIL_VERIFICATION_EXPIRE_MINUTES"`
 	PasswordResetExpireMinutes     int    `mapstructure:"PASSWORD_RESET_EXPIRE_MINUTES"`
@@ -122,6 +123,7 @@ func setDefaults() {
 	viper.SetDefault("JWT_REFRESH_EXPIRE_MINUTES", 43200)
 
 	viper.SetDefault("GOOGLE_DEFAULT_ROLE", "Kontributor")
+	viper.SetDefault("GOOGLE_TOKENINFO_URL", "https://oauth2.googleapis.com/tokeninfo")
 	viper.SetDefault("REGISTER_DEFAULT_ROLE", "Kontributor")
 	viper.SetDefault("EMAIL_VERIFICATION_EXPIRE_MINUTES", 60)
 	viper.SetDefault("PASSWORD_RESET_EXPIRE_MINUTES", 60)

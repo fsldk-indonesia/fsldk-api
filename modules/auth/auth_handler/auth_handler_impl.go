@@ -1,8 +1,8 @@
 package auth_handler
 
 import (
-	"fsldk-api/base/apperror"
 	"fsldk-api/base/appctx"
+	"fsldk-api/base/apperror"
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/validation"
 	"fsldk-api/modules/auth/auth_dto"

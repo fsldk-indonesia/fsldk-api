@@ -24,18 +24,20 @@ type Payload struct {
 
 // Verifier memverifikasi ID token terhadap client ID aplikasi.
 type Verifier struct {
-	clientID string
-	client   *http.Client
+	clientID     string
+	tokenInfoURL string
+	client       *http.Client
 }
 
-// NewVerifier membuat Verifier baru.
-func NewVerifier(clientID string) *Verifier {
-	return &Verifier{clientID: clientID, client: &http.Client{Timeout: 10 * time.Second}}
+// NewVerifier membuat Verifier baru. tokenInfoURL diambil dari konfigurasi
+// (GOOGLE_TOKENINFO_URL) agar endpoint tidak ditulis tetap (hardcode) di kode.
+func NewVerifier(clientID, tokenInfoURL string) *Verifier {
+	return &Verifier{clientID: clientID, tokenInfoURL: tokenInfoURL, client: &http.Client{Timeout: 10 * time.Second}}
 }
 
 // Verify memvalidasi idToken dan mengembalikan payload-nya.
 func (v *Verifier) Verify(idToken string) (*Payload, error) {
-	endpoint := "https://oauth2.googleapis.com/tokeninfo?id_token=" + url.QueryEscape(idToken)
+	endpoint := v.tokenInfoURL + "?id_token=" + url.QueryEscape(idToken)
 	resp, err := v.client.Get(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menghubungi Google: %w", err)

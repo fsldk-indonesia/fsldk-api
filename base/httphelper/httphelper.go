@@ -17,13 +17,13 @@ import (
 
 // Response adalah amplop (envelope) standar untuk seluruh response.
 type Response struct {
-	Path      string                 `json:"path"`
-	Timestamp string                 `json:"timestamp"`
-	Status    string                 `json:"status"`
-	Code      string                 `json:"code"`
-	Message   string                 `json:"message"`
-	Result    interface{}            `json:"result"`
-	Errors    []apperror.FieldError  `json:"errors"`
+	Path      string                `json:"path"`
+	Timestamp string                `json:"timestamp"`
+	Status    string                `json:"status"`
+	Code      string                `json:"code"`
+	Message   string                `json:"message"`
+	Result    interface{}           `json:"result"`
+	Errors    []apperror.FieldError `json:"errors"`
 }
 
 // Pagination adalah struktur hasil untuk endpoint list dengan paginasi.

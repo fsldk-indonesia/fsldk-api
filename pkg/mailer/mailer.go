@@ -2,28 +2,33 @@
 // Bila SMTP belum dikonfigurasi (pengembangan), tautan dicetak ke log alih-alih
 // dikirim, agar alur tetap dapat diuji tanpa server email.
 //
-// Template email menggunakan markup HTML berbasis tabel dengan CSS inline
-// (kompatibel dengan renderer webkit seperti wkhtmltopdf, sama seperti yang
-// dipakai pada go-core-api) dan menyertakan logo FSLDK sebagai lampiran
-// inline (Content-ID) agar selalu tampil tanpa bergantung pada URL eksternal.
+// Template email berupa berkas .html terpisah pada folder assets/email_template/
+// (dimuat saat runtime via os.ReadFile), mengikuti pola pada go-core-api
+// (base/helpers/email_helper — GenerateMessageFromAsset). Logo FSLDK pada
+// assets/logo-fsldk.png disematkan sebagai lampiran inline (Content-ID) agar
+// selalu tampil tanpa bergantung pada URL eksternal.
 package mailer
 
 import (
 	"bytes"
-	_ "embed"
+	"fmt"
 	"html/template"
-	"io"
 	"log"
+	"os"
+	"path/filepath"
 
 	"fsldk-api/config"
 
 	gomail "gopkg.in/gomail.v2"
 )
 
-//go:embed assets/logo-fsldk.png
-var logoFSLDK []byte
-
-const logoCID = "logo-fsldk.png"
+const (
+	assetsDir             = "assets"
+	logoAsset             = "logo-fsldk.png"
+	logoCID               = "logo-fsldk.png"
+	templateVerification  = "verification"
+	templatePasswordReset = "password_reset"
+)
 
 // Mailer adalah kontrak layanan email.
 type Mailer interface {
@@ -41,7 +46,9 @@ func New(cfg config.AppConfig) Mailer {
 }
 
 func (m *smtpMailer) SendVerificationEmail(toEmail, toName, verifyURL string) error {
-	body, err := render(verificationTemplate, map[string]string{"Name": toName, "URL": verifyURL, "LogoCID": logoCID})
+	body, err := generateFromAsset(templateVerification, map[string]string{
+		"Name": toName, "URL": verifyURL, "LogoCID": logoCID,
+	})
 	if err != nil {
 		return err
 	}
@@ -49,7 +56,9 @@ func (m *smtpMailer) SendVerificationEmail(toEmail, toName, verifyURL string) er
 }
 
 func (m *smtpMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) error {
-	body, err := render(passwordResetTemplate, map[string]string{"Name": toName, "URL": resetURL, "LogoCID": logoCID})
+	body, err := generateFromAsset(templatePasswordReset, map[string]string{
+		"Name": toName, "URL": resetURL, "LogoCID": logoCID,
+	})
 	if err != nil {
 		return err
 	}
@@ -68,20 +77,27 @@ func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
 	msg.SetHeader("To", to)
 	msg.SetHeader("Subject", subject)
 	msg.SetBody("text/html", htmlBody)
-	msg.Embed(logoCID, gomail.SetCopyFunc(func(w io.Writer) error {
-		_, err := w.Write(logoFSLDK)
-		return err
-	}))
+	msg.Embed(filepath.Join(assetsDir, logoAsset))
 
 	dialer := gomail.NewDialer(m.cfg.SMTPHost, m.cfg.SMTPPort, m.cfg.SMTPUsername, m.cfg.SMTPPassword)
 	return dialer.DialAndSend(msg)
 }
 
-func render(tmpl string, data map[string]string) (string, error) {
-	t, err := template.New("email").Parse(tmpl)
+// generateFromAsset memuat berkas template .html dari assets/email_template/
+// dan merender-nya dengan data yang diberikan (pola GenerateMessageFromAsset
+// pada go-core-api).
+func generateFromAsset(assetName string, data map[string]string) (string, error) {
+	path := filepath.Join(assetsDir, "email_template", assetName+".html")
+	templateData, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("gagal membaca template email %s: %w", path, err)
+	}
+
+	t, err := template.New("emailTemplate").Parse(string(templateData))
 	if err != nil {
 		return "", err
 	}
+
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err

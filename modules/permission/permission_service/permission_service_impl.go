@@ -8,7 +8,9 @@ import (
 )
 
 // ServiceImpl adalah implementasi Service.
-type ServiceImpl struct{ repo permission_repository.Repository }
+type ServiceImpl struct {
+	repo permission_repository.Repository
+}
 
 // NewService membuat Service.
 func NewService(repo permission_repository.Repository) Service { return &ServiceImpl{repo: repo} }
