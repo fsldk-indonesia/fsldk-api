@@ -80,12 +80,14 @@ Server berjalan pada `http://localhost:8080`. Migration dan seed (role, permissi
 
 ### Akun Super Admin Awal
 
-| Field | Nilai default | Override via env |
-|---|---|---|
-| Email | `admin@fsldk-indonesia.com` | `SEED_ADMIN_EMAIL` |
-| Password | `Admin@123` | `SEED_ADMIN_PASSWORD` |
+Dibuat lewat migration [`0003_seed_admin.up.sql`](./migrations/0003_seed_admin.up.sql) (idempoten — hanya insert bila email belum terdaftar), bukan kode Go, agar konsisten dengan migration lain.
 
-> Segera ganti kata sandi setelah login pertama.
+| Field | Nilai |
+|---|---|
+| Email | `noreply-fsldk@gmail.com` |
+| Password | `abc123` |
+
+> Segera ganti kata sandi setelah login pertama. Untuk mengganti kredensial awal, edit langsung berkas migration tersebut sebelum dijalankan pertama kali (atau buat migration baru untuk lingkungan produksi).
 
 ### Catatan Email (Pengembangan)
 

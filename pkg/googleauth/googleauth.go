@@ -12,16 +12,6 @@ import (
 	"time"
 )
 
-// Payload berisi klaim relevan dari Google ID Token.
-type Payload struct {
-	Sub           string `json:"sub"`
-	Email         string `json:"email"`
-	EmailVerified string `json:"email_verified"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-	Aud           string `json:"aud"`
-}
-
 // Verifier memverifikasi ID token terhadap client ID aplikasi.
 type Verifier struct {
 	clientID     string

@@ -30,12 +30,10 @@ func main() {
 		}
 	}()
 
-	// Jalankan migration & seed data awal.
+	// Jalankan migration & seed data awal (termasuk akun Super Admin — lihat
+	// migrations/0003_seed_admin.up.sql).
 	if err := migrations.Run(db); err != nil {
 		log.Fatalf("gagal menjalankan migration: %v", err)
-	}
-	if err := migrations.EnsureSuperAdmin(db, cfg); err != nil {
-		log.Fatalf("gagal seed Super Admin: %v", err)
 	}
 
 	engine := setupRouter(db, cfg)

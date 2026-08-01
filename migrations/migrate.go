@@ -5,13 +5,8 @@ package migrations
 import (
 	"embed"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
-
-	"fsldk-api/base/security"
-	"fsldk-api/config"
-	"fsldk-api/constants"
 
 	"gorm.io/gorm"
 )
@@ -19,7 +14,9 @@ import (
 //go:embed *.up.sql
 var files embed.FS
 
-// Run menerapkan seluruh migration *.up.sql yang belum dijalankan.
+// Run menerapkan seluruh migration *.up.sql yang belum dijalankan, termasuk
+// seed data (role, permission, kategori, konten awal, akun Super Admin —
+// lihat 0002_seed.up.sql dan 0003_seed_admin.up.sql).
 func Run(db *gorm.DB) error {
 	if err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version VARCHAR(255) PRIMARY KEY,
@@ -63,51 +60,4 @@ func Run(db *gorm.DB) error {
 		fmt.Printf("[migration] diterapkan: %s\n", name)
 	}
 	return nil
-}
-
-// EnsureSuperAdmin membuat akun Super Admin awal bila belum ada.
-// Kredensial diambil dari environment (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD),
-// dengan nilai default yang aman untuk pengembangan.
-func EnsureSuperAdmin(db *gorm.DB, cfg config.AppConfig) error {
-	email := getenvDefault("SEED_ADMIN_EMAIL", "admin@fsldk-indonesia.com")
-	password := getenvDefault("SEED_ADMIN_PASSWORD", "Admin@123")
-	name := getenvDefault("SEED_ADMIN_NAME", "Admin FSLDK")
-
-	var count int64
-	if err := db.Raw("SELECT COUNT(*) FROM ms_user WHERE email = ?", email).Scan(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	var roleID int64
-	if err := db.Raw("SELECT roleID FROM ms_role WHERE roleName = ?", constants.RoleSuperAdmin).Scan(&roleID).Error; err != nil {
-		return err
-	}
-	if roleID == 0 {
-		return fmt.Errorf("role Super Admin belum ter-seed")
-	}
-
-	hashed, err := security.HashPassword(password)
-	if err != nil {
-		return err
-	}
-
-	err = db.Exec(`INSERT INTO ms_user
-		(roleID, fullName, email, password, emailVerifiedDate, mustChangePassword, isActive, createdDate)
-		VALUES (?, ?, ?, ?, NOW(), 0, 1, NOW())`,
-		roleID, name, email, hashed).Error
-	if err != nil {
-		return err
-	}
-	fmt.Printf("[seed] Super Admin dibuat: %s (password default: %s — segera ganti)\n", email, password)
-	return nil
-}
-
-func getenvDefault(key, def string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
-	}
-	return def
 }
