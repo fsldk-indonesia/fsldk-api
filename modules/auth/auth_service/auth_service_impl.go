@@ -22,6 +22,11 @@ import (
 	"fsldk-api/pkg/mailer"
 )
 
+// emailVerified & hasPassword adalah helper murni fungsi (bukan method pada
+// model) yang mengevaluasi status akun berdasarkan field user_model.User.
+func emailVerified(u user_model.User) bool { return u.EmailVerifiedDate.Valid }
+func hasPassword(u user_model.User) bool   { return u.Password.Valid && u.Password.String != "" }
+
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
 	users  user_repository.Repository
@@ -125,7 +130,7 @@ func (s *ServiceImpl) ResendVerification(ctx context.Context, userID int64) erro
 	if err != nil {
 		return apperror.NotFound("Pengguna tidak ditemukan")
 	}
-	if u.EmailVerified() {
+	if emailVerified(u) {
 		return apperror.Unprocessable("Email Anda sudah terverifikasi")
 	}
 	if err := s.sendVerification(ctx, u.UserID, u.FullName, u.Email); err != nil {
@@ -143,7 +148,7 @@ func (s *ServiceImpl) Login(ctx context.Context, req auth_dto.LoginRequest, ip, 
 	if !u.IsActive {
 		return auth_dto.AuthResponse{}, apperror.Forbidden("Akun Anda nonaktif")
 	}
-	if !u.HasPassword() || !security.CheckPassword(u.Password.String, req.Password) {
+	if !hasPassword(u) || !security.CheckPassword(u.Password.String, req.Password) {
 		_ = s.users.LogLogin(ctx, u.UserID, ip, ua, "failed")
 		return auth_dto.AuthResponse{}, apperror.Unauthorized("Email atau kata sandi salah")
 	}
@@ -231,7 +236,7 @@ func (s *ServiceImpl) ChangePassword(ctx context.Context, userID int64, req auth
 	if err != nil {
 		return apperror.NotFound("Pengguna tidak ditemukan")
 	}
-	if !u.HasPassword() {
+	if !hasPassword(u) {
 		return apperror.Unprocessable("Akun ini belum memiliki kata sandi lokal. Silakan gunakan lupa kata sandi untuk mengaturnya.")
 	}
 	if !security.CheckPassword(u.Password.String, req.OldPassword) {
@@ -292,7 +297,7 @@ func (s *ServiceImpl) buildAuthResponse(ctx context.Context, u user_model.User) 
 	if err != nil {
 		return auth_dto.AuthResponse{}, err
 	}
-	access, err := s.tokens.GenerateAccess(u.UserID, u.RoleID, u.Email, u.RoleName, u.EmailVerified())
+	access, err := s.tokens.GenerateAccess(u.UserID, u.RoleID, u.Email, u.RoleName, emailVerified(u))
 	if err != nil {
 		return auth_dto.AuthResponse{}, apperror.Internal("")
 	}
@@ -320,7 +325,7 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 		UserID:        u.UserID,
 		FullName:      u.FullName,
 		Email:         u.Email,
-		EmailVerified: u.EmailVerified(),
+		EmailVerified: emailVerified(u),
 		Role:          u.RoleName,
 		Permissions:   perms,
 		PhotoURL:      u.PhotoURL.String,

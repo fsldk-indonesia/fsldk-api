@@ -2,96 +2,103 @@ package content_repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"fsldk-api/modules/content/content_dto"
 	"fsldk-api/modules/content/content_model"
 
-	"github.com/jmoiron/sqlx"
+	"gorm.io/gorm"
 )
 
-// RepositoryImpl adalah implementasi Repository berbasis sqlx.
-type RepositoryImpl struct{ db *sqlx.DB }
+// RepositoryImpl adalah implementasi Repository berbasis GORM.
+type RepositoryImpl struct{ db *gorm.DB }
 
 // NewRepository membuat implementasi Repository.
-func NewRepository(db *sqlx.DB) Repository { return &RepositoryImpl{db: db} }
+func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 
 func (r *RepositoryImpl) ListContent(ctx context.Context, activeOnly bool) ([]content_model.Content, error) {
-	q := `SELECT contentID, contentKey, contentTitle, contentBody, contentType, sortOrder, isActive FROM ms_cms_content`
+	q := r.db.WithContext(ctx).Table("ms_cms_content")
 	if activeOnly {
-		q += " WHERE isActive = 1"
+		q = q.Where("isActive = 1")
 	}
-	q += " ORDER BY sortOrder, contentKey"
 	var out []content_model.Content
-	err := r.db.SelectContext(ctx, &out, q)
+	err := q.Order("sortOrder, contentKey").Find(&out).Error
 	return out, err
 }
 
 func (r *RepositoryImpl) GetContentByKey(ctx context.Context, key string) (content_model.Content, error) {
 	var c content_model.Content
-	err := r.db.GetContext(ctx, &c,
-		`SELECT contentID, contentKey, contentTitle, contentBody, contentType, sortOrder, isActive
-		 FROM ms_cms_content WHERE contentKey = ? LIMIT 1`, key)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := r.db.WithContext(ctx).Table("ms_cms_content").Where("contentKey = ?", key).Take(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return content_model.Content{}, ErrNotFound
 	}
 	return c, err
 }
 
 func (r *RepositoryImpl) UpdateContent(ctx context.Context, key, title, body string, updatedBy int64) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE ms_cms_content SET contentTitle = ?, contentBody = ?, updatedDate = NOW(), updatedBy = ? WHERE contentKey = ?`,
-		title, body, updatedBy, key)
-	if err != nil {
-		return err
+	res := r.db.WithContext(ctx).Table("ms_cms_content").Where("contentKey = ?", key).Updates(map[string]interface{}{
+		"contentTitle": title,
+		"contentBody":  body,
+		"updatedBy":    updatedBy,
+	})
+	if res.Error != nil {
+		return res.Error
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
 func (r *RepositoryImpl) ListOrg(ctx context.Context, activeOnly bool) ([]content_model.OrgMember, error) {
-	q := `SELECT structureID, memberName, position, photoURL, level, sortOrder, isActive FROM ms_organization_structure`
+	q := r.db.WithContext(ctx).Table("ms_organization_structure")
 	if activeOnly {
-		q += " WHERE isActive = 1"
+		q = q.Where("isActive = 1")
 	}
-	q += " ORDER BY sortOrder, structureID"
 	var out []content_model.OrgMember
-	err := r.db.SelectContext(ctx, &out, q)
+	err := q.Order("sortOrder, structureID").Find(&out).Error
 	return out, err
 }
 
 func (r *RepositoryImpl) CreateOrg(ctx context.Context, m content_dto.OrgRequest, createdBy int64) (int64, error) {
-	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO ms_organization_structure (memberName, position, photoURL, level, sortOrder, isActive, createdDate, createdBy)
-		 VALUES (?, ?, ?, ?, ?, 1, NOW(), ?)`,
-		m.MemberName, m.Position, nullStr(m.PhotoURL), nullStr(m.Level), m.SortOrder, createdBy)
-	if err != nil {
-		return 0, err
+	values := map[string]interface{}{
+		"memberName": m.MemberName,
+		"position":   m.Position,
+		"photoURL":   nullStr(m.PhotoURL),
+		"level":      nullStr(m.Level),
+		"sortOrder":  m.SortOrder,
+		"isActive":   true,
+		"createdBy":  createdBy,
 	}
-	return res.LastInsertId()
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("ms_organization_structure").Create(values).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
 }
 
 func (r *RepositoryImpl) UpdateOrg(ctx context.Context, id int64, m content_dto.OrgRequest) error {
-	res, err := r.db.ExecContext(ctx,
-		`UPDATE ms_organization_structure SET memberName = ?, position = ?, photoURL = ?, level = ?, sortOrder = ? WHERE structureID = ?`,
-		m.MemberName, m.Position, nullStr(m.PhotoURL), nullStr(m.Level), m.SortOrder, id)
-	if err != nil {
-		return err
+	res := r.db.WithContext(ctx).Table("ms_organization_structure").Where("structureID = ?", id).Updates(map[string]interface{}{
+		"memberName": m.MemberName,
+		"position":   m.Position,
+		"photoURL":   nullStr(m.PhotoURL),
+		"level":      nullStr(m.Level),
+		"sortOrder":  m.SortOrder,
+	})
+	if res.Error != nil {
+		return res.Error
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
 	return nil
 }
 
 func (r *RepositoryImpl) DeleteOrg(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM ms_organization_structure WHERE structureID = ?", id)
-	return err
+	return r.db.WithContext(ctx).Exec("DELETE FROM ms_organization_structure WHERE structureID = ?", id).Error
 }
 
 func nullStr(s string) interface{} {

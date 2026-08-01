@@ -143,9 +143,7 @@ func (h *HandlerImpl) Publish(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var body struct {
-		IsPublished bool `json:"isPublished"`
-	}
+	var body article_dto.PublishRequest
 	_ = c.ShouldBindJSON(&body)
 	if err := h.svc.SetPublished(c.Request.Context(), id, body.IsPublished, appctx.UserID(c)); err != nil {
 		httphelper.Error(c, err)

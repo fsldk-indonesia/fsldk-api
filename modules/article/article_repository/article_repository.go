@@ -1,31 +1,20 @@
-// Package article_repository adalah lapisan akses data modul article.
+// Package article_repository adalah lapisan akses data modul article (GORM).
 package article_repository
 
 import (
 	"context"
 	"errors"
 
+	"fsldk-api/modules/article/article_dto"
 	"fsldk-api/modules/article/article_model"
 )
 
 // ErrNotFound dikembalikan bila artikel tidak ditemukan.
 var ErrNotFound = errors.New("artikel tidak ditemukan")
 
-// Filter menampung parameter penyaringan daftar artikel.
-type Filter struct {
-	Search        string
-	CategorySlug  string
-	CategoryID    int64
-	PublishedOnly bool
-	Status        string
-	Limit         int
-	Offset        int
-	OrderBy       string
-}
-
 // Repository adalah kontrak akses data artikel.
 type Repository interface {
-	List(ctx context.Context, f Filter) ([]article_model.Article, int, error)
+	List(ctx context.Context, f article_dto.Filter) ([]article_model.Article, int64, error)
 	FindByID(ctx context.Context, id int64) (article_model.Article, error)
 	FindBySlug(ctx context.Context, slug string) (article_model.Article, error)
 	SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error)

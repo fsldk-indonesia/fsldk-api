@@ -11,7 +11,7 @@ type Summary struct {
 
 // RecentNews adalah ringkasan berita terbaru.
 type RecentNews struct {
-	NewsID      int64  `db:"newsID" json:"newsID"`
-	NewsTitle   string `db:"newsTitle" json:"newsTitle"`
-	IsPublished bool   `db:"isPublished" json:"isPublished"`
+	NewsID      int64  `gorm:"column:newsID" json:"newsID"`
+	NewsTitle   string `gorm:"column:newsTitle" json:"newsTitle"`
+	IsPublished bool   `gorm:"column:isPublished" json:"isPublished"`
 }

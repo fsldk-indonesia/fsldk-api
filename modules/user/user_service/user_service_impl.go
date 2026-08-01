@@ -26,17 +26,39 @@ type ServiceImpl struct{ repo user_repository.Repository }
 // NewService membuat Service pengguna.
 func NewService(repo user_repository.Repository) Service { return &ServiceImpl{repo: repo} }
 
+// toResponse memetakan model User ke DTO Response (logika pemetaan berada di
+// service, bukan pada model/dto, agar keduanya tetap murni struct data).
+func toResponse(u user_model.User) user_dto.Response {
+	return user_dto.Response{
+		UserID:        u.UserID,
+		FullName:      u.FullName,
+		Email:         u.Email,
+		RoleID:        u.RoleID,
+		Role:          u.RoleName,
+		EmailVerified: u.EmailVerifiedDate.Valid,
+		IsActive:      u.IsActive,
+		PhotoURL:      u.PhotoURL.String,
+		HasGoogle:     u.GoogleID.Valid,
+		HasPassword:   u.Password.Valid && u.Password.String != "",
+	}
+}
+
 func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, roleID int64) ([]user_dto.Response, int, error) {
-	orderBy := q.OrderBy(sortColumns, "u.createdDate DESC")
-	users, total, err := s.repo.List(ctx, q.Search, roleID, q.Limit, q.Offset(), orderBy)
+	users, total, err := s.repo.List(ctx, user_dto.ListFilter{
+		Search:  q.Search,
+		RoleID:  roleID,
+		Limit:   q.Limit,
+		Offset:  q.Offset(),
+		OrderBy: q.OrderBy(sortColumns, "u.createdDate DESC"),
+	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
 	}
 	out := make([]user_dto.Response, 0, len(users))
 	for _, u := range users {
-		out = append(out, user_dto.ToResponse(u))
+		out = append(out, toResponse(u))
 	}
-	return out, total, nil
+	return out, int(total), nil
 }
 
 func (s *ServiceImpl) Get(ctx context.Context, id int64) (user_dto.Response, error) {
@@ -44,7 +66,7 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64) (user_dto.Response, err
 	if err != nil {
 		return user_dto.Response{}, apperror.NotFound("Pengguna tidak ditemukan")
 	}
-	return user_dto.ToResponse(u), nil
+	return toResponse(u), nil
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, actorID int64) (user_dto.Response, error) {

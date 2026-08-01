@@ -2,69 +2,63 @@ package news_repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
+	"fsldk-api/modules/news/news_dto"
 	"fsldk-api/modules/news/news_model"
 
-	"github.com/jmoiron/sqlx"
+	"gorm.io/gorm"
 )
 
-const selectCols = `n.newsID, n.newsTitle, n.newsSlug, n.newsExcerpt, n.newsContent, n.newsImage,
-	n.categoryID, c.categoryName, n.isFeatured, n.isPublished, n.publishedDate, n.viewCount,
-	n.authorID, u.fullName AS authorName, n.createdDate`
+const selectCols = "n.newsID, n.newsTitle, n.newsSlug, n.newsExcerpt, n.newsContent, n.newsImage, " +
+	"n.categoryID, c.categoryName, n.isFeatured, n.isPublished, n.publishedDate, n.viewCount, " +
+	"n.authorID, u.fullName AS authorName, n.createdDate"
 
-const fromJoin = ` FROM ms_news n
-	JOIN lk_news_category c ON c.categoryID = n.categoryID
-	JOIN ms_user u ON u.userID = n.authorID`
-
-// RepositoryImpl adalah implementasi Repository berbasis sqlx.
-type RepositoryImpl struct{ db *sqlx.DB }
+// RepositoryImpl adalah implementasi Repository berbasis GORM.
+type RepositoryImpl struct{ db *gorm.DB }
 
 // NewRepository membuat implementasi Repository.
-func NewRepository(db *sqlx.DB) Repository { return &RepositoryImpl{db: db} }
+func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 
-func (r *RepositoryImpl) List(ctx context.Context, f Filter) ([]news_model.News, int, error) {
-	where := " WHERE 1=1"
-	args := []interface{}{}
+func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Table("ms_news n").
+		Joins("JOIN lk_news_category c ON c.categoryID = n.categoryID").
+		Joins("JOIN ms_user u ON u.userID = n.authorID")
+}
+
+func (r *RepositoryImpl) List(ctx context.Context, f news_dto.Filter) ([]news_model.News, int64, error) {
+	q := r.baseQuery(ctx)
 	if f.PublishedOnly || f.Status == "published" {
-		where += " AND n.isPublished = 1"
+		q = q.Where("n.isPublished = 1")
 	} else if f.Status == "draft" {
-		where += " AND n.isPublished = 0"
+		q = q.Where("n.isPublished = 0")
 	}
 	if f.Search != "" {
-		where += " AND (n.newsTitle LIKE ? OR n.newsExcerpt LIKE ?)"
 		like := "%" + f.Search + "%"
-		args = append(args, like, like)
+		q = q.Where("(n.newsTitle LIKE ? OR n.newsExcerpt LIKE ?)", like, like)
 	}
 	if f.CategorySlug != "" {
-		where += " AND c.categorySlug = ?"
-		args = append(args, f.CategorySlug)
+		q = q.Where("c.categorySlug = ?", f.CategorySlug)
 	}
 	if f.CategoryID > 0 {
-		where += " AND n.categoryID = ?"
-		args = append(args, f.CategoryID)
+		q = q.Where("n.categoryID = ?", f.CategoryID)
 	}
 
-	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*)"+fromJoin+where, args...); err != nil {
+	var total int64
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	q := "SELECT " + selectCols + fromJoin + where + " ORDER BY " + f.OrderBy + " LIMIT ? OFFSET ?"
-	args = append(args, f.Limit, f.Offset)
 	var out []news_model.News
-	if err := r.db.SelectContext(ctx, &out, q, args...); err != nil {
-		return nil, 0, err
-	}
-	return out, total, nil
+	err := q.Select(selectCols).Order(f.OrderBy).Limit(f.Limit).Offset(f.Offset).Find(&out).Error
+	return out, total, err
 }
 
 func (r *RepositoryImpl) findOne(ctx context.Context, where string, arg interface{}) (news_model.News, error) {
 	var n news_model.News
-	err := r.db.GetContext(ctx, &n, "SELECT "+selectCols+fromJoin+" WHERE "+where+" LIMIT 1", arg)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := r.baseQuery(ctx).Select(selectCols).Where(where, arg).Take(&n).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return news_model.News{}, ErrNotFound
 	}
 	return n, err
@@ -80,73 +74,94 @@ func (r *RepositoryImpl) FindBySlug(ctx context.Context, slug string) (news_mode
 
 func (r *RepositoryImpl) Featured(ctx context.Context, limit int) ([]news_model.News, error) {
 	var out []news_model.News
-	err := r.db.SelectContext(ctx, &out,
-		"SELECT "+selectCols+fromJoin+" WHERE n.isPublished = 1 AND n.isFeatured = 1 ORDER BY n.publishedDate DESC LIMIT ?", limit)
+	err := r.baseQuery(ctx).Select(selectCols).
+		Where("n.isPublished = 1 AND n.isFeatured = 1").
+		Order("n.publishedDate DESC").Limit(limit).Find(&out).Error
 	return out, err
 }
 
 func (r *RepositoryImpl) SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error) {
-	var n int
-	err := r.db.GetContext(ctx, &n, "SELECT COUNT(*) FROM ms_news WHERE newsSlug = ? AND newsID <> ?", slug, exceptID)
-	return n > 0, err
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_news").
+		Where("newsSlug = ? AND newsID <> ?", slug, exceptID).Count(&count).Error
+	return count > 0, err
 }
 
 func (r *RepositoryImpl) Create(ctx context.Context, n news_model.News, authorID int64) (int64, error) {
-	var pub interface{}
+	var publishedAt interface{}
 	if n.IsPublished {
-		pub = time.Now()
+		publishedAt = time.Now()
 	}
-	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO ms_news (newsTitle, newsSlug, newsExcerpt, newsContent, newsImage, categoryID,
-			isFeatured, isPublished, publishedDate, authorID, createdDate, createdBy)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
-		n.NewsTitle, n.NewsSlug, n.NewsExcerpt, n.NewsContent, n.NewsImage, n.CategoryID,
-		n.IsFeatured, n.IsPublished, pub, authorID, authorID)
-	if err != nil {
-		return 0, err
+	values := map[string]interface{}{
+		"newsTitle":     n.NewsTitle,
+		"newsSlug":      n.NewsSlug,
+		"newsExcerpt":   n.NewsExcerpt,
+		"newsContent":   n.NewsContent,
+		"newsImage":     n.NewsImage,
+		"categoryID":    n.CategoryID,
+		"isFeatured":    n.IsFeatured,
+		"isPublished":   n.IsPublished,
+		"publishedDate": publishedAt,
+		"authorID":      authorID,
+		"createdDate":   time.Now(),
+		"createdBy":     authorID,
 	}
-	return res.LastInsertId()
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("ms_news").Create(values).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
 }
 
 func (r *RepositoryImpl) Update(ctx context.Context, id int64, n news_model.News, updatedBy int64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE ms_news SET newsTitle = ?, newsSlug = ?, newsExcerpt = ?, newsContent = ?, newsImage = ?,
-			categoryID = ?, isFeatured = ?, updatedDate = NOW(), updatedBy = ? WHERE newsID = ?`,
-		n.NewsTitle, n.NewsSlug, n.NewsExcerpt, n.NewsContent, n.NewsImage, n.CategoryID, n.IsFeatured, updatedBy, id)
-	return err
+	return r.db.WithContext(ctx).Table("ms_news").Where("newsID = ?", id).Updates(map[string]interface{}{
+		"newsTitle":   n.NewsTitle,
+		"newsSlug":    n.NewsSlug,
+		"newsExcerpt": n.NewsExcerpt,
+		"newsContent": n.NewsContent,
+		"newsImage":   n.NewsImage,
+		"categoryID":  n.CategoryID,
+		"isFeatured":  n.IsFeatured,
+		"updatedDate": time.Now(),
+		"updatedBy":   updatedBy,
+	}).Error
 }
 
 func (r *RepositoryImpl) SetPublished(ctx context.Context, id int64, published bool, updatedBy int64) error {
 	if published {
-		_, err := r.db.ExecContext(ctx,
-			`UPDATE ms_news SET isPublished = 1, publishedDate = COALESCE(publishedDate, NOW()), updatedDate = NOW(), updatedBy = ? WHERE newsID = ?`,
-			updatedBy, id)
-		return err
+		return r.db.WithContext(ctx).Exec(
+			"UPDATE ms_news SET isPublished = 1, publishedDate = COALESCE(publishedDate, NOW()), updatedDate = NOW(), updatedBy = ? WHERE newsID = ?",
+			updatedBy, id).Error
 	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE ms_news SET isPublished = 0, updatedDate = NOW(), updatedBy = ? WHERE newsID = ?`, updatedBy, id)
-	return err
+	return r.db.WithContext(ctx).Table("ms_news").Where("newsID = ?", id).Updates(map[string]interface{}{
+		"isPublished": false,
+		"updatedDate": time.Now(),
+		"updatedBy":   updatedBy,
+	}).Error
 }
 
 func (r *RepositoryImpl) SetFeatured(ctx context.Context, id int64, featured bool, updatedBy int64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE ms_news SET isFeatured = ?, updatedDate = NOW(), updatedBy = ? WHERE newsID = ?`, featured, updatedBy, id)
-	return err
+	return r.db.WithContext(ctx).Table("ms_news").Where("newsID = ?", id).Updates(map[string]interface{}{
+		"isFeatured":  featured,
+		"updatedDate": time.Now(),
+		"updatedBy":   updatedBy,
+	}).Error
 }
 
 func (r *RepositoryImpl) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM ms_news WHERE newsID = ?", id)
-	return err
+	return r.db.WithContext(ctx).Exec("DELETE FROM ms_news WHERE newsID = ?", id).Error
 }
 
 func (r *RepositoryImpl) IncrementView(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE ms_news SET viewCount = viewCount + 1 WHERE newsID = ?", id)
-	return err
+	return r.db.WithContext(ctx).Exec("UPDATE ms_news SET viewCount = viewCount + 1 WHERE newsID = ?", id).Error
 }
 
 func (r *RepositoryImpl) Categories(ctx context.Context) ([]news_model.Category, error) {
 	var out []news_model.Category
-	err := r.db.SelectContext(ctx, &out,
-		"SELECT categoryID, categoryName, categorySlug, isActive FROM lk_news_category WHERE isActive = 1 ORDER BY categoryName")
+	err := r.db.WithContext(ctx).Table("lk_news_category").
+		Where("isActive = 1").Order("categoryName").Find(&out).Error
 	return out, err
 }

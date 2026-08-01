@@ -1,4 +1,5 @@
-// Package user_model memuat entitas modul user.
+// Package user_model memuat entitas modul user. Seluruhnya murni struct data
+// (tanpa function/method) — logika pemetaan berada di lapisan service.
 package user_model
 
 import (
@@ -6,32 +7,27 @@ import (
 	"time"
 )
 
-// User merepresentasikan satu baris ms_user (dengan kolom join roleName).
+// User merepresentasikan satu baris ms_user. Field RoleName bersifat read-only
+// (hasil join ke ms_role), ditandai `->` agar tidak ikut tertulis saat Create/Update.
 type User struct {
-	UserID             int64          `db:"userID"`
-	RoleID             int64          `db:"roleID"`
-	RoleName           string         `db:"roleName"`
-	FullName           string         `db:"fullName"`
-	Email              string         `db:"email"`
-	Username           sql.NullString `db:"username"`
-	Password           sql.NullString `db:"password"`
-	GoogleID           sql.NullString `db:"googleID"`
-	EmailVerifiedDate  sql.NullTime   `db:"emailVerifiedDate"`
-	PhoneNumber        sql.NullString `db:"phoneNumber"`
-	PhotoURL           sql.NullString `db:"photoURL"`
-	MustChangePassword bool           `db:"mustChangePassword"`
-	IsActive           bool           `db:"isActive"`
-	CreatedDate        time.Time      `db:"createdDate"`
-	CreatedBy          sql.NullInt64  `db:"createdBy"`
-	UpdatedDate        sql.NullTime   `db:"updatedDate"`
-	UpdatedBy          sql.NullInt64  `db:"updatedBy"`
+	UserID             int64          `gorm:"column:userID;primaryKey"`
+	RoleID             int64          `gorm:"column:roleID"`
+	RoleName           string         `gorm:"column:roleName;->"`
+	FullName           string         `gorm:"column:fullName"`
+	Email              string         `gorm:"column:email"`
+	Username           sql.NullString `gorm:"column:username"`
+	Password           sql.NullString `gorm:"column:password"`
+	GoogleID           sql.NullString `gorm:"column:googleID"`
+	EmailVerifiedDate  sql.NullTime   `gorm:"column:emailVerifiedDate"`
+	PhoneNumber        sql.NullString `gorm:"column:phoneNumber"`
+	PhotoURL           sql.NullString `gorm:"column:photoURL"`
+	MustChangePassword bool           `gorm:"column:mustChangePassword"`
+	IsActive           bool           `gorm:"column:isActive"`
+	CreatedDate        time.Time      `gorm:"column:createdDate"`
+	CreatedBy          sql.NullInt64  `gorm:"column:createdBy"`
+	UpdatedDate        sql.NullTime   `gorm:"column:updatedDate"`
+	UpdatedBy          sql.NullInt64  `gorm:"column:updatedBy"`
 }
-
-// EmailVerified mengembalikan true bila email pengguna telah terverifikasi.
-func (u User) EmailVerified() bool { return u.EmailVerifiedDate.Valid }
-
-// HasPassword mengembalikan true bila pengguna memiliki password lokal.
-func (u User) HasPassword() bool { return u.Password.Valid && u.Password.String != "" }
 
 // CreateParams menampung data untuk membuat pengguna baru.
 type CreateParams struct {

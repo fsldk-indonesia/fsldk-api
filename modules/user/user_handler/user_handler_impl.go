@@ -120,7 +120,7 @@ func (h *HandlerImpl) ResetPassword(c *gin.Context) {
 		httphelper.Error(c, err)
 		return
 	}
-	httphelper.Success(c, "Password berhasil direset", gin.H{"temporaryPassword": temp})
+	httphelper.Success(c, "Password berhasil direset", user_dto.ResetPasswordResult{TemporaryPassword: temp})
 }
 
 func (h *HandlerImpl) Delete(c *gin.Context) {

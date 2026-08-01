@@ -1,7 +1,9 @@
 package mailer
 
 // Template email disesuaikan dengan brand FSLDK Indonesia (hijau #00933b).
-// Menggunakan gaya inline agar tampil konsisten di berbagai klien email.
+// Markup berbasis <table> dengan CSS inline agar tampil konsisten di
+// berbagai klien email maupun renderer webkit (wkhtmltopdf/wkhtmltoimage).
+// Logo disematkan sebagai lampiran inline (cid) — lihat mailer.go.
 
 const baseWrapperHead = `<!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -10,8 +12,13 @@ const baseWrapperHead = `<!doctype html>
 <tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;max-width:560px;width:100%;">
 <tr><td style="background:#00933b;padding:24px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0"><tr>
+<td style="padding-right:12px;"><img src="cid:{{.LogoCID}}" alt="FSLDK Indonesia" width="40" height="40" style="display:block;border-radius:8px;"></td>
+<td>
 <span style="color:#ffffff;font-size:20px;font-weight:800;letter-spacing:.3px;">FSLDK Indonesia</span>
 <div style="color:#eafbf1;font-size:12px;margin-top:2px;">Forum Silaturahmi Lembaga Dakwah Kampus</div>
+</td>
+</tr></table>
 </td></tr>
 <tr><td style="padding:32px;">`
 
@@ -28,7 +35,9 @@ const verificationTemplate = baseWrapperHead + `
 Assalamu'alaikum {{.Name}},<br><br>
 Terima kasih telah mendaftar di website FSLDK Indonesia. Silakan klik tombol di bawah untuk memverifikasi alamat email Anda. Tautan ini berlaku selama 60 menit.
 </p>
-<a href="{{.URL}}" style="display:inline-block;background:#00933b;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:10px;font-size:15px;">Verifikasi Email</a>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#00933b;border-radius:10px;">
+<a href="{{.URL}}" style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;font-size:15px;">Verifikasi Email</a>
+</td></tr></table>
 <p style="font-size:13px;color:#9aa1a8;margin:24px 0 0;line-height:1.6;">
 Jika tombol tidak berfungsi, salin tautan berikut ke peramban Anda:<br>
 <span style="color:#007a31;word-break:break-all;">{{.URL}}</span>
@@ -41,7 +50,9 @@ const passwordResetTemplate = baseWrapperHead + `
 Assalamu'alaikum {{.Name}},<br><br>
 Kami menerima permintaan untuk mengatur ulang kata sandi akun Anda. Klik tombol di bawah untuk membuat kata sandi baru. Tautan ini berlaku selama 60 menit.
 </p>
-<a href="{{.URL}}" style="display:inline-block;background:#00933b;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:10px;font-size:15px;">Atur Ulang Kata Sandi</a>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#00933b;border-radius:10px;">
+<a href="{{.URL}}" style="display:inline-block;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;font-size:15px;">Atur Ulang Kata Sandi</a>
+</td></tr></table>
 <p style="font-size:13px;color:#9aa1a8;margin:24px 0 0;line-height:1.6;">
 Jika Anda tidak meminta ini, abaikan email ini dan kata sandi Anda tetap aman.<br>
 Tautan: <span style="color:#007a31;word-break:break-all;">{{.URL}}</span>

@@ -2,67 +2,62 @@ package article_repository
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"time"
 
+	"fsldk-api/modules/article/article_dto"
 	"fsldk-api/modules/article/article_model"
 
-	"github.com/jmoiron/sqlx"
+	"gorm.io/gorm"
 )
 
-const selectCols = `a.articleID, a.articleTitle, a.articleSlug, a.articleExcerpt, a.articleContent, a.articleImage,
-	a.categoryID, c.categoryName, a.isPublished, a.publishedDate, a.authorID, u.fullName AS authorName, a.createdDate`
+const selectCols = "a.articleID, a.articleTitle, a.articleSlug, a.articleExcerpt, a.articleContent, a.articleImage, " +
+	"a.categoryID, c.categoryName, a.isPublished, a.publishedDate, a.authorID, u.fullName AS authorName, a.createdDate"
 
-const fromJoin = ` FROM ms_article a
-	JOIN lk_article_category c ON c.categoryID = a.categoryID
-	JOIN ms_user u ON u.userID = a.authorID`
-
-// RepositoryImpl adalah implementasi Repository berbasis sqlx.
-type RepositoryImpl struct{ db *sqlx.DB }
+// RepositoryImpl adalah implementasi Repository berbasis GORM.
+type RepositoryImpl struct{ db *gorm.DB }
 
 // NewRepository membuat implementasi Repository.
-func NewRepository(db *sqlx.DB) Repository { return &RepositoryImpl{db: db} }
+func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 
-func (r *RepositoryImpl) List(ctx context.Context, f Filter) ([]article_model.Article, int, error) {
-	where := " WHERE 1=1"
-	args := []interface{}{}
+func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Table("ms_article a").
+		Joins("JOIN lk_article_category c ON c.categoryID = a.categoryID").
+		Joins("JOIN ms_user u ON u.userID = a.authorID")
+}
+
+func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]article_model.Article, int64, error) {
+	q := r.baseQuery(ctx)
 	if f.PublishedOnly || f.Status == "published" {
-		where += " AND a.isPublished = 1"
+		q = q.Where("a.isPublished = 1")
 	} else if f.Status == "draft" {
-		where += " AND a.isPublished = 0"
+		q = q.Where("a.isPublished = 0")
 	}
 	if f.Search != "" {
-		where += " AND (a.articleTitle LIKE ? OR a.articleExcerpt LIKE ?)"
 		like := "%" + f.Search + "%"
-		args = append(args, like, like)
+		q = q.Where("(a.articleTitle LIKE ? OR a.articleExcerpt LIKE ?)", like, like)
 	}
 	if f.CategorySlug != "" {
-		where += " AND c.categorySlug = ?"
-		args = append(args, f.CategorySlug)
+		q = q.Where("c.categorySlug = ?", f.CategorySlug)
 	}
 	if f.CategoryID > 0 {
-		where += " AND a.categoryID = ?"
-		args = append(args, f.CategoryID)
+		q = q.Where("a.categoryID = ?", f.CategoryID)
 	}
 
-	var total int
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*)"+fromJoin+where, args...); err != nil {
+	var total int64
+	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	q := "SELECT " + selectCols + fromJoin + where + " ORDER BY " + f.OrderBy + " LIMIT ? OFFSET ?"
-	args = append(args, f.Limit, f.Offset)
+
 	var out []article_model.Article
-	if err := r.db.SelectContext(ctx, &out, q, args...); err != nil {
-		return nil, 0, err
-	}
-	return out, total, nil
+	err := q.Select(selectCols).Order(f.OrderBy).Limit(f.Limit).Offset(f.Offset).Find(&out).Error
+	return out, total, err
 }
 
 func (r *RepositoryImpl) findOne(ctx context.Context, where string, arg interface{}) (article_model.Article, error) {
 	var a article_model.Article
-	err := r.db.GetContext(ctx, &a, "SELECT "+selectCols+fromJoin+" WHERE "+where+" LIMIT 1", arg)
-	if errors.Is(err, sql.ErrNoRows) {
+	err := r.baseQuery(ctx).Select(selectCols).Where(where, arg).Take(&a).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return article_model.Article{}, ErrNotFound
 	}
 	return a, err
@@ -77,56 +72,73 @@ func (r *RepositoryImpl) FindBySlug(ctx context.Context, slug string) (article_m
 }
 
 func (r *RepositoryImpl) SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error) {
-	var n int
-	err := r.db.GetContext(ctx, &n, "SELECT COUNT(*) FROM ms_article WHERE articleSlug = ? AND articleID <> ?", slug, exceptID)
-	return n > 0, err
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_article").
+		Where("articleSlug = ? AND articleID <> ?", slug, exceptID).Count(&count).Error
+	return count > 0, err
 }
 
 func (r *RepositoryImpl) Create(ctx context.Context, a article_model.Article, authorID int64) (int64, error) {
-	var pub interface{}
+	var publishedAt interface{}
 	if a.IsPublished {
-		pub = time.Now()
+		publishedAt = time.Now()
 	}
-	res, err := r.db.ExecContext(ctx,
-		`INSERT INTO ms_article (articleTitle, articleSlug, articleExcerpt, articleContent, articleImage,
-			categoryID, isPublished, publishedDate, authorID, createdDate, createdBy)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
-		a.ArticleTitle, a.ArticleSlug, a.ArticleExcerpt, a.ArticleContent, a.ArticleImage,
-		a.CategoryID, a.IsPublished, pub, authorID, authorID)
-	if err != nil {
-		return 0, err
+	values := map[string]interface{}{
+		"articleTitle":   a.ArticleTitle,
+		"articleSlug":    a.ArticleSlug,
+		"articleExcerpt": a.ArticleExcerpt,
+		"articleContent": a.ArticleContent,
+		"articleImage":   a.ArticleImage,
+		"categoryID":     a.CategoryID,
+		"isPublished":    a.IsPublished,
+		"publishedDate":  publishedAt,
+		"authorID":       authorID,
+		"createdDate":    time.Now(),
+		"createdBy":      authorID,
 	}
-	return res.LastInsertId()
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("ms_article").Create(values).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
 }
 
 func (r *RepositoryImpl) Update(ctx context.Context, id int64, a article_model.Article, updatedBy int64) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE ms_article SET articleTitle = ?, articleSlug = ?, articleExcerpt = ?, articleContent = ?,
-			articleImage = ?, categoryID = ?, updatedDate = NOW(), updatedBy = ? WHERE articleID = ?`,
-		a.ArticleTitle, a.ArticleSlug, a.ArticleExcerpt, a.ArticleContent, a.ArticleImage, a.CategoryID, updatedBy, id)
-	return err
+	return r.db.WithContext(ctx).Table("ms_article").Where("articleID = ?", id).Updates(map[string]interface{}{
+		"articleTitle":   a.ArticleTitle,
+		"articleSlug":    a.ArticleSlug,
+		"articleExcerpt": a.ArticleExcerpt,
+		"articleContent": a.ArticleContent,
+		"articleImage":   a.ArticleImage,
+		"categoryID":     a.CategoryID,
+		"updatedDate":    time.Now(),
+		"updatedBy":      updatedBy,
+	}).Error
 }
 
 func (r *RepositoryImpl) SetPublished(ctx context.Context, id int64, published bool, updatedBy int64) error {
 	if published {
-		_, err := r.db.ExecContext(ctx,
-			`UPDATE ms_article SET isPublished = 1, publishedDate = COALESCE(publishedDate, NOW()), updatedDate = NOW(), updatedBy = ? WHERE articleID = ?`,
-			updatedBy, id)
-		return err
+		return r.db.WithContext(ctx).Exec(
+			"UPDATE ms_article SET isPublished = 1, publishedDate = COALESCE(publishedDate, NOW()), updatedDate = NOW(), updatedBy = ? WHERE articleID = ?",
+			updatedBy, id).Error
 	}
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE ms_article SET isPublished = 0, updatedDate = NOW(), updatedBy = ? WHERE articleID = ?`, updatedBy, id)
-	return err
+	return r.db.WithContext(ctx).Table("ms_article").Where("articleID = ?", id).Updates(map[string]interface{}{
+		"isPublished": false,
+		"updatedDate": time.Now(),
+		"updatedBy":   updatedBy,
+	}).Error
 }
 
 func (r *RepositoryImpl) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM ms_article WHERE articleID = ?", id)
-	return err
+	return r.db.WithContext(ctx).Exec("DELETE FROM ms_article WHERE articleID = ?", id).Error
 }
 
 func (r *RepositoryImpl) Categories(ctx context.Context) ([]article_model.Category, error) {
 	var out []article_model.Category
-	err := r.db.SelectContext(ctx, &out,
-		"SELECT categoryID, categoryName, categorySlug, isActive FROM lk_article_category WHERE isActive = 1 ORDER BY categoryName")
+	err := r.db.WithContext(ctx).Table("lk_article_category").
+		Where("isActive = 1").Order("categoryName").Find(&out).Error
 	return out, err
 }

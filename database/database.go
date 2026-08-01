@@ -1,4 +1,4 @@
-// Package database menginisialisasi koneksi ke MySQL menggunakan sqlx.
+// Package database menginisialisasi koneksi ke MySQL menggunakan GORM.
 package database
 
 import (
@@ -8,14 +8,15 @@ import (
 
 	"fsldk-api/config"
 
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // New membuka koneksi ke database MySQL tunggal berdasarkan konfigurasi.
 // Fungsi ini melakukan Ping untuk memastikan koneksi valid, dan mengembalikan
 // error (bukan panic) agar pemanggil dapat menangani kegagalan dengan baik.
-func New(cfg config.AppConfig) (*sqlx.DB, error) {
+func New(cfg config.AppConfig) (*gorm.DB, error) {
 	loc := url.QueryEscape(cfg.Timezone)
 	if loc == "" {
 		loc = "Local"
@@ -26,16 +27,27 @@ func New(cfg config.AppConfig) (*sqlx.DB, error) {
 		cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName, loc,
 	)
 
-	db, err := sqlx.Open("mysql", dsn)
+	logLevel := logger.Warn
+	if cfg.AppEnv == "development" {
+		logLevel = logger.Info
+	}
+
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logLevel),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuka koneksi database: %w", err)
 	}
 
-	db.SetMaxOpenConns(cfg.DBMaxOpenConn)
-	db.SetMaxIdleConns(cfg.DBMaxIdleConn)
-	db.SetConnMaxLifetime(60 * time.Minute)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil koneksi sql: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConn)
+	sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConn)
+	sqlDB.SetConnMaxLifetime(60 * time.Minute)
 
-	if err := db.Ping(); err != nil {
+	if err := sqlDB.Ping(); err != nil {
 		return nil, fmt.Errorf("gagal ping database %s: %w", cfg.DBName, err)
 	}
 

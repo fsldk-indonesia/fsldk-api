@@ -1,7 +1,6 @@
-// Package user_dto memuat DTO request/response modul user.
+// Package user_dto memuat DTO request/response modul user. Seluruhnya murni
+// struct data (tanpa function/method) — pemetaan model→DTO berada di service.
 package user_dto
-
-import "fsldk-api/modules/user/user_model"
 
 // Response adalah representasi pengguna untuk API.
 type Response struct {
@@ -15,22 +14,6 @@ type Response struct {
 	PhotoURL      string `json:"photoURL,omitempty"`
 	HasGoogle     bool   `json:"hasGoogle"`
 	HasPassword   bool   `json:"hasPassword"`
-}
-
-// ToResponse memetakan model User ke Response.
-func ToResponse(u user_model.User) Response {
-	return Response{
-		UserID:        u.UserID,
-		FullName:      u.FullName,
-		Email:         u.Email,
-		RoleID:        u.RoleID,
-		Role:          u.RoleName,
-		EmailVerified: u.EmailVerified(),
-		IsActive:      u.IsActive,
-		PhotoURL:      u.PhotoURL.String,
-		HasGoogle:     u.GoogleID.Valid,
-		HasPassword:   u.HasPassword(),
-	}
 }
 
 // CreateRequest adalah body membuat pengguna baru (oleh admin).
@@ -52,4 +35,18 @@ type UpdateRequest struct {
 // StatusRequest adalah body mengubah status aktif pengguna.
 type StatusRequest struct {
 	IsActive bool `json:"isActive"`
+}
+
+// ListFilter menampung parameter penyaringan daftar pengguna.
+type ListFilter struct {
+	Search  string
+	RoleID  int64
+	Limit   int
+	Offset  int
+	OrderBy string
+}
+
+// ResetPasswordResult adalah hasil reset password (password sementara).
+type ResetPasswordResult struct {
+	TemporaryPassword string `json:"temporaryPassword"`
 }

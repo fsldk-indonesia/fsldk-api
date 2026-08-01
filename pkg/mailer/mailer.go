@@ -1,17 +1,29 @@
 // Package mailer menangani pengiriman email (verifikasi & reset password) via SMTP.
 // Bila SMTP belum dikonfigurasi (pengembangan), tautan dicetak ke log alih-alih
 // dikirim, agar alur tetap dapat diuji tanpa server email.
+//
+// Template email menggunakan markup HTML berbasis tabel dengan CSS inline
+// (kompatibel dengan renderer webkit seperti wkhtmltopdf, sama seperti yang
+// dipakai pada go-core-api) dan menyertakan logo FSLDK sebagai lampiran
+// inline (Content-ID) agar selalu tampil tanpa bergantung pada URL eksternal.
 package mailer
 
 import (
 	"bytes"
+	_ "embed"
 	"html/template"
+	"io"
 	"log"
 
 	"fsldk-api/config"
 
 	gomail "gopkg.in/gomail.v2"
 )
+
+//go:embed assets/logo-fsldk.png
+var logoFSLDK []byte
+
+const logoCID = "logo-fsldk.png"
 
 // Mailer adalah kontrak layanan email.
 type Mailer interface {
@@ -29,7 +41,7 @@ func New(cfg config.AppConfig) Mailer {
 }
 
 func (m *smtpMailer) SendVerificationEmail(toEmail, toName, verifyURL string) error {
-	body, err := render(verificationTemplate, map[string]string{"Name": toName, "URL": verifyURL})
+	body, err := render(verificationTemplate, map[string]string{"Name": toName, "URL": verifyURL, "LogoCID": logoCID})
 	if err != nil {
 		return err
 	}
@@ -37,7 +49,7 @@ func (m *smtpMailer) SendVerificationEmail(toEmail, toName, verifyURL string) er
 }
 
 func (m *smtpMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) error {
-	body, err := render(passwordResetTemplate, map[string]string{"Name": toName, "URL": resetURL})
+	body, err := render(passwordResetTemplate, map[string]string{"Name": toName, "URL": resetURL, "LogoCID": logoCID})
 	if err != nil {
 		return err
 	}
@@ -56,6 +68,10 @@ func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
 	msg.SetHeader("To", to)
 	msg.SetHeader("Subject", subject)
 	msg.SetBody("text/html", htmlBody)
+	msg.Embed(logoCID, gomail.SetCopyFunc(func(w io.Writer) error {
+		_, err := w.Write(logoFSLDK)
+		return err
+	}))
 
 	dialer := gomail.NewDialer(m.cfg.SMTPHost, m.cfg.SMTPPort, m.cfg.SMTPUsername, m.cfg.SMTPPassword)
 	return dialer.DialAndSend(msg)

@@ -153,9 +153,7 @@ func (h *HandlerImpl) Publish(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var body struct {
-		IsPublished bool `json:"isPublished"`
-	}
+	var body news_dto.PublishRequest
 	_ = c.ShouldBindJSON(&body)
 	if err := h.svc.SetPublished(c.Request.Context(), id, body.IsPublished, appctx.UserID(c)); err != nil {
 		httphelper.Error(c, err)
@@ -169,9 +167,7 @@ func (h *HandlerImpl) Featured(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var body struct {
-		IsFeatured bool `json:"isFeatured"`
-	}
+	var body news_dto.FeaturedRequest
 	_ = c.ShouldBindJSON(&body)
 	if err := h.svc.SetFeatured(c.Request.Context(), id, body.IsFeatured, appctx.UserID(c)); err != nil {
 		httphelper.Error(c, err)

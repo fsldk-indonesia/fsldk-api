@@ -24,7 +24,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("gagal terhubung ke database: %v", err)
 	}
-	defer func() { _ = db.Close() }()
+	defer func() {
+		if sqlDB, err := db.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+	}()
 
 	// Jalankan migration & seed data awal.
 	if err := migrations.Run(db); err != nil {

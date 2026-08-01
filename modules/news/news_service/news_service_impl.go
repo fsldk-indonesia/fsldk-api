@@ -27,20 +27,20 @@ type ServiceImpl struct{ repo news_repository.Repository }
 func NewService(repo news_repository.Repository) Service { return &ServiceImpl{repo: repo} }
 
 func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]news_model.News, int, error) {
-	return s.list(ctx, news_repository.Filter{
+	return s.list(ctx, news_dto.Filter{
 		Search: q.Search, CategorySlug: categorySlug, PublishedOnly: true,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "n.publishedDate DESC"),
 	})
 }
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]news_model.News, int, error) {
-	return s.list(ctx, news_repository.Filter{
+	return s.list(ctx, news_dto.Filter{
 		Search: q.Search, Status: status, CategoryID: categoryID,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "n.createdDate DESC"),
 	})
 }
 
-func (s *ServiceImpl) list(ctx context.Context, f news_repository.Filter) ([]news_model.News, int, error) {
+func (s *ServiceImpl) list(ctx context.Context, f news_dto.Filter) ([]news_model.News, int, error) {
 	data, total, err := s.repo.List(ctx, f)
 	if err != nil {
 		return nil, 0, apperror.Internal("")
@@ -48,7 +48,7 @@ func (s *ServiceImpl) list(ctx context.Context, f news_repository.Filter) ([]new
 	if data == nil {
 		data = []news_model.News{}
 	}
-	return data, total, nil
+	return data, int(total), nil
 }
 
 func (s *ServiceImpl) PublicDetail(ctx context.Context, slugStr string) (news_model.News, error) {

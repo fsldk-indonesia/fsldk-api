@@ -50,13 +50,13 @@ import (
 	"fsldk-api/modules/dashboard/dashboard_service"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jmoiron/sqlx"
+	"gorm.io/gorm"
 )
 
 // setupRouter merangkai seluruh dependensi (dependency injection manual) dan
 // mengembalikan gin.Engine yang telah terkonfigurasi. Fungsi ini berperan
 // setara dengan hasil generate Google Wire, namun tanpa memerlukan codegen.
-func setupRouter(db *sqlx.DB, cfg config.AppConfig) *gin.Engine {
+func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Infrastruktur & utilitas
 	tm := token.NewManager(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.JWTAccessExpireMinutes, cfg.JWTRefreshExpireMinutes)
 	mail := mailer.New(cfg)
@@ -105,7 +105,7 @@ func setupRouter(db *sqlx.DB, cfg config.AppConfig) *gin.Engine {
 	// Endpoint sistem
 	engine.GET("/health", func(c *gin.Context) {
 		status := "ok"
-		if err := db.Ping(); err != nil {
+		if sqlDB, err := db.DB(); err != nil || sqlDB.Ping() != nil {
 			status = "degraded"
 		}
 		c.JSON(http.StatusOK, gin.H{"status": status, "service": "fsldk-api"})
