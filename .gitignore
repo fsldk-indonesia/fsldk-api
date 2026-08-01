@@ -1,0 +1,20 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/fsldk-api
+/tmp/
+
+# Environment (rahasia — jangan di-commit)
+app.env
+.env
+
+# Test & coverage
+*.out
+test-results/
+
+# IDE
+.idea/
+.vscode/
