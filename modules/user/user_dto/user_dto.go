@@ -25,11 +25,14 @@ type CreateRequest struct {
 	IsActive *bool  `json:"isActive"`
 }
 
-// UpdateRequest adalah body memperbarui pengguna.
+// UpdateRequest adalah body memperbarui pengguna. Password opsional — bila
+// diisi, password pengguna diganti; bila kosong, password lama dipertahankan.
 type UpdateRequest struct {
 	FullName string `json:"fullName" validate:"required,min=3,max=150"`
+	Email    string `json:"email" validate:"required,email,max=150"`
 	RoleID   int64  `json:"roleID" validate:"required"`
 	IsActive bool   `json:"isActive"`
+	Password string `json:"password" validate:"omitempty,min=8,max=100"`
 }
 
 // StatusRequest adalah body mengubah status aktif pengguna.
@@ -44,9 +47,4 @@ type ListFilter struct {
 	Limit   int
 	Offset  int
 	OrderBy string
-}
-
-// ResetPasswordResult adalah hasil reset password (password sementara).
-type ResetPasswordResult struct {
-	TemporaryPassword string `json:"temporaryPassword"`
 }

@@ -19,7 +19,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h user_handler.Handler, mw *middlewares
 		g.POST("", mw.RequirePermission(constants.PermUserCreate), h.Create)
 		g.PUT("/:id", mw.RequirePermission(constants.PermUserUpdate), h.Update)
 		g.PATCH("/:id/status", mw.RequirePermission(constants.PermUserUpdate), h.SetStatus)
-		g.POST("/:id/reset-password", mw.RequirePermission(constants.PermUserUpdate), h.ResetPassword)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermUserDelete), h.Delete)
 	}
 }

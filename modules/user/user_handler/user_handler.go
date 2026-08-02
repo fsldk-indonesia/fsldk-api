@@ -10,6 +10,5 @@ type Handler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	SetStatus(c *gin.Context)
-	ResetPassword(c *gin.Context)
 	Delete(c *gin.Context)
 }

@@ -64,9 +64,8 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 | GET | `/users` | `user.view` | Daftar pengguna (query: `page`, `limit`, `search`, `sort`, `roleID`) |
 | GET | `/users/:id` | `user.view` | Detail pengguna |
 | POST | `/users` | `user.create` | Buat pengguna baru |
-| PUT | `/users/:id` | `user.update` | Perbarui pengguna |
+| PUT | `/users/:id` | `user.update` | Perbarui pengguna (nama, email, role, status, password opsional) |
 | PATCH | `/users/:id/status` | `user.update` | Aktifkan/nonaktifkan |
-| POST | `/users/:id/reset-password` | `user.update` | Reset password → password sementara |
 | DELETE | `/users/:id` | `user.delete` | Hapus (soft delete) |
 
 **`POST /users`**
@@ -74,7 +73,8 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 { "fullName": "Siti Nurhaliza", "email": "siti@fsldk.id", "roleID": 3, "password": "••••••••", "isActive": true }
 ```
 
-**`PUT /users/:id`** → `{ "fullName": "...", "roleID": 2, "isActive": true }`
+**`PUT /users/:id`** → `{ "fullName": "...", "email": "...", "roleID": 2, "isActive": true, "password": "" }`
+`password` bersifat opsional — kosongkan (string kosong) untuk mempertahankan password saat ini; isi (min. 8 karakter) untuk menggantinya. Tidak ada lagi endpoint reset-password terpisah.
 **`PATCH /users/:id/status`** → `{ "isActive": false }`
 
 ---

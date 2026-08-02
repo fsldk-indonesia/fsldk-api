@@ -107,8 +107,25 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateR
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
 		return user_dto.Response{}, apperror.NotFound("Pengguna tidak ditemukan")
 	}
-	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), req.RoleID, req.IsActive, actorID); err != nil {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	exists, err := s.repo.ExistsByEmailExcept(ctx, email, id)
+	if err != nil {
 		return user_dto.Response{}, apperror.Internal("")
+	}
+	if exists {
+		return user_dto.Response{}, apperror.Conflict("Email sudah dipakai pengguna lain")
+	}
+	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, actorID); err != nil {
+		return user_dto.Response{}, apperror.Internal("")
+	}
+	if strings.TrimSpace(req.Password) != "" {
+		hashed, err := security.HashPassword(req.Password)
+		if err != nil {
+			return user_dto.Response{}, apperror.Internal("")
+		}
+		if err := s.repo.SetPassword(ctx, id, hashed, false); err != nil {
+			return user_dto.Response{}, apperror.Internal("")
+		}
 	}
 	return s.Get(ctx, id)
 }
@@ -121,24 +138,6 @@ func (s *ServiceImpl) SetStatus(ctx context.Context, id int64, active bool, acto
 		return apperror.Internal("")
 	}
 	return nil
-}
-
-func (s *ServiceImpl) ResetPassword(ctx context.Context, id int64) (string, error) {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
-		return "", apperror.NotFound("Pengguna tidak ditemukan")
-	}
-	temp, err := security.RandomToken(6)
-	if err != nil {
-		return "", apperror.Internal("")
-	}
-	hashed, err := security.HashPassword(temp)
-	if err != nil {
-		return "", apperror.Internal("")
-	}
-	if err := s.repo.SetPassword(ctx, id, hashed, true); err != nil {
-		return "", apperror.Internal("")
-	}
-	return temp, nil
 }
 
 func (s *ServiceImpl) Delete(ctx context.Context, id, actorID int64) error {

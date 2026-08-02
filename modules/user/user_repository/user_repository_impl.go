@@ -54,6 +54,12 @@ func (r *RepositoryImpl) ExistsByEmail(ctx context.Context, email string) (bool,
 	return count > 0, err
 }
 
+func (r *RepositoryImpl) ExistsByEmailExcept(ctx context.Context, email string, exceptID int64) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_user").Where("email = ? AND userID <> ?", email, exceptID).Count(&count).Error
+	return count > 0, err
+}
+
 func (r *RepositoryImpl) Create(ctx context.Context, p user_model.CreateParams) (int64, error) {
 	var verifiedAt interface{}
 	if p.EmailVerified {
@@ -100,9 +106,10 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 	return out, total, err
 }
 
-func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName string, roleID int64, isActive bool, updatedBy int64) error {
+func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"fullName":    fullName,
+		"email":       email,
 		"roleID":      roleID,
 		"isActive":    isActive,
 		"updatedDate": time.Now(),

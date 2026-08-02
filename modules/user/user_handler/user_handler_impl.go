@@ -110,19 +110,6 @@ func (h *HandlerImpl) SetStatus(c *gin.Context) {
 	httphelper.Success(c, "Status pengguna diperbarui", nil)
 }
 
-func (h *HandlerImpl) ResetPassword(c *gin.Context) {
-	id, ok := idParam(c)
-	if !ok {
-		return
-	}
-	temp, err := h.svc.ResetPassword(c.Request.Context(), id)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Password berhasil direset", user_dto.ResetPasswordResult{TemporaryPassword: temp})
-}
-
 func (h *HandlerImpl) Delete(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {
