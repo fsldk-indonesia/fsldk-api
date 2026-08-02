@@ -46,6 +46,11 @@ const (
 	PermRoleCreate = "role.create"
 	PermRoleUpdate = "role.update"
 	PermRoleDelete = "role.delete"
+
+	PermShortlinkView   = "shortlink.view"
+	PermShortlinkCreate = "shortlink.create"
+	PermShortlinkUpdate = "shortlink.update"
+	PermShortlinkDelete = "shortlink.delete"
 )
 
 // Nama tabel database (konvensi prefix_snake_case).
@@ -58,6 +63,7 @@ const (
 	TableNewsCategory    = "lk_news_category"
 	TableArticle         = "ms_article"
 	TableArticleCategory = "lk_article_category"
+	TableShortlink       = "ms_shortlink"
 	TableUserLoginLog    = "tr_user_login_log"
 	TableEmailToken      = "tr_email_token" // token verifikasi email & reset password
 )

@@ -5,6 +5,7 @@ package validation
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"fsldk-api/base/apperror"
@@ -15,6 +16,11 @@ import (
 
 var validate *validator.Validate
 
+// shortlinkKeyPattern mengizinkan huruf, angka, dan tanda hubung — dipakai
+// tag kustom `shortlinkkey` (bawaan `alphanum` terlalu ketat, tidak
+// mengizinkan tanda hubung yang lazim dipakai sebagai kunci shortlink).
+var shortlinkKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
+
 func init() {
 	validate = validator.New()
 	// Gunakan tag `json` sebagai nama field pada pesan error.
@@ -24,6 +30,9 @@ func init() {
 			return fld.Name
 		}
 		return name
+	})
+	_ = validate.RegisterValidation("shortlinkkey", func(fl validator.FieldLevel) bool {
+		return shortlinkKeyPattern.MatchString(fl.Field().String())
 	})
 }
 
@@ -74,6 +83,12 @@ func humanMessage(fe validator.FieldError) string {
 		return fmt.Sprintf("%s tidak cocok", field)
 	case "oneof":
 		return fmt.Sprintf("%s harus salah satu dari: %s", field, fe.Param())
+	case "url":
+		return fmt.Sprintf("%s harus berupa URL yang valid", field)
+	case "alphanum":
+		return fmt.Sprintf("%s hanya boleh berisi huruf dan angka", field)
+	case "shortlinkkey":
+		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan tanda hubung (-)", field)
 	default:
 		return fmt.Sprintf("%s tidak valid", field)
 	}

@@ -168,7 +168,39 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 
 ---
 
-## 6. Dashboard (`/dashboard`) — ✅🔒
+## 6. Shortlink
+
+Pemendek URL. Redirect yang dilihat pengunjung terjadi di **domain frontend**
+(`fsldk-web`), bukan di backend ini — endpoint publik di bawah hanya
+mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
+`window.location.href` setelah menerimanya (rute publik `/:key` di repositori
+`fsldk-web`, di luar cakupan dokumen ini).
+
+| Method | Endpoint | Auth | Deskripsi |
+|---|---|:---:|---|
+| GET | `/public/shortlinks/:key` | ❌ | `{ "destinationURL": "..." }`, mencatat 1 kunjungan (`visitCount`) |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/shortlinks` | `shortlink.view` | Daftar shortlink (query: `page`, `limit`, `search`) |
+| GET | `/shortlinks/:id` | `shortlink.view` | Detail shortlink |
+| POST | `/shortlinks` | `shortlink.create` | Buat shortlink baru |
+| PUT | `/shortlinks/:id` | `shortlink.update` | Perbarui tujuan/kunci shortlink |
+| DELETE | `/shortlinks/:id` | `shortlink.delete` | Hapus shortlink |
+
+**`POST /shortlinks`**
+```json
+{ "destinationURL": "https://fsldk-indonesia.com/berita/artikel-panjang", "shortKey": "acara2026" }
+```
+`shortKey` opsional — bila kosong, kunci acak 8 karakter dibuatkan otomatis. Response menyertakan `shortURL` siap-pakai (`{FRONTEND_URL}/{shortKey}`, mis. `https://fsldk-indonesia.com/acara2026`) dan `visitCount`.
+
+**`PUT /shortlinks/:id`** → `{ "destinationURL": "...", "shortKey": "..." }` (keduanya wajib — kunci boleh diganti, tapi harus tetap unik)
+
+---
+
+## 7. Dashboard (`/dashboard`) — ✅🔒
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -177,7 +209,7 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 
 ---
 
-## 7. Sistem (tanpa prefix `/api/v1`)
+## 8. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -192,8 +224,9 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 |---|---|---|---|
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
+| `shortlink.view/create/update/delete` | Shortlink | | |
 
-Role bawaan: **Super Admin** (semua permission), **Editor** (news/article penuh), **Kontributor** (news/article tanpa publish/delete). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql).
+Role bawaan: **Super Admin** (semua permission), **Editor** (news/article/shortlink penuh), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql) dan [`migrations/0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql).
 
 > Konten Landing Page (visi/misi/struktur organisasi/kontak) tidak dikelola via API/database — dikelola sebagai teks tetap (hardcoded) langsung di frontend `fsldk-web`.
 

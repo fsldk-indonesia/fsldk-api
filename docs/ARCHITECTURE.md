@@ -28,7 +28,7 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 ## 2. Struktur Modul (Subfolder + Interface/Impl)
 
-Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
+Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
 
 ```
 modules/news/
@@ -177,6 +177,9 @@ templateData, _ := os.ReadFile(path)
 | `0001_init.up.sql` | Skema seluruh tabel (`ms_*`, `lk_*`, `map_*`, `tr_*`) |
 | `0002_seed.up.sql` | Role bawaan (Super Admin/Editor/Kontributor), permission + atribut menu, kategori berita/artikel |
 | `0003_seed_admin.up.sql` | 1 akun Super Admin awal (kredensial di [Instalasi §7](./INSTALLATION.md#7-kredensial-admin-fsldk-bawaan)) |
+| `0004_shortlink.up.sql` | Tabel `ms_shortlink` + permission `shortlink.*` + pemetaan ke role Super Admin/Editor |
+
+Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql`) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
 
 Tidak ada logika seed di kode Go (`EnsureSuperAdmin` dkk. sudah dihapus) — **migration SQL adalah satu-satunya sumber kebenaran** untuk struktur & data awal, konsisten dengan filosofi "migration-driven schema".
 

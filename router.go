@@ -44,6 +44,11 @@ import (
 	"fsldk-api/modules/dashboard/dashboard_repository"
 	"fsldk-api/modules/dashboard/dashboard_service"
 
+	"fsldk-api/modules/shortlink"
+	"fsldk-api/modules/shortlink/shortlink_handler"
+	"fsldk-api/modules/shortlink/shortlink_repository"
+	"fsldk-api/modules/shortlink/shortlink_service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -64,6 +69,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
+	shortlinkRepo := shortlink_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 
 	// Service (logika bisnis)
@@ -74,6 +80,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsSvc := news_service.NewService(newsRepo)
 	articleSvc := article_service.NewService(articleRepo)
 	dashSvc := dashboard_service.NewService(dashRepo)
+	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -83,6 +90,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
+	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
 	mw := middlewares.New(tm, cfg, permSvc)
@@ -121,6 +129,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	news.RegisterCMSRoutes(api, newsH, mw)
 	article.RegisterPublicRoutes(pub, articleH)
 	article.RegisterCMSRoutes(api, articleH, mw)
+
+	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
+	shortlink.RegisterResolveRoute(pub, shortlinkH)
 
 	return engine
 }
