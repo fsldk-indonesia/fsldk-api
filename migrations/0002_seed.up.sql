@@ -1,7 +1,7 @@
 -- ============================================================
 -- FSLDK API — Seed Data Awal
 -- Role bawaan, permission (+atribut menu), pemetaan role-permission,
--- kategori, dan konten Landing Page awal (berbasis AD/ART FSLDK).
+-- dan kategori berita/artikel.
 -- Idempoten: aman dijalankan ulang (INSERT IGNORE / UNIQUE key).
 -- ============================================================
 
@@ -30,22 +30,19 @@ INSERT IGNORE INTO lk_permission (permissionCode, permissionName, moduleName, me
 ('role.view',   'Lihat Role',  'role', 'Role Pengguna', 'shield-check', '/cms/roles', 4),
 ('role.create', 'Tambah Role', 'role', NULL, NULL, NULL, NULL),
 ('role.update', 'Ubah Role',   'role', NULL, NULL, NULL, NULL),
-('role.delete', 'Hapus Role',  'role', NULL, NULL, NULL, NULL),
-('content.view',   'Lihat Konten',  'content', 'Konten Halaman', 'layout', '/cms/contents', 5),
-('content.update', 'Ubah Konten',   'content', NULL, NULL, NULL, NULL);
+('role.delete', 'Hapus Role',  'role', NULL, NULL, NULL, NULL);
 
 -- Super Admin: seluruh permission
 INSERT IGNORE INTO map_role_permission (roleID, permissionID)
 SELECT r.roleID, p.permissionID FROM ms_role r JOIN lk_permission p
 WHERE r.roleName = 'Super Admin';
 
--- Editor: seluruh news.* & article.* + content.view + content.update
+-- Editor: seluruh news.* & article.*
 INSERT IGNORE INTO map_role_permission (roleID, permissionID)
 SELECT r.roleID, p.permissionID FROM ms_role r JOIN lk_permission p
 WHERE r.roleName = 'Editor' AND p.permissionCode IN (
   'news.view','news.create','news.update','news.delete','news.publish',
-  'article.view','article.create','article.update','article.delete','article.publish',
-  'content.view','content.update'
+  'article.view','article.create','article.update','article.delete','article.publish'
 );
 
 -- Kontributor: view/create/update berita & artikel (tanpa publish/delete/konten)
@@ -69,20 +66,6 @@ INSERT IGNORE INTO lk_article_category (categoryName, categorySlug, isActive) VA
 ('Kajian', 'kajian', 1),
 ('Dakwah Kampus', 'dakwah-kampus', 1);
 
--- Konten Landing Page awal (berbasis AD/ART FSLDK Indonesia)
-INSERT IGNORE INTO ms_cms_content (contentKey, contentTitle, contentBody, contentType, sortOrder, isActive) VALUES
-('home.hero.badge', 'Badge Hero', '40 Tahun Merajut Ukhuwah · Sejak 1986', 'text', 1, 1),
-('home.hero.title', 'Judul Hero', 'Menyatukan Langkah Dakwah Kampus se-Indonesia', 'text', 2, 1),
-('home.hero.subtitle', 'Subjudul Hero', 'FSLDK Indonesia adalah forum silaturahmi dan pusat koordinasi bagi Lembaga Dakwah Kampus di seluruh negeri — merawat ukhuwah, membina kader, dan menggerakkan dakwah yang terpadu dan kompak.', 'text', 3, 1),
-('about.title', 'Judul Tentang', 'Tentang FSLDK Indonesia', 'text', 1, 1),
-('about.body', 'Isi Tentang', 'Forum Silaturahmi Lembaga Dakwah Kampus (FSLDK) Indonesia adalah forum silaturahmi dan koordinasi antar Lembaga Dakwah Kampus (LDK) se-Indonesia, sebagai sarana bagi terciptanya gerak dakwah yang teratur, terpadu, dan kompak menuju ummatan wahidah. FSLDK Indonesia didirikan di Yogyakarta pada 25 Mei 1986.', 'html', 2, 1),
-('about.vision', 'Visi', 'Terwujudnya sinergi antar LDK se-Indonesia menuju Indonesia madani.', 'text', 3, 1),
-('about.mission', 'Misi', 'Membangkitkan kembali identitas Islam pada mahasiswa muslim dan masyarakat; Mengokohkan fikrah dan syariat Islam untuk melahirkan khoiru ummah; Membangkitkan jiwa nasionalisme dan patriotisme; Membangun, menjaga, dan mengelola jaringan; Membangun profesionalitas lembaga; Membentuk dan mengakselerasi kemuslimahan nasional; Mewujudkan lembaga yang mandiri secara finansial.', 'text', 4, 1),
-('contact.email', 'Email Kontak', 'info@fsldk-indonesia.com', 'text', 1, 1),
-('contact.instagram', 'Instagram', 'fsldkindonesia', 'text', 2, 1);
-
--- Struktur organisasi contoh (tingkatan sesuai AD/ART)
-INSERT IGNORE INTO ms_organization_structure (memberName, position, level, sortOrder, isActive) VALUES
-('Puskomnas FSLDK Indonesia', 'Pusat Komunikasi Nasional', 'Puskomnas', 1, 1),
-('BK Puskomnas', 'Badan Khusus Puskomnas', 'BK Puskomnas', 2, 1),
-('Puskomda Wilayah', 'Pusat Komunikasi Daerah', 'Puskomda', 3, 1);
+-- Konten Landing Page (visi/misi/struktur organisasi/kontak) sengaja tidak
+-- disimpan di database — dikelola sebagai teks tetap (hardcoded) langsung di
+-- frontend fsldk-web (lihat modules/home).

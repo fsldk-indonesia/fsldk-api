@@ -48,7 +48,6 @@ Base URL: `/api/v1`. Detail lengkap pada [`docs/API.md`](./docs/API.md).
 | Menu | `GET /me/menus`, `GET /permissions` |
 | Berita | `GET /public/news`, `GET /public/news/:slug`, `GET/POST /news`, `PATCH /news/:id/publish` |
 | Artikel | `GET /public/articles`, `GET/POST /articles`, `PATCH /articles/:id/publish` |
-| Konten | `GET /public/contents`, `GET /public/profile`, `PUT /contents/:key`, `.../organization-structure` |
 | Dashboard | `GET /dashboard/summary`, `GET /dashboard/recent-news` |
 | Sistem | `GET /health`, `GET /version` |
 

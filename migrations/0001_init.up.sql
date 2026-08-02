@@ -120,30 +120,6 @@ CREATE TABLE IF NOT EXISTS ms_article (
     INDEX idx_article_slug (articleSlug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS ms_cms_content (
-    contentID    BIGINT AUTO_INCREMENT PRIMARY KEY,
-    contentKey   VARCHAR(100) NOT NULL UNIQUE,
-    contentTitle VARCHAR(255) NULL,
-    contentBody  LONGTEXT NULL,
-    contentType  VARCHAR(50) NOT NULL DEFAULT 'text',
-    sortOrder    INT NULL,
-    isActive     TINYINT(1) NOT NULL DEFAULT 1,
-    updatedDate  DATETIME NULL,
-    updatedBy    BIGINT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS ms_organization_structure (
-    structureID BIGINT AUTO_INCREMENT PRIMARY KEY,
-    memberName  VARCHAR(150) NOT NULL,
-    position    VARCHAR(150) NOT NULL,
-    photoURL    VARCHAR(255) NULL,
-    level       VARCHAR(50) NULL,
-    sortOrder   INT NULL,
-    isActive    TINYINT(1) NOT NULL DEFAULT 1,
-    createdDate DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    createdBy   BIGINT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS tr_user_login_log (
     loginLogID  BIGINT AUTO_INCREMENT PRIMARY KEY,
     userID      BIGINT NOT NULL,

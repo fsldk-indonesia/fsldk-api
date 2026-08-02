@@ -168,34 +168,7 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 
 ---
 
-## 6. Konten Landing Page & Struktur Organisasi
-
-### Publik
-
-| Method | Endpoint | Deskripsi |
-|---|---|---|
-| GET | `/public/contents` | Seluruh konten aktif (key-value) |
-| GET | `/public/contents/:key` | Satu konten by key (mis. `about.vision`) |
-| GET | `/public/profile` | Semua konten sebagai map `{ key: body }` |
-| GET | `/public/organization-structure` | Struktur organisasi aktif |
-
-### CMS — ✅🔒 + permission
-
-| Method | Endpoint | Permission | Deskripsi |
-|---|---|---|---|
-| GET | `/contents` | `content.view` | Semua konten (termasuk nonaktif) |
-| PUT | `/contents/:key` | `content.update` | Perbarui judul/isi konten |
-| GET | `/organization-structure` | `content.view` | Semua struktur organisasi |
-| POST | `/organization-structure` | `content.update` | Tambah pengurus |
-| PUT | `/organization-structure/:id` | `content.update` | Perbarui pengurus |
-| DELETE | `/organization-structure/:id` | `content.update` | Hapus pengurus |
-
-**`PUT /contents/:key`** → `{ "contentTitle": "...", "contentBody": "..." }`
-**`POST /organization-structure`** → `{ "memberName": "...", "position": "...", "photoURL": "...", "level": "Puskomnas", "sortOrder": 1 }`
-
----
-
-## 7. Dashboard (`/dashboard`) — ✅🔒
+## 6. Dashboard (`/dashboard`) — ✅🔒
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -204,7 +177,7 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 
 ---
 
-## 8. Sistem (tanpa prefix `/api/v1`)
+## 7. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -219,9 +192,10 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 |---|---|---|---|
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
-| `content.view/update` | Konten Landing Page | | |
 
-Role bawaan: **Super Admin** (semua permission), **Editor** (news/article penuh + content), **Kontributor** (news/article tanpa publish/delete, tanpa content). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql).
+Role bawaan: **Super Admin** (semua permission), **Editor** (news/article penuh), **Kontributor** (news/article tanpa publish/delete). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql).
+
+> Konten Landing Page (visi/misi/struktur organisasi/kontak) tidak dikelola via API/database — dikelola sebagai teks tetap (hardcoded) langsung di frontend `fsldk-web`.
 
 ---
 

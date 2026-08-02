@@ -93,7 +93,7 @@ Saat pertama kali dijalankan, aplikasi otomatis:
 1. Terhubung ke MySQL (`DB_HOST`/`DB_NAME` dari `app.env`).
 2. Menjalankan seluruh migration di [`migrations/`](../migrations) secara berurutan (idempoten — aman dijalankan berkali-kali):
    - `0001_init.up.sql` — skema seluruh tabel.
-   - `0002_seed.up.sql` — role bawaan, permission, kategori, konten Landing Page awal.
+   - `0002_seed.up.sql` — role bawaan, permission, kategori berita/artikel.
    - `0003_seed_admin.up.sql` — **1 akun Super Admin awal** (lihat §7).
 3. Menyalakan HTTP server pada `APP_HOST:APP_PORT` (default `0.0.0.0:8080`).
 

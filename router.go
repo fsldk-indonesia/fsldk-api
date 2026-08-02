@@ -39,11 +39,6 @@ import (
 	"fsldk-api/modules/article/article_repository"
 	"fsldk-api/modules/article/article_service"
 
-	"fsldk-api/modules/content"
-	"fsldk-api/modules/content/content_handler"
-	"fsldk-api/modules/content/content_repository"
-	"fsldk-api/modules/content/content_service"
-
 	"fsldk-api/modules/dashboard"
 	"fsldk-api/modules/dashboard/dashboard_handler"
 	"fsldk-api/modules/dashboard/dashboard_repository"
@@ -68,7 +63,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleRepo := role_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
-	contentRepo := content_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 
@@ -79,7 +73,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleSvc := role_service.NewService(roleRepo)
 	newsSvc := news_service.NewService(newsRepo)
 	articleSvc := article_service.NewService(articleRepo)
-	contentSvc := content_service.NewService(contentRepo)
 	dashSvc := dashboard_service.NewService(dashRepo)
 
 	// Handler (presentasi HTTP)
@@ -89,7 +82,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleH := role_handler.NewHandler(roleSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
-	contentH := content_handler.NewHandler(contentSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
@@ -129,8 +121,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	news.RegisterCMSRoutes(api, newsH, mw)
 	article.RegisterPublicRoutes(pub, articleH)
 	article.RegisterCMSRoutes(api, articleH, mw)
-	content.RegisterPublicRoutes(pub, contentH)
-	content.RegisterCMSRoutes(api, contentH, mw)
 
 	return engine
 }

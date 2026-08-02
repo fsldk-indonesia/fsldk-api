@@ -46,25 +46,20 @@ const (
 	PermRoleCreate = "role.create"
 	PermRoleUpdate = "role.update"
 	PermRoleDelete = "role.delete"
-
-	PermContentView   = "content.view"
-	PermContentUpdate = "content.update"
 )
 
 // Nama tabel database (konvensi prefix_snake_case).
 const (
-	TableUser               = "ms_user"
-	TableRole               = "ms_role"
-	TablePermission         = "lk_permission"
-	TableRolePermission     = "map_role_permission"
-	TableNews               = "ms_news"
-	TableNewsCategory       = "lk_news_category"
-	TableArticle            = "ms_article"
-	TableArticleCategory    = "lk_article_category"
-	TableCMSContent         = "ms_cms_content"
-	TableOrganizationStruct = "ms_organization_structure"
-	TableUserLoginLog       = "tr_user_login_log"
-	TableEmailToken         = "tr_email_token" // token verifikasi email & reset password
+	TableUser            = "ms_user"
+	TableRole            = "ms_role"
+	TablePermission      = "lk_permission"
+	TableRolePermission  = "map_role_permission"
+	TableNews            = "ms_news"
+	TableNewsCategory    = "lk_news_category"
+	TableArticle         = "ms_article"
+	TableArticleCategory = "lk_article_category"
+	TableUserLoginLog    = "tr_user_login_log"
+	TableEmailToken      = "tr_email_token" // token verifikasi email & reset password
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.
