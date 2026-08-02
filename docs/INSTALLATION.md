@@ -114,7 +114,7 @@ Akun Super Admin awal dibuat otomatis oleh migration [`0003_seed_admin.up.sql`](
 
 | Field | Nilai |
 |---|---|
-| **Email** | `noreply-fsldk@gmail.com` |
+| **Email** | `noreplyfsldkindonesia@gmail.com` |
 | **Password** | `abc123` |
 | **Role** | Super Admin (akses penuh) |
 
@@ -139,7 +139,7 @@ Uji login dengan kredensial admin bawaan:
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"noreply-fsldk@gmail.com","password":"abc123"}'
+  -d '{"email":"noreplyfsldkindonesia@gmail.com","password":"abc123"}'
 ```
 
 Response sukses berisi `accessToken`, `refreshToken`, dan profil pengguna (lihat format lengkap pada [README — Standar Response](../README.md#standar-response)).
