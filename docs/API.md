@@ -136,6 +136,8 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 **`PATCH /news/:id/publish`** → `{ "isPublished": true }`
 **`PATCH /news/:id/featured`** → `{ "isFeatured": true }`
 
+`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual.
+
 ---
 
 ## 5. Artikel
@@ -165,6 +167,8 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 ```json
 { "articleTitle": "...", "articleExcerpt": "...", "articleContent": "...", "articleImage": "...", "categoryID": 1, "status": "draft" }
 ```
+
+`articleImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual.
 
 ---
 
@@ -200,7 +204,21 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ---
 
-## 7. Dashboard (`/dashboard`) — ✅🔒
+## 7. Upload (`/uploads`) — ✅🔒
+
+Unggah berkas gambar untuk field "Gambar Utama" pada form Artikel & Berita CMS — dipakai bersama oleh kedua modul, bukan endpoint khusus per-modul.
+
+| Method | Endpoint | Auth | Deskripsi |
+|---|---|:---:|---|
+| POST | `/uploads/image` | ✅ (login + verified, tanpa permission khusus) | Unggah satu berkas gambar, `multipart/form-data` field `image` |
+
+**`POST /uploads/image`** (multipart/form-data, field `image`) → `{ "url": "http://localhost:8080/uploads/<nama-acak>.jpg" }`
+
+Validasi: ekstensi `jpg`/`jpeg`/`png`/`webp`/`gif`, maksimal 5MB. Berkas disimpan ke `assets/uploads/` dengan nama acak (hex 16 byte + ekstensi asli) dan disajikan sebagai berkas statis publik di `/uploads/*`. `url` hasil unggahan inilah yang dikirim sebagai nilai `articleImage`/`newsImage` pada `POST`/`PUT` Artikel & Berita — kolom tersebut tetap berupa string URL di database, tidak ada perubahan skema.
+
+---
+
+## 8. Dashboard (`/dashboard`) — ✅🔒
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -209,7 +227,7 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ---
 
-## 8. Sistem (tanpa prefix `/api/v1`)
+## 9. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|

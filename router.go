@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 
 	"fsldk-api/base/token"
 	"fsldk-api/config"
@@ -49,6 +50,11 @@ import (
 	"fsldk-api/modules/shortlink/shortlink_repository"
 	"fsldk-api/modules/shortlink/shortlink_service"
 
+	"fsldk-api/modules/upload"
+	"fsldk-api/modules/upload/upload_handler"
+	"fsldk-api/modules/upload/upload_service"
+	uploadpkg "fsldk-api/pkg/upload"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -61,6 +67,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	tm := token.NewManager(cfg.JWTSecret, cfg.JWTRefreshSecret, cfg.JWTAccessExpireMinutes, cfg.JWTRefreshExpireMinutes)
 	mail := mailer.New(cfg)
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
+	uploader := uploadpkg.NewUploader("assets/uploads", cfg.AppURL)
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)
@@ -81,6 +88,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleSvc := article_service.NewService(articleRepo)
 	dashSvc := dashboard_service.NewService(dashRepo)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
+	uploadSvc := upload_service.NewService(uploader)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -91,6 +99,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleH := article_handler.NewHandler(articleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
+	uploadH := upload_handler.NewHandler(uploadSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
 	mw := middlewares.New(tm, cfg, permSvc)
@@ -101,6 +110,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	}
 	engine := gin.New()
 	engine.Use(middlewares.Recovery(), middlewares.CORS(cfg))
+
+	// Sajikan berkas gambar yang diunggah lewat modul upload (assets/uploads/*)
+	// sebagai berkas statis publik di /uploads/*.
+	_ = os.MkdirAll("assets/uploads", 0755)
+	engine.Static("/uploads", "./assets/uploads")
 
 	// Endpoint sistem
 	engine.GET("/health", func(c *gin.Context) {
@@ -132,6 +146,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
+
+	upload.RegisterCMSRoutes(api, uploadH, mw)
 
 	return engine
 }

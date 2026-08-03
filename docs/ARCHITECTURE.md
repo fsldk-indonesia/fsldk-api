@@ -30,6 +30,8 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
 
+> Modul `upload` (unggah gambar CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
+
 ```
 modules/news/
 ├── news_model/
@@ -165,6 +167,8 @@ templateData, _ := os.ReadFile(path)
 ```
 
 **Konsekuensi:** binary harus dijalankan dari root proyek (atau `assets/` disalin bersebelahan dengan binary saat deploy) — lihat [Instalasi §10](./INSTALLATION.md#10-build-untuk-produksi). Keuntungannya: template email & logo bisa diedit tanpa build ulang aplikasi.
+
+`assets/uploads/` memakai pola serupa untuk sisi tulis: [`pkg/upload`](../pkg/upload) (dipakai lewat modul `upload`, `POST /uploads/image`, lihat [API §7](./API.md)) menyimpan gambar unggahan CMS (Artikel & Berita) ke folder ini dengan nama acak, lalu [`router.go`](../router.go) menyajikannya sebagai berkas statis publik lewat `engine.Static("/uploads", "./assets/uploads")`. Folder ini diabaikan git (`.gitignore`) karena isinya data runtime, bukan aset sumber.
 
 ---
 

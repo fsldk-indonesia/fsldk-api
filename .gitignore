@@ -15,6 +15,10 @@ app.env
 *.out
 test-results/
 
+# Berkas gambar hasil unggah CMS (runtime data, bukan aset sumber)
+assets/uploads/*
+!assets/uploads/.gitkeep
+
 # IDE
 .idea/
 .vscode/
