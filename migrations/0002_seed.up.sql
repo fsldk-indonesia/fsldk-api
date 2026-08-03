@@ -13,7 +13,7 @@ INSERT IGNORE INTO ms_role (roleName, roleDescription, isSystemRole, isActive) V
 
 -- Permission (kolom menu hanya diisi untuk aksi .view per modul)
 INSERT IGNORE INTO lk_permission (permissionCode, permissionName, moduleName, menuLabel, menuIcon, menuRoute, sortOrder) VALUES
-('news.view',    'Lihat Berita',     'news',    'Data Berita',   'newspaper',    '/cms/news',     1),
+('news.view',    'Lihat Berita',     'news',    'Berita',   'newspaper',    '/cms/news',     1),
 ('news.create',  'Tambah Berita',    'news',    NULL, NULL, NULL, NULL),
 ('news.update',  'Ubah Berita',      'news',    NULL, NULL, NULL, NULL),
 ('news.delete',  'Hapus Berita',     'news',    NULL, NULL, NULL, NULL),

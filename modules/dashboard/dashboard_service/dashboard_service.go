@@ -10,5 +10,4 @@ import (
 // Service adalah kontrak logika dashboard.
 type Service interface {
 	Summary(ctx context.Context) (dashboard_dto.Summary, error)
-	Recent(ctx context.Context, limit int) ([]dashboard_dto.RecentNews, error)
 }

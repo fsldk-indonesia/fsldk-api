@@ -6,5 +6,4 @@ import "github.com/gin-gonic/gin"
 // Handler adalah kontrak handler HTTP modul dashboard.
 type Handler interface {
 	Summary(c *gin.Context)
-	Recent(c *gin.Context)
 }

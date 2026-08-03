@@ -14,6 +14,5 @@ func RegisterRoutes(rg *gin.RouterGroup, h dashboard_handler.Handler, mw *middle
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
 		g.GET("/summary", h.Summary)
-		g.GET("/recent-news", h.Recent)
 	}
 }

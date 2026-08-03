@@ -23,14 +23,3 @@ func (s *ServiceImpl) Summary(ctx context.Context) (dashboard_dto.Summary, error
 	}
 	return out, nil
 }
-
-func (s *ServiceImpl) Recent(ctx context.Context, limit int) ([]dashboard_dto.RecentNews, error) {
-	if limit <= 0 || limit > 20 {
-		limit = 5
-	}
-	out, err := s.repo.RecentNews(ctx, limit)
-	if err != nil {
-		return nil, apperror.Internal("")
-	}
-	return out, nil
-}

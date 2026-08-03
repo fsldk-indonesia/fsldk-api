@@ -10,5 +10,4 @@ import (
 // Repository adalah kontrak akses data dashboard.
 type Repository interface {
 	Summary(ctx context.Context) (dashboard_dto.Summary, error)
-	RecentNews(ctx context.Context, limit int) ([]dashboard_dto.RecentNews, error)
 }

@@ -222,8 +222,7 @@ Validasi: ekstensi `jpg`/`jpeg`/`png`/`webp`/`gif`, maksimal 5MB. Berkas disimpa
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
-| GET | `/dashboard/summary` | `{ totalNews, publishedNews, draftNews, totalUsers }` |
-| GET | `/dashboard/recent-news` | Berita terbaru (query: `limit`, default 5) |
+| GET | `/dashboard/summary` | `{ totalNews, totalArticles, totalUsers }` |
 
 ---
 
