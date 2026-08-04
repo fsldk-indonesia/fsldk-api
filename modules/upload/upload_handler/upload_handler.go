@@ -6,4 +6,5 @@ import "github.com/gin-gonic/gin"
 // Handler adalah kontrak handler HTTP modul upload.
 type Handler interface {
 	UploadImage(c *gin.Context)
+	UploadDocument(c *gin.Context)
 }

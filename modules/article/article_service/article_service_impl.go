@@ -138,11 +138,13 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 
 func (s *ServiceImpl) fromRequest(req article_dto.Request) article_model.Article {
 	return article_model.Article{
-		ArticleTitle:   req.ArticleTitle,
-		ArticleExcerpt: ptr.Str(req.ArticleExcerpt),
-		ArticleContent: req.ArticleContent,
-		ArticleImage:   ptr.Str(req.ArticleImage),
-		CategoryID:     req.CategoryID,
+		ArticleTitle:  req.ArticleTitle,
+		ArticleIntro:  req.ArticleIntro,
+		ArticleImage:  ptr.Str(req.ArticleImage),
+		ArticleWriter: ptr.Str(req.ArticleWriter),
+		ArticleEditor: ptr.Str(req.ArticleEditor),
+		ArticlePdf:    ptr.Str(req.ArticlePdf),
+		CategoryID:    req.CategoryID,
 	}
 }
 

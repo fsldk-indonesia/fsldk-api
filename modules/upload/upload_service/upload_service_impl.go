@@ -15,3 +15,7 @@ func NewService(uploader *upload.Uploader) Service { return &ServiceImpl{uploade
 func (s *ServiceImpl) SaveImage(fh *multipart.FileHeader) (string, error) {
 	return s.uploader.SaveImage(fh)
 }
+
+func (s *ServiceImpl) SaveDocument(fh *multipart.FileHeader) (string, error) {
+	return s.uploader.SaveDocument(fh)
+}

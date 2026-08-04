@@ -8,12 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterCMSRoutes mendaftarkan endpoint unggah berkas gambar (terproteksi
-// auth + verifikasi) yang dipakai bersama oleh form Artikel & Berita CMS.
+// RegisterCMSRoutes mendaftarkan endpoint unggah berkas (terproteksi auth +
+// verifikasi) yang dipakai bersama oleh form Artikel & Berita CMS.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h upload_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/uploads")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
 		g.POST("/image", h.UploadImage)
+		g.POST("/document", h.UploadDocument)
 	}
 }

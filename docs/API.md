@@ -142,7 +142,7 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 
 ## 5. Artikel
 
-Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
+Berbeda dari Berita: Artikel tidak punya `isFeatured`/`viewCount`, tapi punya konsep publikasi berbasis PDF — `articleIntro` (dulu `articleContent`) hanya berupa pendahuluan singkat yang tampil di landing page, sedangkan naskah lengkapnya dibaca lewat berkas PDF (`articlePdf`). Field `articleExcerpt` (ringkasan) sudah dihapus sepenuhnya (kolom DB & migration turut disesuaikan, lihat `migrations/0001_init.up.sql`).
 
 ### Publik
 
@@ -165,10 +165,19 @@ Struktur identik dengan Berita (tanpa `isFeatured`/`viewCount`).
 
 **`POST /articles`**
 ```json
-{ "articleTitle": "...", "articleExcerpt": "...", "articleContent": "...", "articleImage": "...", "categoryID": 1, "status": "draft" }
+{
+  "articleTitle": "...",
+  "articleIntro": "<p>Pendahuluan singkat...</p>",
+  "articleImage": "http://localhost:8080/uploads/xxx.jpg",
+  "articleWriter": "Nama Penulis",
+  "articleEditor": "Nama Editor",
+  "articlePdf": "http://localhost:8080/uploads/xxx.pdf",
+  "categoryID": 1,
+  "status": "draft"
+}
 ```
 
-`articleImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual.
+`articleWriter` wajib diisi (byline penulis); `articleEditor` opsional. `articleImage`/`articlePdf` tetap berupa string URL — nilainya hasil unggahan lewat `POST /uploads/image` / `POST /uploads/document` (lihat §7), bukan ditulis manual.
 
 ---
 
@@ -206,15 +215,20 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ## 7. Upload (`/uploads`) — ✅🔒
 
-Unggah berkas gambar untuk field "Gambar Utama" pada form Artikel & Berita CMS — dipakai bersama oleh kedua modul, bukan endpoint khusus per-modul.
+Unggah berkas gambar/dokumen untuk form Artikel & Berita CMS — dipakai bersama oleh kedua modul, bukan endpoint khusus per-modul.
 
 | Method | Endpoint | Auth | Deskripsi |
 |---|---|:---:|---|
 | POST | `/uploads/image` | ✅ (login + verified, tanpa permission khusus) | Unggah satu berkas gambar, `multipart/form-data` field `image` |
+| POST | `/uploads/document` | ✅ (login + verified, tanpa permission khusus) | Unggah satu berkas dokumen (PDF), `multipart/form-data` field `document` |
 
 **`POST /uploads/image`** (multipart/form-data, field `image`) → `{ "url": "http://localhost:8080/uploads/<nama-acak>.jpg" }`
+Validasi: ekstensi `jpg`/`jpeg`/`png`/`webp`/`gif`, maksimal 5MB.
 
-Validasi: ekstensi `jpg`/`jpeg`/`png`/`webp`/`gif`, maksimal 5MB. Berkas disimpan ke `assets/uploads/` dengan nama acak (hex 16 byte + ekstensi asli) dan disajikan sebagai berkas statis publik di `/uploads/*`. `url` hasil unggahan inilah yang dikirim sebagai nilai `articleImage`/`newsImage` pada `POST`/`PUT` Artikel & Berita — kolom tersebut tetap berupa string URL di database, tidak ada perubahan skema.
+**`POST /uploads/document`** (multipart/form-data, field `document`) → `{ "url": "http://localhost:8080/uploads/<nama-acak>.pdf" }`
+Validasi: ekstensi `pdf`, maksimal 20MB. Dipakai sebagai `articlePdf` — naskah lengkap Artikel yang dibaca lewat PDF di landing page (lihat §5).
+
+Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 byte + ekstensi asli) dan menyajikannya sebagai berkas statis publik di `/uploads/*`. `url` hasil unggahan inilah yang dikirim sebagai nilai `articleImage`/`newsImage`/`articlePdf` pada `POST`/`PUT` Artikel & Berita — kolom tersebut tetap berupa string URL di database, tidak ada perubahan skema tambahan di luar yang sudah dijelaskan di §5.
 
 ---
 

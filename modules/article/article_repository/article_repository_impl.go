@@ -11,7 +11,8 @@ import (
 	"gorm.io/gorm"
 )
 
-const selectCols = "a.articleID, a.articleTitle, a.articleSlug, a.articleExcerpt, a.articleContent, a.articleImage, " +
+const selectCols = "a.articleID, a.articleTitle, a.articleSlug, a.articleIntro, a.articleImage, " +
+	"a.articleWriter, a.articleEditor, a.articlePdf, " +
 	"a.categoryID, c.categoryName, a.isPublished, a.publishedDate, a.authorID, u.fullName AS authorName, a.createdDate"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
@@ -35,7 +36,7 @@ func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]arti
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
-		q = q.Where("(a.articleTitle LIKE ? OR a.articleExcerpt LIKE ?)", like, like)
+		q = q.Where("(a.articleTitle LIKE ? OR a.articleWriter LIKE ?)", like, like)
 	}
 	if f.CategorySlug != "" {
 		q = q.Where("c.categorySlug = ?", f.CategorySlug)
@@ -84,17 +85,19 @@ func (r *RepositoryImpl) Create(ctx context.Context, a article_model.Article, au
 		publishedAt = time.Now()
 	}
 	values := map[string]interface{}{
-		"articleTitle":   a.ArticleTitle,
-		"articleSlug":    a.ArticleSlug,
-		"articleExcerpt": a.ArticleExcerpt,
-		"articleContent": a.ArticleContent,
-		"articleImage":   a.ArticleImage,
-		"categoryID":     a.CategoryID,
-		"isPublished":    a.IsPublished,
-		"publishedDate":  publishedAt,
-		"authorID":       authorID,
-		"createdDate":    time.Now(),
-		"createdBy":      authorID,
+		"articleTitle":  a.ArticleTitle,
+		"articleSlug":   a.ArticleSlug,
+		"articleIntro":  a.ArticleIntro,
+		"articleImage":  a.ArticleImage,
+		"articleWriter": a.ArticleWriter,
+		"articleEditor": a.ArticleEditor,
+		"articlePdf":    a.ArticlePdf,
+		"categoryID":    a.CategoryID,
+		"isPublished":   a.IsPublished,
+		"publishedDate": publishedAt,
+		"authorID":      authorID,
+		"createdDate":   time.Now(),
+		"createdBy":     authorID,
 	}
 	var newID int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -108,14 +111,16 @@ func (r *RepositoryImpl) Create(ctx context.Context, a article_model.Article, au
 
 func (r *RepositoryImpl) Update(ctx context.Context, id int64, a article_model.Article, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_article").Where("articleID = ?", id).Updates(map[string]interface{}{
-		"articleTitle":   a.ArticleTitle,
-		"articleSlug":    a.ArticleSlug,
-		"articleExcerpt": a.ArticleExcerpt,
-		"articleContent": a.ArticleContent,
-		"articleImage":   a.ArticleImage,
-		"categoryID":     a.CategoryID,
-		"updatedDate":    time.Now(),
-		"updatedBy":      updatedBy,
+		"articleTitle":  a.ArticleTitle,
+		"articleSlug":   a.ArticleSlug,
+		"articleIntro":  a.ArticleIntro,
+		"articleImage":  a.ArticleImage,
+		"articleWriter": a.ArticleWriter,
+		"articleEditor": a.ArticleEditor,
+		"articlePdf":    a.ArticlePdf,
+		"categoryID":    a.CategoryID,
+		"updatedDate":   time.Now(),
+		"updatedBy":     updatedBy,
 	}).Error
 }
 

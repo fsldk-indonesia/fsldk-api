@@ -1,6 +1,7 @@
-// Package upload menyimpan berkas gambar yang diunggah pengguna CMS ke disk
-// lokal dan membentuk URL publiknya. Dipakai oleh modul article & news agar
-// "Gambar Utama" bisa diisi lewat unggah berkas langsung, bukan hanya tempel URL.
+// Package upload menyimpan berkas (gambar/dokumen) yang diunggah pengguna
+// CMS ke disk lokal dan membentuk URL publiknya. Dipakai oleh modul article
+// & news agar "Gambar Utama" bisa diisi lewat unggah berkas langsung (bukan
+// hanya tempel URL), dan oleh modul article untuk lampiran PDF artikel.
 package upload
 
 import (
@@ -14,12 +15,16 @@ import (
 	"fsldk-api/base/security"
 )
 
-// MaxFileSize adalah batas ukuran berkas gambar yang diterima (5 MB).
-const MaxFileSize = 5 << 20
+// MaxImageSize adalah batas ukuran berkas gambar yang diterima (5 MB).
+const MaxImageSize = 5 << 20
 
-var allowedExt = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
+// MaxDocumentSize adalah batas ukuran berkas dokumen (PDF) yang diterima (20 MB).
+const MaxDocumentSize = 20 << 20
 
-// Uploader menyimpan berkas gambar ke direktori lokal dan mengembalikan URL publiknya.
+var allowedImageExt = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
+var allowedDocumentExt = map[string]bool{".pdf": true}
+
+// Uploader menyimpan berkas ke direktori lokal dan mengembalikan URL publiknya.
 type Uploader struct {
 	dir     string
 	baseURL string
@@ -32,16 +37,28 @@ func NewUploader(dir, baseURL string) *Uploader {
 	return &Uploader{dir: dir, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
-// SaveImage memvalidasi ekstensi & ukuran berkas, menyimpannya dengan nama
-// acak (menghindari tabrakan nama & path traversal dari nama asli), lalu
+// SaveImage memvalidasi ekstensi & ukuran berkas gambar lalu menyimpannya,
 // mengembalikan URL publik yang bisa langsung dipakai sebagai articleImage/newsImage.
 func (u *Uploader) SaveImage(fh *multipart.FileHeader) (string, error) {
+	return u.save(fh, allowedImageExt, MaxImageSize, "format berkas tidak didukung (hanya jpg, jpeg, png, webp, gif)", "ukuran berkas melebihi 5MB")
+}
+
+// SaveDocument memvalidasi ekstensi & ukuran berkas dokumen (PDF) lalu
+// menyimpannya, mengembalikan URL publik yang bisa dipakai sebagai articlePdf.
+func (u *Uploader) SaveDocument(fh *multipart.FileHeader) (string, error) {
+	return u.save(fh, allowedDocumentExt, MaxDocumentSize, "format berkas tidak didukung (hanya pdf)", "ukuran berkas melebihi 20MB")
+}
+
+// save memvalidasi ekstensi & ukuran berkas, menyimpannya dengan nama acak
+// (menghindari tabrakan nama & path traversal dari nama asli), lalu
+// mengembalikan URL publiknya.
+func (u *Uploader) save(fh *multipart.FileHeader, allowedExt map[string]bool, maxSize int64, extErrMsg, sizeErrMsg string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(fh.Filename))
 	if !allowedExt[ext] {
-		return "", fmt.Errorf("format berkas tidak didukung (hanya jpg, jpeg, png, webp, gif)")
+		return "", fmt.Errorf("%s", extErrMsg)
 	}
-	if fh.Size > MaxFileSize {
-		return "", fmt.Errorf("ukuran berkas melebihi 5MB")
+	if fh.Size > maxSize {
+		return "", fmt.Errorf("%s", sizeErrMsg)
 	}
 	if err := os.MkdirAll(u.dir, 0755); err != nil {
 		return "", err

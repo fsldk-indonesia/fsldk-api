@@ -28,3 +28,17 @@ func (h *HandlerImpl) UploadImage(c *gin.Context) {
 	}
 	httphelper.Created(c, "Gambar berhasil diunggah", upload_dto.Response{URL: url})
 }
+
+func (h *HandlerImpl) UploadDocument(c *gin.Context) {
+	fh, err := c.FormFile("document")
+	if err != nil {
+		httphelper.Error(c, apperror.BadRequest("Berkas dokumen wajib diunggah (field 'document')"))
+		return
+	}
+	url, err := h.svc.SaveDocument(fh)
+	if err != nil {
+		httphelper.Error(c, apperror.BadRequest(err.Error()))
+		return
+	}
+	httphelper.Created(c, "Dokumen berhasil diunggah", upload_dto.Response{URL: url})
+}

@@ -3,12 +3,14 @@ package article_dto
 
 // Request adalah body membuat/memperbarui artikel.
 type Request struct {
-	ArticleTitle   string `json:"articleTitle" validate:"required,min=3,max=255"`
-	ArticleExcerpt string `json:"articleExcerpt" validate:"max=500"`
-	ArticleContent string `json:"articleContent" validate:"required"`
-	ArticleImage   string `json:"articleImage" validate:"max=255"`
-	CategoryID     int64  `json:"categoryID" validate:"required"`
-	Status         string `json:"status" validate:"omitempty,oneof=draft published"`
+	ArticleTitle  string `json:"articleTitle" validate:"required,min=3,max=255"`
+	ArticleIntro  string `json:"articleIntro" validate:"required"`
+	ArticleImage  string `json:"articleImage" validate:"max=255"`
+	ArticleWriter string `json:"articleWriter" validate:"required,min=2,max=150"`
+	ArticleEditor string `json:"articleEditor" validate:"max=150"`
+	ArticlePdf    string `json:"articlePdf" validate:"max=255"`
+	CategoryID    int64  `json:"categoryID" validate:"required"`
+	Status        string `json:"status" validate:"omitempty,oneof=draft published"`
 }
 
 // PublishRequest adalah body mengubah status publikasi artikel.
