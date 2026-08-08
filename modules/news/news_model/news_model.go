@@ -11,6 +11,9 @@ type News struct {
 	NewsExcerpt   *string    `gorm:"column:newsExcerpt" json:"newsExcerpt"`
 	NewsContent   string     `gorm:"column:newsContent" json:"newsContent"`
 	NewsImage     *string    `gorm:"column:newsImage" json:"newsImage"`
+	NewsPublisher *string    `gorm:"column:newsPublisher" json:"newsPublisher"`
+	NewsReporter  *string    `gorm:"column:newsReporter" json:"newsReporter"`
+	NewsEditor    *string    `gorm:"column:newsEditor" json:"newsEditor"`
 	CategoryID    int64      `gorm:"column:categoryID" json:"categoryID"`
 	CategoryName  string     `gorm:"column:categoryName;->" json:"categoryName"`
 	IsFeatured    bool       `gorm:"column:isFeatured" json:"isFeatured"`

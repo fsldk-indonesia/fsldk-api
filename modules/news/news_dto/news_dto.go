@@ -3,13 +3,16 @@ package news_dto
 
 // Request adalah body membuat/memperbarui berita.
 type Request struct {
-	NewsTitle   string `json:"newsTitle" validate:"required,min=3,max=255"`
-	NewsExcerpt string `json:"newsExcerpt" validate:"max=500"`
-	NewsContent string `json:"newsContent" validate:"required"`
-	NewsImage   string `json:"newsImage" validate:"max=255"`
-	CategoryID  int64  `json:"categoryID" validate:"required"`
-	IsFeatured  bool   `json:"isFeatured"`
-	Status      string `json:"status" validate:"omitempty,oneof=draft published"`
+	NewsTitle     string `json:"newsTitle" validate:"required,min=3,max=255"`
+	NewsExcerpt   string `json:"newsExcerpt" validate:"max=500"`
+	NewsContent   string `json:"newsContent" validate:"required"`
+	NewsImage     string `json:"newsImage" validate:"max=255"`
+	NewsPublisher string `json:"newsPublisher" validate:"max=150"`
+	NewsReporter  string `json:"newsReporter" validate:"required,min=2,max=150"`
+	NewsEditor    string `json:"newsEditor" validate:"max=150"`
+	CategoryID    int64  `json:"categoryID" validate:"required"`
+	IsFeatured    bool   `json:"isFeatured"`
+	Status        string `json:"status" validate:"omitempty,oneof=draft published"`
 }
 
 // PublishRequest adalah body mengubah status publikasi berita.

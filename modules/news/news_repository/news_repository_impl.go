@@ -12,6 +12,7 @@ import (
 )
 
 const selectCols = "n.newsID, n.newsTitle, n.newsSlug, n.newsExcerpt, n.newsContent, n.newsImage, " +
+	"n.newsPublisher, n.newsReporter, n.newsEditor, " +
 	"n.categoryID, c.categoryName, n.isFeatured, n.isPublished, n.publishedDate, n.viewCount, " +
 	"n.authorID, u.fullName AS authorName, n.createdDate"
 
@@ -98,6 +99,9 @@ func (r *RepositoryImpl) Create(ctx context.Context, n news_model.News, authorID
 		"newsExcerpt":   n.NewsExcerpt,
 		"newsContent":   n.NewsContent,
 		"newsImage":     n.NewsImage,
+		"newsPublisher": n.NewsPublisher,
+		"newsReporter":  n.NewsReporter,
+		"newsEditor":    n.NewsEditor,
 		"categoryID":    n.CategoryID,
 		"isFeatured":    n.IsFeatured,
 		"isPublished":   n.IsPublished,
@@ -118,15 +122,18 @@ func (r *RepositoryImpl) Create(ctx context.Context, n news_model.News, authorID
 
 func (r *RepositoryImpl) Update(ctx context.Context, id int64, n news_model.News, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_news").Where("newsID = ?", id).Updates(map[string]interface{}{
-		"newsTitle":   n.NewsTitle,
-		"newsSlug":    n.NewsSlug,
-		"newsExcerpt": n.NewsExcerpt,
-		"newsContent": n.NewsContent,
-		"newsImage":   n.NewsImage,
-		"categoryID":  n.CategoryID,
-		"isFeatured":  n.IsFeatured,
-		"updatedDate": time.Now(),
-		"updatedBy":   updatedBy,
+		"newsTitle":     n.NewsTitle,
+		"newsSlug":      n.NewsSlug,
+		"newsExcerpt":   n.NewsExcerpt,
+		"newsContent":   n.NewsContent,
+		"newsImage":     n.NewsImage,
+		"newsPublisher": n.NewsPublisher,
+		"newsReporter":  n.NewsReporter,
+		"newsEditor":    n.NewsEditor,
+		"categoryID":    n.CategoryID,
+		"isFeatured":    n.IsFeatured,
+		"updatedDate":   time.Now(),
+		"updatedBy":     updatedBy,
 	}).Error
 }
 

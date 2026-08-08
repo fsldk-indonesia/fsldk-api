@@ -128,6 +128,9 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
   "newsExcerpt": "Ringkasan singkat...",
   "newsContent": "<p>Isi lengkap...</p>",
   "newsImage": "https://.../gambar.jpg",
+  "newsPublisher": "FSLDK Indonesia",
+  "newsReporter": "Nama Reporter",
+  "newsEditor": "Nama Editor",
   "categoryID": 1,
   "isFeatured": false,
   "status": "draft"
@@ -136,7 +139,7 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 **`PATCH /news/:id/publish`** → `{ "isPublished": true }`
 **`PATCH /news/:id/featured`** → `{ "isFeatured": true }`
 
-`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual.
+`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual. `newsReporter` wajib diisi (byline wartawan/penulis liputan); `newsPublisher` (penerbit) dan `newsEditor` opsional.
 
 ---
 
