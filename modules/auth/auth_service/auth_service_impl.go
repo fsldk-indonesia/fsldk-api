@@ -168,8 +168,12 @@ func (s *ServiceImpl) LoginGoogle(ctx context.Context, idToken, ip, ua string) (
 		return auth_dto.AuthResponse{}, apperror.Forbidden("Domain email tidak diizinkan")
 	}
 
-	// 1) googleID sudah cocok → login langsung.
+	// 1) googleID sudah cocok → login langsung, segarkan foto profil dari Google.
 	if u, err := s.users.FindByGoogleID(ctx, payload.Sub); err == nil {
+		if payload.Picture != "" && payload.Picture != u.PhotoURL.String {
+			_ = s.users.UpdatePhoto(ctx, u.UserID, payload.Picture)
+			u.PhotoURL = sql.NullString{String: payload.Picture, Valid: true}
+		}
 		_ = s.users.LogLogin(ctx, u.UserID, ip, ua, "success")
 		return s.buildAuthResponse(ctx, u)
 	}
@@ -178,6 +182,9 @@ func (s *ServiceImpl) LoginGoogle(ctx context.Context, idToken, ip, ua string) (
 	if u, err := s.users.FindByEmail(ctx, email); err == nil {
 		if err := s.users.LinkGoogle(ctx, u.UserID, payload.Sub, true); err != nil {
 			return auth_dto.AuthResponse{}, apperror.Internal("")
+		}
+		if payload.Picture != "" {
+			_ = s.users.UpdatePhoto(ctx, u.UserID, payload.Picture)
 		}
 		u, _ = s.users.FindByID(ctx, u.UserID)
 		_ = s.users.LogLogin(ctx, u.UserID, ip, ua, "success")
@@ -198,6 +205,7 @@ func (s *ServiceImpl) LoginGoogle(ctx context.Context, idToken, ip, ua string) (
 		FullName:      name,
 		Email:         email,
 		GoogleID:      sql.NullString{String: payload.Sub, Valid: true},
+		PhotoURL:      sql.NullString{String: payload.Picture, Valid: payload.Picture != ""},
 		EmailVerified: true,
 	})
 	if err != nil {

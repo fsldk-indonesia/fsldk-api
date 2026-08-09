@@ -25,6 +25,7 @@ type Repository interface {
 	SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error
 	SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error
 	LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error
+	UpdatePhoto(ctx context.Context, id int64, photoURL string) error
 	MarkEmailVerified(ctx context.Context, id int64) error
 	SoftDelete(ctx context.Context, id int64, updatedBy int64) error
 	LogLogin(ctx context.Context, userID int64, ip, ua, status string) error

@@ -71,6 +71,7 @@ func (r *RepositoryImpl) Create(ctx context.Context, p user_model.CreateParams) 
 		"email":             p.Email,
 		"password":          p.Password,
 		"googleID":          p.GoogleID,
+		"photoURL":          p.PhotoURL,
 		"emailVerifiedDate": verifiedAt,
 		"isActive":          true,
 		"createdDate":       time.Now(),
@@ -143,6 +144,13 @@ func (r *RepositoryImpl) LinkGoogle(ctx context.Context, id int64, googleID stri
 	}
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"googleID":    googleID,
+		"updatedDate": time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) UpdatePhoto(ctx context.Context, id int64, photoURL string) error {
+	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
+		"photoURL":    photoURL,
 		"updatedDate": time.Now(),
 	}).Error
 }

@@ -36,6 +36,7 @@ type CreateParams struct {
 	Email         string
 	Password      sql.NullString
 	GoogleID      sql.NullString
+	PhotoURL      sql.NullString
 	EmailVerified bool
 	CreatedBy     sql.NullInt64
 }
