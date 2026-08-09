@@ -1,5 +1,8 @@
 # FSLDK API (`fsldk-api`)
 
+[![CI](https://github.com/fsldk-indonesia/fsldk-api/actions/workflows/ci.yml/badge.svg)](https://github.com/fsldk-indonesia/fsldk-api/actions/workflows/ci.yml)
+[![Deploy](https://github.com/fsldk-indonesia/fsldk-api/actions/workflows/deploy.yml/badge.svg)](https://github.com/fsldk-indonesia/fsldk-api/actions/workflows/deploy.yml)
+
 REST API untuk Website FSLDK Indonesia, dibangun dengan **Golang (Gin + GORM)** dan **MySQL**.
 
 📖 **Dokumentasi lengkap:**
