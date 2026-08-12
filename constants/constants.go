@@ -21,6 +21,7 @@ const (
 	RoleSuperAdmin  = "Super Admin"
 	RoleEditor      = "Editor"
 	RoleKontributor = "Kontributor"
+	RoleMember      = "Member" // pendaftar publik, tanpa akses CMS — lihat modules/comment
 )
 
 // Kode permission (format modul.aksi).
@@ -51,6 +52,9 @@ const (
 	PermShortlinkCreate = "shortlink.create"
 	PermShortlinkUpdate = "shortlink.update"
 	PermShortlinkDelete = "shortlink.delete"
+
+	PermCommentView   = "comment.view"
+	PermCommentDelete = "comment.delete"
 )
 
 // Nama tabel database (konvensi prefix_snake_case).
@@ -64,6 +68,8 @@ const (
 	TableArticle         = "ms_article"
 	TableArticleCategory = "lk_article_category"
 	TableShortlink       = "ms_shortlink"
+	TableComment         = "ms_comment"
+	TableCommentReaction = "tr_comment_reaction"
 	TableUserLoginLog    = "tr_user_login_log"
 	TableEmailToken      = "tr_email_token" // token verifikasi email & reset password
 )

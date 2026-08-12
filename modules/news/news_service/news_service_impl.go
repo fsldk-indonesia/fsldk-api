@@ -21,10 +21,15 @@ var sortColumns = map[string]string{
 }
 
 // ServiceImpl adalah implementasi Service.
-type ServiceImpl struct{ repo news_repository.Repository }
+type ServiceImpl struct {
+	repo    news_repository.Repository
+	comment CommentCleaner
+}
 
 // NewService membuat Service berita.
-func NewService(repo news_repository.Repository) Service { return &ServiceImpl{repo: repo} }
+func NewService(repo news_repository.Repository, comment CommentCleaner) Service {
+	return &ServiceImpl{repo: repo, comment: comment}
+}
 
 func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]news_model.News, int, error) {
 	return s.list(ctx, news_dto.Filter{
@@ -162,6 +167,10 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return apperror.Internal("")
 	}
+	// Best-effort: ms_comment has no FK to ms_news (see comment techspec
+	// §3.1a), so comments aren't cascaded by the database — clean them up
+	// explicitly. A failure here does not roll back the news delete.
+	_ = s.comment.DeleteByContent(ctx, "news", id)
 	return nil
 }
 

@@ -1,14 +1,17 @@
 // Package upload menyimpan berkas (gambar/dokumen) yang diunggah pengguna
 // CMS ke disk lokal dan membentuk URL publiknya. Dipakai oleh modul article
 // & news agar "Gambar Utama" bisa diisi lewat unggah berkas langsung (bukan
-// hanya tempel URL), dan oleh modul article untuk lampiran PDF artikel.
+// hanya tempel URL), oleh modul article untuk lampiran PDF artikel, dan oleh
+// modul comment untuk lampiran gambar pada komentar.
 package upload
 
 import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -88,4 +91,26 @@ func (u *Uploader) save(fh *multipart.FileHeader, allowedExt map[string]bool, ma
 	}
 
 	return u.baseURL + "/uploads/" + name, nil
+}
+
+// DeleteFile removes a previously uploaded file given its public URL (the
+// value SaveImage/SaveDocument returned). Idempotent: a missing file is not
+// treated as an error, so callers can use it as best-effort cleanup.
+func (u *Uploader) DeleteFile(publicURL string) error {
+	name := path.Base(publicURL)
+	if name == "" || name == "." || name == "/" {
+		return nil
+	}
+	// publicURL segments are plain hex tokens (see save()), so no
+	// percent-decoding is needed — this just guards against a stray query
+	// string in case a caller passes a full request URL instead.
+	if parsed, err := url.Parse(publicURL); err == nil {
+		name = path.Base(parsed.Path)
+	}
+
+	err := os.Remove(filepath.Join(u.dir, name))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
