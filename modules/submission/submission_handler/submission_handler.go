@@ -11,4 +11,14 @@ type Handler interface {
 	Cancel(c *gin.Context)
 	List(c *gin.Context)
 	Get(c *gin.Context)
+
+	Review(c *gin.Context)
+	EstablishLevel(c *gin.Context)
+	Publish(c *gin.Context)
+	Reopen(c *gin.Context)
+	Reassess(c *gin.Context)
+
+	ListKaders(c *gin.Context)
+	GetKaderCode(c *gin.Context)
+	DeactivateKader(c *gin.Context)
 }

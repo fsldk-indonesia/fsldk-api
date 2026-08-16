@@ -89,3 +89,39 @@ type KaderParams struct {
 	UserID         int64
 	FullName       string
 }
+
+// Review merepresentasikan satu baris tr_submission_review.
+type Review struct {
+	ReviewID       int64          `gorm:"column:reviewID;primaryKey"`
+	SubmissionID   int64          `gorm:"column:submissionID"`
+	TierLevel      string         `gorm:"column:tierLevel"`
+	ReviewerUserID int64          `gorm:"column:reviewerUserID"`
+	Decision       string         `gorm:"column:decision"`
+	ChecklistJSON  sql.NullString `gorm:"column:checklistJSON"`
+	Note           sql.NullString `gorm:"column:note"`
+	ReviewedDate   time.Time      `gorm:"column:reviewedDate"`
+}
+
+// ReviewParams menampung data untuk membuat baris tr_submission_review.
+type ReviewParams struct {
+	SubmissionID   int64
+	TierLevel      string
+	ReviewerUserID int64
+	Decision       string
+	ChecklistJSON  sql.NullString
+	Note           sql.NullString
+}
+
+// LevelisasiResult merepresentasikan satu baris tr_levelisasi_result.
+type LevelisasiResult struct {
+	ResultID            int64          `gorm:"column:resultID;primaryKey"`
+	SubmissionID        int64          `gorm:"column:submissionID"`
+	OrganizationID      int64          `gorm:"column:organizationID"`
+	LevelCode           string         `gorm:"column:levelCode"`
+	JustificationNote   sql.NullString `gorm:"column:justificationNote"`
+	EstablishedByUserID int64          `gorm:"column:establishedByUserID"`
+	EstablishedDate     time.Time      `gorm:"column:establishedDate"`
+	IsPublished         bool           `gorm:"column:isPublished"`
+	PublishedDate       sql.NullTime   `gorm:"column:publishedDate"`
+	IsCurrent           bool           `gorm:"column:isCurrent"`
+}

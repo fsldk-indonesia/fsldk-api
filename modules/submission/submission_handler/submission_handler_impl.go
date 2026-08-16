@@ -125,3 +125,148 @@ func (h *HandlerImpl) Get(c *gin.Context) {
 	}
 	httphelper.Success(c, "", data)
 }
+
+func (h *HandlerImpl) Review(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.ReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Review(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Review berhasil disimpan", data)
+}
+
+func (h *HandlerImpl) EstablishLevel(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.EstablishLevelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.EstablishLevel(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Level berhasil ditetapkan", data)
+}
+
+func (h *HandlerImpl) Publish(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.VersionedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Publish(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Hasil berhasil dipublikasikan", data)
+}
+
+func (h *HandlerImpl) Reopen(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.ReopenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Reopen(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Pendataan dibuka kembali untuk koreksi", data)
+}
+
+func (h *HandlerImpl) Reassess(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.VersionedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Reassess(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Reassessment berhasil diajukan", data)
+}
+
+func (h *HandlerImpl) ListKaders(c *gin.Context) {
+	q := dto.ParseListQuery(c)
+	data, total, err := h.svc.ListKaders(c.Request.Context(), callerScope(c), q, c.Query("status"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) GetKaderCode(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	data, err := h.svc.GetKaderCode(c.Request.Context(), id, callerScope(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) DeactivateKader(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.DeactivateKader(c.Request.Context(), id, callerScope(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kader berhasil dinonaktifkan", nil)
+}

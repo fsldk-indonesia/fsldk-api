@@ -194,3 +194,139 @@ func (r *RepositoryImpl) FindKaderBySubmission(ctx context.Context, submissionID
 	}
 	return k, err
 }
+
+func (r *RepositoryImpl) FindKaderByID(ctx context.Context, id int64) (submission_model.Kader, error) {
+	var k submission_model.Kader
+	err := r.db.WithContext(ctx).Table("ms_kader").Where("kaderID = ?", id).Take(&k).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return submission_model.Kader{}, ErrNotFound
+	}
+	return k, err
+}
+
+func (r *RepositoryImpl) UpdateKaderStatus(ctx context.Context, id int64, status string, uniqueCode sql.NullString, issuedDate sql.NullTime) error {
+	values := map[string]interface{}{
+		"status":      status,
+		"updatedDate": time.Now(),
+	}
+	if uniqueCode.Valid {
+		values["uniqueCode"] = uniqueCode
+	}
+	if issuedDate.Valid {
+		values["issuedDate"] = issuedDate
+	}
+	return r.db.WithContext(ctx).Table("ms_kader").Where("kaderID = ?", id).Updates(values).Error
+}
+
+func (r *RepositoryImpl) ListKadersByOrganizations(ctx context.Context, organizationIDs []int64, status string) ([]submission_model.Kader, error) {
+	q := r.db.WithContext(ctx).Table("ms_kader").Where("organizationID IN ?", organizationIDs)
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var out []submission_model.Kader
+	err := q.Order("createdDate DESC").Find(&out).Error
+	return out, err
+}
+
+func (r *RepositoryImpl) CountKaderCodesForOrgYear(ctx context.Context, codePrefix string) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_kader").Where("uniqueCode LIKE ?", codePrefix+"%").Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CreateReview(ctx context.Context, p submission_model.ReviewParams) (int64, error) {
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("tr_submission_review").Create(map[string]interface{}{
+			"submissionID":   p.SubmissionID,
+			"tierLevel":      p.TierLevel,
+			"reviewerUserID": p.ReviewerUserID,
+			"decision":       p.Decision,
+			"checklistJSON":  p.ChecklistJSON,
+			"note":           p.Note,
+			"reviewedDate":   time.Now(),
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
+}
+
+func (r *RepositoryImpl) ListReviewsBySubmission(ctx context.Context, submissionID int64) ([]submission_model.Review, error) {
+	var out []submission_model.Review
+	err := r.db.WithContext(ctx).Table("tr_submission_review").
+		Where("submissionID = ?", submissionID).Order("reviewedDate ASC").Find(&out).Error
+	return out, err
+}
+
+func (r *RepositoryImpl) FindCurrentLevelResult(ctx context.Context, organizationID int64) (submission_model.LevelisasiResult, error) {
+	var res submission_model.LevelisasiResult
+	err := r.db.WithContext(ctx).Table("tr_levelisasi_result").
+		Where("organizationID = ? AND isCurrent = 1", organizationID).Take(&res).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return submission_model.LevelisasiResult{}, ErrNotFound
+	}
+	return res, err
+}
+
+func (r *RepositoryImpl) FindLevelResultBySubmission(ctx context.Context, submissionID int64) (submission_model.LevelisasiResult, error) {
+	var res submission_model.LevelisasiResult
+	err := r.db.WithContext(ctx).Table("tr_levelisasi_result").
+		Where("submissionID = ? AND isCurrent = 1", submissionID).Take(&res).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return submission_model.LevelisasiResult{}, ErrNotFound
+	}
+	return res, err
+}
+
+func (r *RepositoryImpl) ClearCurrentLevelResult(ctx context.Context, organizationID int64) error {
+	return r.db.WithContext(ctx).Table("tr_levelisasi_result").
+		Where("organizationID = ? AND isCurrent = 1", organizationID).
+		Update("isCurrent", false).Error
+}
+
+func (r *RepositoryImpl) CreateLevelResult(ctx context.Context, submissionID, organizationID int64, levelCode, justificationNote string, establishedByUserID int64) (int64, error) {
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("tr_levelisasi_result").Create(map[string]interface{}{
+			"submissionID":        submissionID,
+			"organizationID":      organizationID,
+			"levelCode":           levelCode,
+			"justificationNote":   sql.NullString{String: justificationNote, Valid: justificationNote != ""},
+			"establishedByUserID": establishedByUserID,
+			"establishedDate":     time.Now(),
+			"isPublished":         false,
+			"isCurrent":           true,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
+}
+
+func (r *RepositoryImpl) UpdateLevelResult(ctx context.Context, resultID int64, levelCode, justificationNote string, establishedByUserID int64) error {
+	return r.db.WithContext(ctx).Table("tr_levelisasi_result").Where("resultID = ?", resultID).Updates(map[string]interface{}{
+		"levelCode":           levelCode,
+		"justificationNote":   sql.NullString{String: justificationNote, Valid: justificationNote != ""},
+		"establishedByUserID": establishedByUserID,
+		"establishedDate":     time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) PublishLevelResult(ctx context.Context, resultID int64) error {
+	return r.db.WithContext(ctx).Table("tr_levelisasi_result").Where("resultID = ?", resultID).Updates(map[string]interface{}{
+		"isPublished":   true,
+		"publishedDate": time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) LevelLabel(ctx context.Context, levelCode string) (string, error) {
+	var label string
+	err := r.db.WithContext(ctx).Table("lk_level").Select("levelLabel").Where("levelCode = ?", levelCode).Take(&label).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", ErrNotFound
+	}
+	return label, err
+}

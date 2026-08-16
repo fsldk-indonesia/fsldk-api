@@ -1,7 +1,10 @@
 // Package submission_dto memuat DTO request/response modul submission.
 package submission_dto
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ---------- Request ----------
 
@@ -31,6 +34,56 @@ type AnswerInput struct {
 // SaveAnswersRequest adalah body menyimpan draft jawaban (dapat dipanggil berkali-kali).
 type SaveAnswersRequest struct {
 	Answers []AnswerInput `json:"answers" validate:"required,min=1,dive"`
+}
+
+// ReviewRequest adalah body memverifikasi submission (tier LDK/Puskomda/Puskomnas
+// diresolusi otomatis dari organizationTypeCode pemanggil, bukan dari body).
+type ReviewRequest struct {
+	Decision  string          `json:"decision" validate:"required,oneof=APPROVED REVISION_REQUESTED REJECTED"`
+	Note      string          `json:"note" validate:"max=1000"`
+	Checklist json.RawMessage `json:"checklist"`
+	Version   int             `json:"version" validate:"required"`
+}
+
+// EstablishLevelRequest adalah body penetapan level oleh Puskomnas.
+type EstablishLevelRequest struct {
+	LevelCode         string `json:"levelCode" validate:"required"`
+	JustificationNote string `json:"justificationNote" validate:"max=2000"`
+	Version           int    `json:"version" validate:"required"`
+}
+
+// VersionedRequest adalah body generik untuk aksi yang hanya butuh optimistic
+// lock (publish, reassess).
+type VersionedRequest struct {
+	Version int `json:"version" validate:"required"`
+}
+
+// ReopenRequest adalah body membuka kembali submission PUBLISHED untuk koreksi.
+type ReopenRequest struct {
+	Reason  string `json:"reason" validate:"required,max=1000"`
+	Version int    `json:"version" validate:"required"`
+}
+
+// LevelResultResponse adalah representasi hasil levelisasi untuk API.
+type LevelResultResponse struct {
+	ResultID          int64      `json:"resultID"`
+	LevelCode         string     `json:"levelCode"`
+	LevelLabel        string     `json:"levelLabel,omitempty"`
+	JustificationNote string     `json:"justificationNote,omitempty"`
+	EstablishedDate   time.Time  `json:"establishedDate"`
+	IsPublished       bool       `json:"isPublished"`
+	PublishedDate     *time.Time `json:"publishedDate,omitempty"`
+}
+
+// KaderResponse adalah representasi data kader untuk API.
+type KaderResponse struct {
+	KaderID        int64      `json:"kaderID"`
+	SubmissionID   int64      `json:"submissionID"`
+	OrganizationID int64      `json:"organizationID"`
+	UniqueCode     string     `json:"uniqueCode,omitempty"`
+	FullName       string     `json:"fullName"`
+	Status         string     `json:"status"`
+	IssuedDate     *time.Time `json:"issuedDate,omitempty"`
 }
 
 // ListFilter menampung parameter penyaringan daftar submission.
@@ -86,4 +139,6 @@ type DetailResponse struct {
 	Response
 	Answers       []AnswerResponse        `json:"answers"`
 	StatusHistory []StatusHistoryResponse `json:"statusHistory"`
+	LevelResult   *LevelResultResponse    `json:"levelResult,omitempty"`
+	Kader         *KaderResponse          `json:"kader,omitempty"`
 }

@@ -82,6 +82,16 @@ const (
 	PermSubmissionUpdate = "submission.update"
 	PermSubmissionCancel = "submission.cancel"
 	PermSubmissionView   = "submission.view"
+
+	PermSubmissionReviewLDK      = "submission.review.ldk"
+	PermSubmissionReviewTier1    = "submission.review.tier1"
+	PermSubmissionApproveTier1   = "submission.approve.tier1"
+	PermSubmissionReviewTier2    = "submission.review.tier2"
+	PermSubmissionLevelEstablish = "submission.level.establish"
+	PermSubmissionPublish        = "submission.publish"
+	PermSubmissionReopen         = "submission.reopen"
+	PermSubmissionReassess       = "submission.reassess"
+	PermKaderDeactivate          = "kader.deactivate"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -101,6 +111,7 @@ const (
 	SubmissionStatusDraft     = "DRAFT"
 	SubmissionStatusSubmitted = "SUBMITTED"
 	SubmissionStatusCancelled = "CANCELLED"
+	SubmissionStatusRejected  = "REJECTED"
 
 	// Levelisasi LDK
 	SubmissionStatusPuskomdaReview             = "PUSKOMDA_REVIEW"
@@ -125,6 +136,20 @@ const (
 	KaderStatusActive   = "ACTIVE"
 	KaderStatusRejected = "REJECTED"
 	KaderStatusInactive = "INACTIVE"
+)
+
+// Tier reviewer (tr_submission_review.tierLevel).
+const (
+	ReviewTierLDK       = "LDK"
+	ReviewTierPuskomda  = "PUSKOMDA"
+	ReviewTierPuskomnas = "PUSKOMNAS"
+)
+
+// Keputusan review (tr_submission_review.decision).
+const (
+	ReviewDecisionApproved          = "APPROVED"
+	ReviewDecisionRevisionRequested = "REVISION_REQUESTED"
+	ReviewDecisionRejected          = "REJECTED"
 )
 
 // Status version form pendataan.
@@ -175,6 +200,10 @@ const (
 	TableSubmissionAnswer        = "tr_submission_answer"
 	TableSubmissionStatusHistory = "tr_submission_status_history"
 	TableKader                   = "ms_kader"
+
+	TableSubmissionReview = "tr_submission_review"
+	TableLevel            = "lk_level"
+	TableLevelisasiResult = "tr_levelisasi_result"
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.

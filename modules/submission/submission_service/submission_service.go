@@ -32,4 +32,14 @@ type Service interface {
 	Cancel(ctx context.Context, id int64, caller CallerScope) error
 	List(ctx context.Context, caller CallerScope, q dto.ListQuery, status string) ([]submission_dto.Response, int, error)
 	Get(ctx context.Context, id int64, caller CallerScope) (submission_dto.DetailResponse, error)
+
+	Review(ctx context.Context, id int64, caller CallerScope, req submission_dto.ReviewRequest) (submission_dto.Response, error)
+	EstablishLevel(ctx context.Context, id int64, caller CallerScope, req submission_dto.EstablishLevelRequest) (submission_dto.Response, error)
+	Publish(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
+	Reopen(ctx context.Context, id int64, caller CallerScope, req submission_dto.ReopenRequest) (submission_dto.Response, error)
+	Reassess(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
+
+	ListKaders(ctx context.Context, caller CallerScope, q dto.ListQuery, status string) ([]submission_dto.KaderResponse, int, error)
+	GetKaderCode(ctx context.Context, kaderID int64, caller CallerScope) (submission_dto.KaderResponse, error)
+	DeactivateKader(ctx context.Context, kaderID int64, caller CallerScope) error
 }
