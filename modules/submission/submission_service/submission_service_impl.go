@@ -642,12 +642,19 @@ func (s *ServiceImpl) Cancel(ctx context.Context, id int64, caller CallerScope) 
 
 // ---------- List & Get ----------
 
-func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, status string) ([]submission_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, status, formCode string) ([]submission_dto.Response, int, error) {
 	filter := submission_dto.ListFilter{
 		Status:  status,
 		Limit:   q.Limit,
 		Offset:  q.Offset(),
 		OrderBy: q.OrderBy(sortColumns, "createdDate DESC"),
+	}
+	if formCode != "" {
+		form, err := s.formRepo.FindFormByCode(ctx, formCode)
+		if err != nil {
+			return []submission_dto.Response{}, 0, nil
+		}
+		filter.FormID = form.FormID
 	}
 	if caller.OrganizationID == nil && caller.WildcardTierAccess == "" {
 		uid := caller.UserID

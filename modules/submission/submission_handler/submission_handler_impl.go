@@ -105,7 +105,7 @@ func (h *HandlerImpl) Cancel(c *gin.Context) {
 
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.List(c.Request.Context(), callerScope(c), q, c.Query("status"))
+	data, total, err := h.svc.List(c.Request.Context(), callerScope(c), q, c.Query("status"), c.Query("formCode"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

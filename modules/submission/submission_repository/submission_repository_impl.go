@@ -83,6 +83,9 @@ func (r *RepositoryImpl) List(ctx context.Context, f submission_dto.ListFilter) 
 	if f.Status != "" {
 		base = base.Where("status = ?", f.Status)
 	}
+	if f.FormID > 0 {
+		base = base.Where("formID = ?", f.FormID)
+	}
 
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {

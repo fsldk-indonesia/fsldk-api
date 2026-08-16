@@ -90,6 +90,7 @@ type KaderResponse struct {
 type ListFilter struct {
 	OrganizationIDs   []int64
 	SubmittedByUserID *int64
+	FormID            int64
 	Status            string
 	Limit             int
 	Offset            int
