@@ -12,6 +12,7 @@ type Handler interface {
 	CreateVersion(c *gin.Context)
 	GetVersion(c *gin.Context)
 	PublishVersion(c *gin.Context)
+	GetPublishedByFormCode(c *gin.Context)
 
 	CreateSection(c *gin.Context)
 	UpdateSection(c *gin.Context)

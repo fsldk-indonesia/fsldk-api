@@ -259,6 +259,18 @@ func (s *ServiceImpl) GetVersion(ctx context.Context, versionID int64) (submissi
 	return s.buildVersionDetail(ctx, v)
 }
 
+func (s *ServiceImpl) GetPublishedByFormCode(ctx context.Context, formCode string) (submission_form_dto.VersionDetailResponse, error) {
+	form, err := s.repo.FindFormByCode(ctx, formCode)
+	if err != nil {
+		return submission_form_dto.VersionDetailResponse{}, apperror.NotFound("Form tidak ditemukan")
+	}
+	v, err := s.repo.FindPublishedVersionByForm(ctx, form.FormID)
+	if err != nil {
+		return submission_form_dto.VersionDetailResponse{}, apperror.NotFound("Form belum memiliki version yang dipublish")
+	}
+	return s.buildVersionDetail(ctx, v)
+}
+
 func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.VersionDetailResponse, error) {
 	v, err := s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {

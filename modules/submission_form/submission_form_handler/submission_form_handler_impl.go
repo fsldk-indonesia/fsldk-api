@@ -104,6 +104,16 @@ func (h *HandlerImpl) GetVersion(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+func (h *HandlerImpl) GetPublishedByFormCode(c *gin.Context) {
+	formCode := c.Param("formCode")
+	data, err := h.svc.GetPublishedByFormCode(c.Request.Context(), formCode)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) PublishVersion(c *gin.Context) {
 	id, ok := idFromParam(c, "versionID")
 	if !ok {

@@ -18,6 +18,11 @@ type Service interface {
 	CreateVersion(ctx context.Context, formID int64, req submission_form_dto.CreateVersionRequest, actorID int64) (submission_form_dto.VersionDetailResponse, error)
 	GetVersion(ctx context.Context, versionID int64) (submission_form_dto.VersionDetailResponse, error)
 	PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.VersionDetailResponse, error)
+	// GetPublishedByFormCode mengembalikan struktur version PUBLISHED aktif
+	// milik sebuah form — dipakai LDK/Kader untuk merender form pengisian,
+	// jadi tidak digerbang permission admin form builder (struktur form
+	// bukan data sensitif, berbeda dengan jawaban submission).
+	GetPublishedByFormCode(ctx context.Context, formCode string) (submission_form_dto.VersionDetailResponse, error)
 
 	CreateSection(ctx context.Context, versionID int64, req submission_form_dto.CreateSectionRequest) (submission_form_dto.SectionResponse, error)
 	UpdateSection(ctx context.Context, sectionID int64, req submission_form_dto.UpdateSectionRequest) (submission_form_dto.SectionResponse, error)

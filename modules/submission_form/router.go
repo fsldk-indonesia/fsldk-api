@@ -19,6 +19,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_form_handler.Handler, mw *
 	g := rg.Group("/submission-forms")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
+		// Struktur form PUBLISHED (bukan jawaban) bukan data sensitif — siapa
+		// pun yang login & terverifikasi boleh membacanya untuk merender form
+		// pengisian, tanpa perlu permission admin form builder.
+		g.GET("/by-code/:formCode/published", h.GetPublishedByFormCode)
+
 		g.GET("", view, h.ListForms)
 		g.POST("", manage, h.CreateForm)
 		g.GET("/:formID", view, h.GetForm)
