@@ -8,6 +8,7 @@ import (
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/security"
+	"fsldk-api/constants"
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/modules/user/user_repository"
@@ -21,26 +22,105 @@ var sortColumns = map[string]string{
 }
 
 // ServiceImpl adalah implementasi Service.
-type ServiceImpl struct{ repo user_repository.Repository }
+type ServiceImpl struct {
+	repo     user_repository.Repository
+	orgScope OrgScopeChecker
+}
 
 // NewService membuat Service pengguna.
-func NewService(repo user_repository.Repository) Service { return &ServiceImpl{repo: repo} }
+func NewService(repo user_repository.Repository, orgScope OrgScopeChecker) Service {
+	return &ServiceImpl{repo: repo, orgScope: orgScope}
+}
 
 // toResponse memetakan model User ke DTO Response (logika pemetaan berada di
 // service, bukan pada model/dto, agar keduanya tetap murni struct data).
 func toResponse(u user_model.User) user_dto.Response {
-	return user_dto.Response{
-		UserID:        u.UserID,
-		FullName:      u.FullName,
-		Email:         u.Email,
-		RoleID:        u.RoleID,
-		Role:          u.RoleName,
-		EmailVerified: u.EmailVerifiedDate.Valid,
-		IsActive:      u.IsActive,
-		PhotoURL:      u.PhotoURL.String,
-		HasGoogle:     u.GoogleID.Valid,
-		HasPassword:   u.Password.Valid && u.Password.String != "",
+	resp := user_dto.Response{
+		UserID:               u.UserID,
+		FullName:             u.FullName,
+		Email:                u.Email,
+		RoleID:               u.RoleID,
+		Role:                 u.RoleName,
+		OrganizationTypeCode: u.OrganizationTypeCode.String,
+		EmailVerified:        u.EmailVerifiedDate.Valid,
+		IsActive:             u.IsActive,
+		PhotoURL:             u.PhotoURL.String,
+		HasGoogle:            u.GoogleID.Valid,
+		HasPassword:          u.Password.Valid && u.Password.String != "",
 	}
+	if u.OrganizationID.Valid {
+		id := u.OrganizationID.Int64
+		resp.OrganizationID = &id
+	}
+	if u.WildcardTierAccess.Valid && u.WildcardTierAccess.String != "" {
+		resp.WildcardTierAccess = strings.Split(u.WildcardTierAccess.String, ",")
+	}
+	return resp
+}
+
+// resolveProvisioning memvalidasi & mengunci organizationID/wildcardTierAccess
+// pengguna baru sesuai kewenangan pemanggil:
+//   - Super Admin / Puskomnas Verifikator (wildcard atau tipe PUSKOMNAS): bebas
+//     memilih organisasi manapun (divalidasi via OrgScopeChecker) atau memberi wildcard.
+//   - Puskomda Verifikator: hanya boleh untuk LDK di wilayahnya, tidak boleh memberi wildcard.
+//   - LDK Admin: organizationID selalu dikunci ke organisasi sendiri, tidak boleh memberi wildcard.
+func (s *ServiceImpl) resolveProvisioning(ctx context.Context, caller CallerScope, reqOrgID *int64, reqWildcard []string) (sql.NullInt64, sql.NullString, error) {
+	wildcardStr := strings.Join(reqWildcard, ",")
+	callerIsFree := caller.OrganizationTypeCode == constants.OrgTypePuskomnas || containsTier(caller.WildcardTierAccess, constants.OrgTypePuskomnas)
+
+	switch {
+	case callerIsFree:
+		if reqOrgID != nil {
+			ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *reqOrgID)
+			if err != nil {
+				return sql.NullInt64{}, sql.NullString{}, apperror.Internal("")
+			}
+			if !ok {
+				return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Organisasi tujuan di luar jangkauan akses Anda")
+			}
+			return sql.NullInt64{Int64: *reqOrgID, Valid: true}, sql.NullString{String: wildcardStr, Valid: wildcardStr != ""}, nil
+		}
+		return sql.NullInt64{}, sql.NullString{String: wildcardStr, Valid: wildcardStr != ""}, nil
+
+	case caller.OrganizationTypeCode == constants.OrgTypePuskomda:
+		if wildcardStr != "" {
+			return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Anda tidak dapat memberikan akses lintas organisasi")
+		}
+		if reqOrgID == nil {
+			return sql.NullInt64{}, sql.NullString{}, apperror.BadRequest("organizationID wajib diisi")
+		}
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *reqOrgID)
+		if err != nil {
+			return sql.NullInt64{}, sql.NullString{}, apperror.Internal("")
+		}
+		if !ok {
+			return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Organisasi tujuan di luar jangkauan akses Anda")
+		}
+		return sql.NullInt64{Int64: *reqOrgID, Valid: true}, sql.NullString{}, nil
+
+	case caller.OrganizationTypeCode == constants.OrgTypeLDK:
+		if wildcardStr != "" {
+			return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Anda tidak dapat memberikan akses lintas organisasi")
+		}
+		if caller.OrganizationID == nil {
+			return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Akun Anda tidak terhubung ke organisasi")
+		}
+		// organizationID selalu dikunci ke organisasi sendiri — nilai dari
+		// client (bila ada) diabaikan untuk mencegah IDOR.
+		return sql.NullInt64{Int64: *caller.OrganizationID, Valid: true}, sql.NullString{}, nil
+
+	default:
+		return sql.NullInt64{}, sql.NullString{}, apperror.Forbidden("Anda tidak memiliki hak menambahkan pengguna")
+	}
+}
+
+func containsTier(wildcardTierAccess, tier string) bool {
+	for _, t := range strings.Split(wildcardTierAccess, ",") {
+		if t == tier {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, roleID int64) ([]user_dto.Response, int, error) {
@@ -69,7 +149,7 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64) (user_dto.Response, err
 	return toResponse(u), nil
 }
 
-func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, actorID int64) (user_dto.Response, error) {
+func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, caller CallerScope) (user_dto.Response, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	exists, err := s.repo.ExistsByEmail(ctx, email)
 	if err != nil {
@@ -77,6 +157,10 @@ func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, ac
 	}
 	if exists {
 		return user_dto.Response{}, apperror.Conflict("Email sudah terdaftar")
+	}
+	orgID, wildcard, err := s.resolveProvisioning(ctx, caller, req.OrganizationID, req.WildcardTierAccess)
+	if err != nil {
+		return user_dto.Response{}, err
 	}
 	hashed, err := security.HashPassword(req.Password)
 	if err != nil {
@@ -87,23 +171,25 @@ func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, ac
 		active = *req.IsActive
 	}
 	id, err := s.repo.Create(ctx, user_model.CreateParams{
-		RoleID:        req.RoleID,
-		FullName:      strings.TrimSpace(req.FullName),
-		Email:         email,
-		Password:      sql.NullString{String: hashed, Valid: true},
-		EmailVerified: true,
-		CreatedBy:     sql.NullInt64{Int64: actorID, Valid: actorID > 0},
+		RoleID:             req.RoleID,
+		OrganizationID:     orgID,
+		WildcardTierAccess: wildcard,
+		FullName:           strings.TrimSpace(req.FullName),
+		Email:              email,
+		Password:           sql.NullString{String: hashed, Valid: true},
+		EmailVerified:      true,
+		CreatedBy:          sql.NullInt64{Int64: caller.UserID, Valid: caller.UserID > 0},
 	})
 	if err != nil {
 		return user_dto.Response{}, apperror.Internal("Gagal membuat pengguna")
 	}
 	if !active {
-		_ = s.repo.SetActive(ctx, id, false, actorID)
+		_ = s.repo.SetActive(ctx, id, false, caller.UserID)
 	}
 	return s.Get(ctx, id)
 }
 
-func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateRequest, actorID int64) (user_dto.Response, error) {
+func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateRequest, caller CallerScope) (user_dto.Response, error) {
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
 		return user_dto.Response{}, apperror.NotFound("Pengguna tidak ditemukan")
 	}
@@ -115,7 +201,11 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateR
 	if exists {
 		return user_dto.Response{}, apperror.Conflict("Email sudah dipakai pengguna lain")
 	}
-	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, actorID); err != nil {
+	orgID, wildcard, err := s.resolveProvisioning(ctx, caller, req.OrganizationID, req.WildcardTierAccess)
+	if err != nil {
+		return user_dto.Response{}, err
+	}
+	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, orgID, wildcard, caller.UserID); err != nil {
 		return user_dto.Response{}, apperror.Internal("")
 	}
 	if strings.TrimSpace(req.Password) != "" {

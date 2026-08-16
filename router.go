@@ -30,6 +30,11 @@ import (
 	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/role/role_service"
 
+	"fsldk-api/modules/organization"
+	"fsldk-api/modules/organization/organization_handler"
+	"fsldk-api/modules/organization/organization_repository"
+	"fsldk-api/modules/organization/organization_service"
+
 	"fsldk-api/modules/news"
 	"fsldk-api/modules/news/news_handler"
 	"fsldk-api/modules/news/news_repository"
@@ -73,6 +78,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permRepo := permission_repository.NewRepository(db)
 	userRepo := user_repository.NewRepository(db)
 	roleRepo := role_repository.NewRepository(db)
+	orgRepo := organization_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
@@ -81,8 +87,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
+	orgSvc := organization_service.NewService(orgRepo)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
-	userSvc := user_service.NewService(userRepo)
+	userSvc := user_service.NewService(userRepo, orgSvc)
 	roleSvc := role_service.NewService(roleRepo)
 	newsSvc := news_service.NewService(newsRepo)
 	articleSvc := article_service.NewService(articleRepo)
@@ -95,14 +102,16 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permH := permission_handler.NewHandler(permSvc)
 	userH := user_handler.NewHandler(userSvc)
 	roleH := role_handler.NewHandler(roleSvc)
+	orgH := organization_handler.NewHandler(orgSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 
-	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
-	mw := middlewares.New(tm, cfg, permSvc)
+	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
+	// memenuhi kontrak OrgScopeLoader)
+	mw := middlewares.New(tm, cfg, permSvc, orgSvc)
 
 	// Engine
 	if cfg.AppEnv == "production" {
@@ -137,6 +146,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permission.RegisterRoutes(api, permH, mw)
 	user.RegisterRoutes(api, userH, mw)
 	role.RegisterRoutes(api, roleH, mw)
+	organization.RegisterRoutes(api, orgH, mw)
 	dashboard.RegisterRoutes(api, dashH, mw)
 
 	news.RegisterPublicRoutes(pub, newsH)

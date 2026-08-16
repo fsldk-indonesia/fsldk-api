@@ -3,6 +3,7 @@ package user_repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"fsldk-api/modules/user/user_dto"
@@ -21,7 +22,7 @@ type Repository interface {
 	ExistsByEmailExcept(ctx context.Context, email string, exceptID int64) (bool, error)
 	Create(ctx context.Context, p user_model.CreateParams) (int64, error)
 	List(ctx context.Context, f user_dto.ListFilter) ([]user_model.User, int64, error)
-	Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, updatedBy int64) error
+	Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error
 	SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error
 	SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error
 	LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error

@@ -18,9 +18,21 @@ const (
 
 // Role bawaan sistem.
 const (
-	RoleSuperAdmin  = "Super Admin"
-	RoleEditor      = "Editor"
-	RoleKontributor = "Kontributor"
+	RoleSuperAdmin           = "Super Admin"
+	RoleEditor               = "Editor"
+	RoleKontributor          = "Kontributor"
+	RoleLDKAdmin             = "LDK Admin"
+	RolePuskomdaVerifikator  = "Puskomda Verifikator"
+	RolePuskomnasVerifikator = "Puskomnas Verifikator"
+	RoleKader                = "Kader"
+)
+
+// Kode tipe organisasi (lk_organization_type), sekaligus nilai yang valid
+// pada kolom ms_user.wildcardTierAccess.
+const (
+	OrgTypeLDK       = "LDK"
+	OrgTypePuskomda  = "PUSKOMDA"
+	OrgTypePuskomnas = "PUSKOMNAS"
 )
 
 // Kode permission (format modul.aksi).
@@ -51,6 +63,15 @@ const (
 	PermShortlinkCreate = "shortlink.create"
 	PermShortlinkUpdate = "shortlink.update"
 	PermShortlinkDelete = "shortlink.delete"
+
+	PermOrganizationCreate          = "organization.create"
+	PermOrganizationDeactivate      = "organization.deactivate"
+	PermOrganizationProfileManage   = "organization.profile.manage"
+	PermOrganizationLDKList         = "organization.ldk.list"
+	PermOrganizationLDKListNational = "organization.ldk.list.national"
+	PermOrganizationPuskomdaList    = "organization.puskomda.list"
+
+	PermUserProvision = "user.provision"
 )
 
 // Nama tabel database (konvensi prefix_snake_case).
@@ -66,16 +87,23 @@ const (
 	TableShortlink       = "ms_shortlink"
 	TableUserLoginLog    = "tr_user_login_log"
 	TableEmailToken      = "tr_email_token" // token verifikasi email & reset password
+
+	TableOrganization     = "ms_organization"
+	TableOrganizationType = "lk_organization_type"
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.
 const (
-	CtxUserID        = "ctxUserID"
-	CtxUserEmail     = "ctxUserEmail"
-	CtxRoleID        = "ctxRoleID"
-	CtxRoleName      = "ctxRoleName"
-	CtxEmailVerified = "ctxEmailVerified"
-	CtxPermissions   = "ctxPermissions"
+	CtxUserID               = "ctxUserID"
+	CtxUserEmail            = "ctxUserEmail"
+	CtxRoleID               = "ctxRoleID"
+	CtxRoleName             = "ctxRoleName"
+	CtxEmailVerified        = "ctxEmailVerified"
+	CtxPermissions          = "ctxPermissions"
+	CtxOrganizationID       = "ctxOrganizationID"
+	CtxOrganizationTypeCode = "ctxOrganizationTypeCode"
+	CtxWildcardTierAccess   = "ctxWildcardTierAccess"
+	CtxTargetOrganizationID = "ctxTargetOrganizationID"
 )
 
 // Jenis token email.

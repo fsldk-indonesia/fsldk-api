@@ -53,6 +53,15 @@ func (h *HandlerImpl) Get(c *gin.Context) {
 	httphelper.Success(c, "", res)
 }
 
+func callerScope(c *gin.Context) user_service.CallerScope {
+	return user_service.CallerScope{
+		UserID:               appctx.UserID(c),
+		OrganizationID:       appctx.OrganizationID(c),
+		OrganizationTypeCode: appctx.OrganizationTypeCode(c),
+		WildcardTierAccess:   appctx.WildcardTierAccess(c),
+	}
+}
+
 func (h *HandlerImpl) Create(c *gin.Context) {
 	var req user_dto.CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -63,7 +72,7 @@ func (h *HandlerImpl) Create(c *gin.Context) {
 		httphelper.Error(c, err)
 		return
 	}
-	res, err := h.svc.Create(c.Request.Context(), req, appctx.UserID(c))
+	res, err := h.svc.Create(c.Request.Context(), req, callerScope(c))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -85,7 +94,7 @@ func (h *HandlerImpl) Update(c *gin.Context) {
 		httphelper.Error(c, err)
 		return
 	}
-	res, err := h.svc.Update(c.Request.Context(), id, req, appctx.UserID(c))
+	res, err := h.svc.Update(c.Request.Context(), id, req, callerScope(c))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

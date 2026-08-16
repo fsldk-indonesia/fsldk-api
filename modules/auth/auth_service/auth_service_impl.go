@@ -27,6 +27,14 @@ import (
 func emailVerified(u user_model.User) bool { return u.EmailVerifiedDate.Valid }
 func hasPassword(u user_model.User) bool   { return u.Password.Valid && u.Password.String != "" }
 
+func organizationID(u user_model.User) *int64 {
+	if !u.OrganizationID.Valid {
+		return nil
+	}
+	id := u.OrganizationID.Int64
+	return &id
+}
+
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
 	users  user_repository.Repository
@@ -305,7 +313,16 @@ func (s *ServiceImpl) buildAuthResponse(ctx context.Context, u user_model.User) 
 	if err != nil {
 		return auth_dto.AuthResponse{}, err
 	}
-	access, err := s.tokens.GenerateAccess(u.UserID, u.RoleID, u.Email, u.RoleName, emailVerified(u))
+	access, err := s.tokens.GenerateAccess(token.AccessParams{
+		UserID:               u.UserID,
+		RoleID:               u.RoleID,
+		Email:                u.Email,
+		RoleName:             u.RoleName,
+		EmailVerified:        emailVerified(u),
+		OrganizationID:       organizationID(u),
+		OrganizationTypeCode: u.OrganizationTypeCode.String,
+		WildcardTierAccess:   u.WildcardTierAccess.String,
+	})
 	if err != nil {
 		return auth_dto.AuthResponse{}, apperror.Internal("")
 	}
@@ -329,15 +346,21 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 	if perms == nil {
 		perms = []string{}
 	}
-	return auth_dto.UserProfile{
-		UserID:        u.UserID,
-		FullName:      u.FullName,
-		Email:         u.Email,
-		EmailVerified: emailVerified(u),
-		Role:          u.RoleName,
-		Permissions:   perms,
-		PhotoURL:      u.PhotoURL.String,
-	}, nil
+	profile := auth_dto.UserProfile{
+		UserID:               u.UserID,
+		FullName:             u.FullName,
+		Email:                u.Email,
+		EmailVerified:        emailVerified(u),
+		Role:                 u.RoleName,
+		Permissions:          perms,
+		PhotoURL:             u.PhotoURL.String,
+		OrganizationID:       organizationID(u),
+		OrganizationTypeCode: u.OrganizationTypeCode.String,
+	}
+	if u.WildcardTierAccess.Valid && u.WildcardTierAccess.String != "" {
+		profile.WildcardTierAccess = strings.Split(u.WildcardTierAccess.String, ",")
+	}
+	return profile, nil
 }
 
 func (s *ServiceImpl) isDomainAllowed(email string) bool {

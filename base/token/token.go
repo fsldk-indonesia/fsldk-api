@@ -11,11 +11,14 @@ import (
 
 // Claims adalah payload access token.
 type Claims struct {
-	UserID        int64  `json:"userID"`
-	Email         string `json:"email"`
-	RoleID        int64  `json:"roleID"`
-	RoleName      string `json:"roleName"`
-	EmailVerified bool   `json:"emailVerified"`
+	UserID               int64  `json:"userID"`
+	Email                string `json:"email"`
+	RoleID               int64  `json:"roleID"`
+	RoleName             string `json:"roleName"`
+	EmailVerified        bool   `json:"emailVerified"`
+	OrganizationID       *int64 `json:"organizationID,omitempty"`
+	OrganizationTypeCode string `json:"organizationTypeCode,omitempty"`
+	WildcardTierAccess   string `json:"wildcardTierAccess,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -44,17 +47,33 @@ func NewManager(accessSecret, refreshSecret string, accessExpireMin, refreshExpi
 	}
 }
 
-// GenerateAccess membuat access token berisi identitas & status verifikasi.
-func (m *Manager) GenerateAccess(userID, roleID int64, email, roleName string, emailVerified bool) (string, error) {
+// AccessParams menampung data identitas untuk penerbitan access token.
+type AccessParams struct {
+	UserID               int64
+	RoleID               int64
+	Email                string
+	RoleName             string
+	EmailVerified        bool
+	OrganizationID       *int64
+	OrganizationTypeCode string
+	WildcardTierAccess   string
+}
+
+// GenerateAccess membuat access token berisi identitas, status verifikasi,
+// dan scope organisasi.
+func (m *Manager) GenerateAccess(p AccessParams) (string, error) {
 	now := time.Now()
 	claims := Claims{
-		UserID:        userID,
-		Email:         email,
-		RoleID:        roleID,
-		RoleName:      roleName,
-		EmailVerified: emailVerified,
+		UserID:               p.UserID,
+		Email:                p.Email,
+		RoleID:               p.RoleID,
+		RoleName:             p.RoleName,
+		EmailVerified:        p.EmailVerified,
+		OrganizationID:       p.OrganizationID,
+		OrganizationTypeCode: p.OrganizationTypeCode,
+		WildcardTierAccess:   p.WildcardTierAccess,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   email,
+			Subject:   p.Email,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.accessExpire)),
 		},
