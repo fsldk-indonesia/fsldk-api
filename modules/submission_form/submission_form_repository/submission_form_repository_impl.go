@@ -58,6 +58,15 @@ func (r *RepositoryImpl) FindFormByID(ctx context.Context, id int64) (submission
 	return f, err
 }
 
+func (r *RepositoryImpl) FindFormByCode(ctx context.Context, code string) (submission_form_model.Form, error) {
+	var f submission_form_model.Form
+	err := r.db.WithContext(ctx).Table("ms_submission_form").Where("formCode = ?", code).Take(&f).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return submission_form_model.Form{}, ErrNotFound
+	}
+	return f, err
+}
+
 // ---------- Version ----------
 
 func (r *RepositoryImpl) CreateVersion(ctx context.Context, formID int64, versionNumber int, createdBy sql.NullInt64) (int64, error) {
@@ -90,6 +99,16 @@ func (r *RepositoryImpl) MaxVersionNumber(ctx context.Context, formID int64) (in
 func (r *RepositoryImpl) FindVersionByID(ctx context.Context, id int64) (submission_form_model.Version, error) {
 	var v submission_form_model.Version
 	err := r.db.WithContext(ctx).Table("ms_submission_form_version").Where("versionID = ?", id).Take(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return submission_form_model.Version{}, ErrNotFound
+	}
+	return v, err
+}
+
+func (r *RepositoryImpl) FindPublishedVersionByForm(ctx context.Context, formID int64) (submission_form_model.Version, error) {
+	var v submission_form_model.Version
+	err := r.db.WithContext(ctx).Table("ms_submission_form_version").
+		Where("formID = ? AND status = 'PUBLISHED'", formID).Take(&v).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return submission_form_model.Version{}, ErrNotFound
 	}
@@ -273,6 +292,13 @@ func (r *RepositoryImpl) ListOptionsByVersion(ctx context.Context, versionID int
 		Joins("JOIN ms_submission_form_section s ON s.sectionID = f.sectionID").
 		Where("s.versionID = ?", versionID).
 		Order("o.sortOrder ASC").Find(&out).Error
+	return out, err
+}
+
+func (r *RepositoryImpl) ListOptionsByField(ctx context.Context, fieldID int64) ([]submission_form_model.Option, error) {
+	var out []submission_form_model.Option
+	err := r.db.WithContext(ctx).Table("ms_submission_form_field_option").
+		Where("fieldID = ?", fieldID).Order("sortOrder ASC").Find(&out).Error
 	return out, err
 }
 

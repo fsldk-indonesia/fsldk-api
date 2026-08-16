@@ -4,16 +4,18 @@ package constants
 
 // Kode response internal (dikirim pada field "code" pada envelope response).
 const (
-	CodeSuccess          = "00"
-	CodeValidationError  = "40"
-	CodeUnauthorized     = "41"
-	CodeForbidden        = "43"
-	CodeNotFound         = "44"
-	CodeConflict         = "49"
-	CodeUnprocessable    = "42"
-	CodeTooManyRequest   = "45"
-	CodeUnknownError     = "99"
-	CodeEmailNotVerified = "43-EMAIL"
+	CodeSuccess                 = "00"
+	CodeValidationError         = "40"
+	CodeUnauthorized            = "41"
+	CodeForbidden               = "43"
+	CodeNotFound                = "44"
+	CodeConflict                = "49"
+	CodeUnprocessable           = "42"
+	CodeTooManyRequest          = "45"
+	CodeUnknownError            = "99"
+	CodeEmailNotVerified        = "43-EMAIL"
+	CodeDuplicateSubmission     = "49-DUP"
+	CodeInvalidStatusTransition = "42-STATUS"
 )
 
 // Role bawaan sistem.
@@ -75,6 +77,54 @@ const (
 
 	PermSubmissionFormView   = "submission_form.view"
 	PermSubmissionFormManage = "submission_form.manage"
+
+	PermSubmissionCreate = "submission.create"
+	PermSubmissionUpdate = "submission.update"
+	PermSubmissionCancel = "submission.cancel"
+	PermSubmissionView   = "submission.view"
+)
+
+// Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
+const (
+	FormCodeLevelisasiLDK = "LEVELISASI_LDK"
+	FormCodeSensusKader   = "SENSUS_KADER"
+)
+
+// Tipe subjek pengisi submission.
+const (
+	SubjectTypeOrganization = "ORGANIZATION"
+	SubjectTypeKader        = "KADER"
+)
+
+// Status submission (state machine Levelisasi LDK & Sensus Kader).
+const (
+	SubmissionStatusDraft     = "DRAFT"
+	SubmissionStatusSubmitted = "SUBMITTED"
+	SubmissionStatusCancelled = "CANCELLED"
+
+	// Levelisasi LDK
+	SubmissionStatusPuskomdaReview             = "PUSKOMDA_REVIEW"
+	SubmissionStatusRevisionRequestedPuskomda  = "REVISION_REQUESTED_PUSKOMDA"
+	SubmissionStatusApprovedPuskomda           = "APPROVED_PUSKOMDA"
+	SubmissionStatusPuskomnasReview            = "PUSKOMNAS_REVIEW"
+	SubmissionStatusRevisionRequestedPuskomnas = "REVISION_REQUESTED_PUSKOMNAS"
+	SubmissionStatusLevelEstablished           = "LEVEL_ESTABLISHED"
+	SubmissionStatusPublished                  = "PUBLISHED"
+
+	// Sensus Kader
+	SubmissionStatusLDKReview            = "LDK_REVIEW"
+	SubmissionStatusRevisionRequestedLDK = "REVISION_REQUESTED_LDK"
+	SubmissionStatusApprovedLDK          = "APPROVED_LDK"
+	SubmissionStatusCodeIssued           = "CODE_ISSUED"
+	SubmissionStatusActive               = "ACTIVE"
+)
+
+// Status kader (ms_kader.status).
+const (
+	KaderStatusPending  = "PENDING"
+	KaderStatusActive   = "ACTIVE"
+	KaderStatusRejected = "REJECTED"
+	KaderStatusInactive = "INACTIVE"
 )
 
 // Status version form pendataan.
@@ -120,6 +170,11 @@ const (
 	TableSubmissionFormSection     = "ms_submission_form_section"
 	TableSubmissionFormField       = "ms_submission_form_field"
 	TableSubmissionFormFieldOption = "ms_submission_form_field_option"
+
+	TableSubmission              = "tr_submission"
+	TableSubmissionAnswer        = "tr_submission_answer"
+	TableSubmissionStatusHistory = "tr_submission_status_history"
+	TableKader                   = "ms_kader"
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.

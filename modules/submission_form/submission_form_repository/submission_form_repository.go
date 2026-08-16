@@ -18,10 +18,12 @@ type Repository interface {
 	ExistsFormCode(ctx context.Context, code string) (bool, error)
 	ListForms(ctx context.Context) ([]submission_form_model.Form, error)
 	FindFormByID(ctx context.Context, id int64) (submission_form_model.Form, error)
+	FindFormByCode(ctx context.Context, code string) (submission_form_model.Form, error)
 
 	CreateVersion(ctx context.Context, formID int64, versionNumber int, createdBy sql.NullInt64) (int64, error)
 	MaxVersionNumber(ctx context.Context, formID int64) (int, error)
 	FindVersionByID(ctx context.Context, id int64) (submission_form_model.Version, error)
+	FindPublishedVersionByForm(ctx context.Context, formID int64) (submission_form_model.Version, error)
 	ListVersionsByForm(ctx context.Context, formID int64) ([]submission_form_model.Version, error)
 	PublishVersion(ctx context.Context, id int64, publishedBy int64) error
 	ArchiveOtherPublished(ctx context.Context, formID, exceptVersionID int64) error
@@ -43,6 +45,7 @@ type Repository interface {
 	UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool) error
 	DeleteOption(ctx context.Context, id int64) error
 	ListOptionsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Option, error)
+	ListOptionsByField(ctx context.Context, fieldID int64) ([]submission_form_model.Option, error)
 
 	VersionStatusBySectionID(ctx context.Context, sectionID int64) (string, error)
 	VersionStatusByFieldID(ctx context.Context, fieldID int64) (string, error)

@@ -24,6 +24,10 @@ type Service interface {
 	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
 
 	AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error)
+	// AccessibleOrganizationIDs mengembalikan seluruh organizationID yang
+	// dapat diakses caller — dipakai modul lain (mis. submission) untuk
+	// menyaring data tanpa perlu mengulang logika cascade/wildcard.
+	AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error)
 	List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string) ([]organization_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (organization_dto.Response, error)
 	Children(ctx context.Context, id int64) ([]organization_dto.Response, error)

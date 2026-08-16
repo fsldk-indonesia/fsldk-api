@@ -133,6 +133,22 @@ func (s *ServiceImpl) resolveAccessible(ctx context.Context, caller CallerScope,
 	}
 }
 
+func (s *ServiceImpl) AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error) {
+	orgs, _, err := s.resolveAccessible(ctx, CallerScope{
+		OrganizationID:       callerOrganizationID,
+		OrganizationTypeCode: callerOrganizationTypeCode,
+		WildcardTierAccess:   wildcardTierAccess,
+	}, organization_dto.ListFilter{})
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(orgs))
+	for _, o := range orgs {
+		ids = append(ids, o.OrganizationID)
+	}
+	return ids, nil
+}
+
 func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error) {
 	orgs, _, err := s.resolveAccessible(ctx, caller, organization_dto.ListFilter{})
 	if err != nil {

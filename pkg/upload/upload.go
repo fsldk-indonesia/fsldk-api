@@ -22,7 +22,7 @@ const MaxImageSize = 5 << 20
 const MaxDocumentSize = 20 << 20
 
 var allowedImageExt = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
-var allowedDocumentExt = map[string]bool{".pdf": true}
+var allowedDocumentExt = map[string]bool{".pdf": true, ".docx": true, ".xlsx": true}
 
 // Uploader menyimpan berkas ke direktori lokal dan mengembalikan URL publiknya.
 type Uploader struct {
@@ -43,10 +43,11 @@ func (u *Uploader) SaveImage(fh *multipart.FileHeader) (string, error) {
 	return u.save(fh, allowedImageExt, MaxImageSize, "format berkas tidak didukung (hanya jpg, jpeg, png, webp, gif)", "ukuran berkas melebihi 5MB")
 }
 
-// SaveDocument memvalidasi ekstensi & ukuran berkas dokumen (PDF) lalu
-// menyimpannya, mengembalikan URL publik yang bisa dipakai sebagai articlePdf.
+// SaveDocument memvalidasi ekstensi & ukuran berkas dokumen (PDF/DOCX/XLSX)
+// lalu menyimpannya, mengembalikan URL publik yang bisa dipakai sebagai
+// articlePdf maupun dokumen pendukung submission.
 func (u *Uploader) SaveDocument(fh *multipart.FileHeader) (string, error) {
-	return u.save(fh, allowedDocumentExt, MaxDocumentSize, "format berkas tidak didukung (hanya pdf)", "ukuran berkas melebihi 20MB")
+	return u.save(fh, allowedDocumentExt, MaxDocumentSize, "format berkas tidak didukung (hanya pdf, docx, xlsx)", "ukuran berkas melebihi 20MB")
 }
 
 // save memvalidasi ekstensi & ukuran berkas, menyimpannya dengan nama acak

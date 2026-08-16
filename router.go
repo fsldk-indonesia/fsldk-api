@@ -40,6 +40,11 @@ import (
 	"fsldk-api/modules/submission_form/submission_form_repository"
 	"fsldk-api/modules/submission_form/submission_form_service"
 
+	"fsldk-api/modules/submission"
+	"fsldk-api/modules/submission/submission_handler"
+	"fsldk-api/modules/submission/submission_repository"
+	"fsldk-api/modules/submission/submission_service"
+
 	"fsldk-api/modules/news"
 	"fsldk-api/modules/news/news_handler"
 	"fsldk-api/modules/news/news_repository"
@@ -85,6 +90,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleRepo := role_repository.NewRepository(db)
 	orgRepo := organization_repository.NewRepository(db)
 	formRepo := submission_form_repository.NewRepository(db)
+	subRepo := submission_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
@@ -95,6 +101,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
 	formSvc := submission_form_service.NewService(formRepo)
+	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
 	userSvc := user_service.NewService(userRepo, orgSvc)
 	roleSvc := role_service.NewService(roleRepo)
@@ -111,6 +118,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleH := role_handler.NewHandler(roleSvc)
 	orgH := organization_handler.NewHandler(orgSvc)
 	formH := submission_form_handler.NewHandler(formSvc)
+	subH := submission_handler.NewHandler(subSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
@@ -156,6 +164,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	role.RegisterRoutes(api, roleH, mw)
 	organization.RegisterRoutes(api, orgH, mw)
 	submission_form.RegisterRoutes(api, formH, mw)
+	submission.RegisterRoutes(api, subH, mw)
 	dashboard.RegisterRoutes(api, dashH, mw)
 
 	news.RegisterPublicRoutes(pub, newsH)
