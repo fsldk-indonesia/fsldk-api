@@ -21,6 +21,10 @@ var validate *validator.Validate
 // mengizinkan tanda hubung yang lazim dipakai sebagai kunci shortlink).
 var shortlinkKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// codeIdentifierPattern mengizinkan huruf, angka, dan garis bawah — dipakai
+// tag kustom `codeidentifier` untuk kode form/section/field (mis. LEVELISASI_LDK).
+var codeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
 func init() {
 	validate = validator.New()
 	// Gunakan tag `json` sebagai nama field pada pesan error.
@@ -33,6 +37,9 @@ func init() {
 	})
 	_ = validate.RegisterValidation("shortlinkkey", func(fl validator.FieldLevel) bool {
 		return shortlinkKeyPattern.MatchString(fl.Field().String())
+	})
+	_ = validate.RegisterValidation("codeidentifier", func(fl validator.FieldLevel) bool {
+		return codeIdentifierPattern.MatchString(fl.Field().String())
 	})
 }
 
@@ -89,6 +96,8 @@ func humanMessage(fe validator.FieldError) string {
 		return fmt.Sprintf("%s hanya boleh berisi huruf dan angka", field)
 	case "shortlinkkey":
 		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan tanda hubung (-)", field)
+	case "codeidentifier":
+		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan garis bawah (_)", field)
 	default:
 		return fmt.Sprintf("%s tidak valid", field)
 	}

@@ -72,6 +72,30 @@ const (
 	PermOrganizationPuskomdaList    = "organization.puskomda.list"
 
 	PermUserProvision = "user.provision"
+
+	PermSubmissionFormView   = "submission_form.view"
+	PermSubmissionFormManage = "submission_form.manage"
+)
+
+// Status version form pendataan.
+const (
+	FormVersionDraft     = "DRAFT"
+	FormVersionPublished = "PUBLISHED"
+	FormVersionArchived  = "ARCHIVED"
+)
+
+// Tipe field form pendataan.
+const (
+	FieldTypeText        = "TEXT"
+	FieldTypeTextarea    = "TEXTAREA"
+	FieldTypeNumber      = "NUMBER"
+	FieldTypeDate        = "DATE"
+	FieldTypeSelect      = "SELECT"
+	FieldTypeMultiselect = "MULTISELECT"
+	FieldTypeRadio       = "RADIO"
+	FieldTypeCheckbox    = "CHECKBOX"
+	FieldTypeFileDoc     = "FILE_DOCUMENT"
+	FieldTypeFileImage   = "FILE_IMAGE"
 )
 
 // Nama tabel database (konvensi prefix_snake_case).
@@ -90,6 +114,12 @@ const (
 
 	TableOrganization     = "ms_organization"
 	TableOrganizationType = "lk_organization_type"
+
+	TableSubmissionForm            = "ms_submission_form"
+	TableSubmissionFormVersion     = "ms_submission_form_version"
+	TableSubmissionFormSection     = "ms_submission_form_section"
+	TableSubmissionFormField       = "ms_submission_form_field"
+	TableSubmissionFormFieldOption = "ms_submission_form_field_option"
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.
