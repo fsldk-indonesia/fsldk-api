@@ -56,16 +56,17 @@ func (r *RepositoryImpl) FindByIDs(ctx context.Context, ids []int64) ([]comment_
 }
 
 // DepthOf returns the depth of the given comment: 0 for a top-level comment,
-// 1 for a reply, 2 for a reply-of-reply. Walks parentID one hop at a time —
-// business rule (comment_service) caps real depth at 2, so a small bounded
-// loop is simpler and more portable than a recursive CTE.
+// 1 for a reply (replies-of-replies are no longer allowed — see
+// comment_service.Create). Walks parentID one hop at a time — business rule
+// (comment_service) caps real depth at 1, so a small bounded loop is simpler
+// and more portable than a recursive CTE.
 func (r *RepositoryImpl) DepthOf(ctx context.Context, id int64) (int, error) {
 	type row struct {
 		ParentID *int64 `gorm:"column:parentID"`
 	}
 	depth := 0
 	currentID := id
-	for i := 0; i < 10; i++ { // hard safety cap; real depth is capped at 2 by business rule
+	for i := 0; i < 10; i++ { // hard safety cap; real depth is capped at 1 by business rule
 		var rr row
 		err := r.db.WithContext(ctx).Table("ms_comment").
 			Select("parentID").Where("commentID = ?", currentID).Take(&rr).Error
@@ -186,9 +187,9 @@ func (r *RepositoryImpl) Delete(ctx context.Context, id int64) error {
 
 // DeleteByContent removes every comment (top-level and replies alike, since
 // every row carries contentType/contentID) attached to one piece of content.
-// Called by article/news services after they delete the content itself —
-// there is no FK from ms_comment to ms_article/ms_news to cascade this
-// automatically (see techspec §3.1a).
+// Called by article/news/event services after they delete the content
+// itself — there is no FK from ms_comment to ms_article/ms_news/ms_event to
+// cascade this automatically (see techspec §3.1a).
 func (r *RepositoryImpl) DeleteByContent(ctx context.Context, contentType string, contentID int64) error {
 	return r.db.WithContext(ctx).Exec(
 		"DELETE FROM ms_comment WHERE contentType = ? AND contentID = ?", contentType, contentID).Error
@@ -266,4 +267,48 @@ func (r *RepositoryImpl) DeleteReaction(ctx context.Context, commentID, userID i
 	return r.db.WithContext(ctx).Exec(
 		"DELETE FROM tr_comment_reaction WHERE commentID = ? AND userID = ? AND reactionType = ?",
 		commentID, userID, reactionType).Error
+}
+
+// SetMentions replaces the full mention list for a comment (delete-then-insert
+// — simpler and safer than diffing, and mention lists are always small).
+func (r *RepositoryImpl) SetMentions(ctx context.Context, commentID int64, userIDs []int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM tr_comment_mention WHERE commentID = ?", commentID).Error; err != nil {
+			return err
+		}
+		seen := make(map[int64]bool, len(userIDs))
+		for _, uid := range userIDs {
+			if uid <= 0 || seen[uid] {
+				continue
+			}
+			seen[uid] = true
+			if err := tx.Table("tr_comment_mention").Create(map[string]interface{}{
+				"commentID": commentID, "userID": uid, "createdDate": time.Now(),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *RepositoryImpl) MentionsByCommentIDs(ctx context.Context, commentIDs []int64) (map[int64][]comment_model.MentionAuthor, error) {
+	out := make(map[int64][]comment_model.MentionAuthor)
+	if len(commentIDs) == 0 {
+		return out, nil
+	}
+	var rows []comment_model.MentionAuthor
+	err := r.db.WithContext(ctx).Table("tr_comment_mention m").
+		Select("m.commentID, m.userID, u.fullName, u.photoURL").
+		Joins("JOIN ms_user u ON u.userID = m.userID").
+		Where("m.commentID IN ?", commentIDs).
+		Order("m.mentionID ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.CommentID] = append(out[row.CommentID], row)
+	}
+	return out, nil
 }

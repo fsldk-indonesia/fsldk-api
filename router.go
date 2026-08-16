@@ -96,16 +96,17 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
 	userSvc := user_service.NewService(userRepo)
 	roleSvc := role_service.NewService(roleRepo)
-	eventSvc := event_service.NewService(eventRepo)
 	dashSvc := dashboard_service.NewService(dashRepo)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
-	// commentSvc dibuat sebelum newsSvc/articleSvc: keduanya menerimanya sebagai
-	// CommentCleaner untuk membersihkan komentar saat konten induknya dihapus
-	// (ms_comment tidak punya FK ke ms_article/ms_news, lihat comment techspec §3.1a).
+	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
+	// sebagai CommentCleaner untuk membersihkan komentar saat konten induknya
+	// dihapus (ms_comment tidak punya FK ke ms_article/ms_news/ms_event, lihat
+	// comment techspec §3.1a).
 	commentSvc := comment_service.NewService(commentRepo, uploader, cfg.GiphyAPIKey)
 	newsSvc := news_service.NewService(newsRepo, commentSvc)
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
+	eventSvc := event_service.NewService(eventRepo, commentSvc)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)

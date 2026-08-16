@@ -59,6 +59,7 @@ const (
 	PermEventDelete = "event.delete"
 
 	PermCommentView   = "comment.view"
+	PermCommentUpdate = "comment.update"
 	PermCommentDelete = "comment.delete"
 )
 

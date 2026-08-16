@@ -47,11 +47,16 @@ func (s *ServiceImpl) PublicList(ctx context.Context, contentType string, conten
 	if err != nil {
 		return nil, apperror.Internal("")
 	}
-	reactions, userReactions, err := s.loadReactions(ctx, commentIDs(flat), currentUserID)
+	ids := commentIDs(flat)
+	reactions, userReactions, err := s.loadReactions(ctx, ids, currentUserID)
 	if err != nil {
 		return nil, apperror.Internal("")
 	}
-	tree := buildTree(flat, nil, reactions, userReactions, currentUserID)
+	mentions, err := s.repo.MentionsByCommentIDs(ctx, ids)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	tree := buildTree(flat, nil, reactions, userReactions, mentions, currentUserID)
 	if tree == nil {
 		tree = []comment_dto.Response{}
 	}
@@ -74,9 +79,9 @@ func (s *ServiceImpl) Create(ctx context.Context, req comment_dto.CreateRequest,
 		if err != nil {
 			return comment_dto.Response{}, apperror.NotFound("Komentar induk tidak ditemukan")
 		}
-		if depth >= 2 {
+		if depth >= 1 {
 			return comment_dto.Response{}, apperror.Validation("Validation Error", []apperror.FieldError{
-				{Attribute: "parentID", Message: "Kedalaman balasan maksimal 2 level"},
+				{Attribute: "parentID", Message: "Tidak bisa membalas balasan — kedalaman balasan maksimal 1 level"},
 			})
 		}
 	}
@@ -94,15 +99,18 @@ func (s *ServiceImpl) Create(ctx context.Context, req comment_dto.CreateRequest,
 	if err != nil {
 		return comment_dto.Response{}, apperror.Internal("Gagal menyimpan komentar")
 	}
+	if err := s.repo.SetMentions(ctx, id, req.MentionedUserIDs); err != nil {
+		return comment_dto.Response{}, apperror.Internal("Gagal menyimpan mention")
+	}
 	return s.getWithThread(ctx, id, userID)
 }
 
-func (s *ServiceImpl) Update(ctx context.Context, id int64, req comment_dto.UpdateRequest, userID int64) (comment_dto.Response, error) {
+func (s *ServiceImpl) Update(ctx context.Context, id int64, req comment_dto.UpdateRequest, userID int64, isModerator bool) (comment_dto.Response, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return comment_dto.Response{}, apperror.NotFound("Komentar tidak ditemukan")
 	}
-	if existing.CreatedBy != userID {
+	if existing.CreatedBy != userID && !isModerator {
 		return comment_dto.Response{}, apperror.Forbidden("Anda tidak berhak mengubah komentar ini")
 	}
 	if strings.TrimSpace(req.CommentText) == "" && req.MediaURL == "" {
@@ -121,6 +129,9 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req comment_dto.Upda
 
 	if err := s.repo.Update(ctx, id, ptr.Str(req.CommentText), ptr.Str(req.MediaURL), ptr.Str(req.MediaType), userID); err != nil {
 		return comment_dto.Response{}, apperror.Internal("")
+	}
+	if err := s.repo.SetMentions(ctx, id, req.MentionedUserIDs); err != nil {
+		return comment_dto.Response{}, apperror.Internal("Gagal menyimpan mention")
 	}
 
 	// Best-effort cleanup of the previously-stored local image when it's
@@ -196,15 +207,20 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, contentType 
 	if err != nil {
 		return nil, 0, apperror.Internal("")
 	}
+	ids := commentIDs(flat)
 	// Top-level rows only in this list — reaction counts shown here have no
 	// "isOwner"-style per-caller state, and replies are loaded via CMSGet.
-	reactions, _, err := s.loadReactions(ctx, commentIDs(flat), 0)
+	reactions, _, err := s.loadReactions(ctx, ids, 0)
+	if err != nil {
+		return nil, 0, apperror.Internal("")
+	}
+	mentions, err := s.repo.MentionsByCommentIDs(ctx, ids)
 	if err != nil {
 		return nil, 0, apperror.Internal("")
 	}
 	out := make([]comment_dto.Response, len(flat))
 	for i, c := range flat {
-		out[i] = toResponse(c, reactions, nil, 0, nil)
+		out[i] = toResponse(c, reactions, nil, mentions, 0, nil)
 	}
 	return out, int(total), nil
 }
@@ -275,7 +291,11 @@ func (s *ServiceImpl) getWithThread(ctx context.Context, id, currentUserID int64
 	if err != nil {
 		return comment_dto.Response{}, apperror.Internal("")
 	}
-	for _, node := range buildTree(flat, target.ParentID, reactions, userReactions, currentUserID) {
+	mentions, err := s.repo.MentionsByCommentIDs(ctx, ids)
+	if err != nil {
+		return comment_dto.Response{}, apperror.Internal("")
+	}
+	for _, node := range buildTree(flat, target.ParentID, reactions, userReactions, mentions, currentUserID) {
 		if node.CommentID == id {
 			return node, nil
 		}
@@ -305,15 +325,15 @@ func commentIDs(comments []comment_model.Comment) []int64 {
 
 // buildTree recursively groups a flat comment list by parentID into the
 // nested Response shape. parentID nil selects top-level comments.
-func buildTree(flat []comment_model.Comment, parentID *int64, reactions map[int64]map[string]int64, userReactions map[int64][]string, currentUserID int64) []comment_dto.Response {
+func buildTree(flat []comment_model.Comment, parentID *int64, reactions map[int64]map[string]int64, userReactions map[int64][]string, mentions map[int64][]comment_model.MentionAuthor, currentUserID int64) []comment_dto.Response {
 	var out []comment_dto.Response
 	for _, c := range flat {
 		if !samePtr(c.ParentID, parentID) {
 			continue
 		}
 		childID := c.CommentID
-		replies := buildTree(flat, &childID, reactions, userReactions, currentUserID)
-		out = append(out, toResponse(c, reactions, userReactions, currentUserID, replies))
+		replies := buildTree(flat, &childID, reactions, userReactions, mentions, currentUserID)
+		out = append(out, toResponse(c, reactions, userReactions, mentions, currentUserID, replies))
 	}
 	return out
 }
@@ -325,7 +345,7 @@ func samePtr(a, b *int64) bool {
 	return *a == *b
 }
 
-func toResponse(c comment_model.Comment, reactions map[int64]map[string]int64, userReactions map[int64][]string, currentUserID int64, replies []comment_dto.Response) comment_dto.Response {
+func toResponse(c comment_model.Comment, reactions map[int64]map[string]int64, userReactions map[int64][]string, mentions map[int64][]comment_model.MentionAuthor, currentUserID int64, replies []comment_dto.Response) comment_dto.Response {
 	counts := reactions[c.CommentID]
 	if counts == nil {
 		counts = map[string]int64{}
@@ -342,6 +362,10 @@ func toResponse(c comment_model.Comment, reactions map[int64]map[string]int64, u
 	if replies == nil {
 		replies = []comment_dto.Response{}
 	}
+	mentionDTOs := make([]comment_dto.AuthorDTO, 0, len(mentions[c.CommentID]))
+	for _, m := range mentions[c.CommentID] {
+		mentionDTOs = append(mentionDTOs, comment_dto.AuthorDTO{UserID: m.UserID, Name: m.FullName, Photo: strOr(m.PhotoURL)})
+	}
 	return comment_dto.Response{
 		CommentID:   c.CommentID,
 		ContentType: c.ContentType,
@@ -354,6 +378,7 @@ func toResponse(c comment_model.Comment, reactions map[int64]map[string]int64, u
 		CreatedDate: c.CreatedDate.Format("2006-01-02 15:04:05"),
 		Author:      comment_dto.AuthorDTO{UserID: c.CreatedBy, Name: c.AuthorName, Photo: strOr(c.AuthorPhoto)},
 		Reactions:   comment_dto.ReactionsDTO{Counts: counts, UserTypes: userTypes},
+		Mentions:    mentionDTOs,
 		Replies:     replies,
 	}
 }

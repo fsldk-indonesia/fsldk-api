@@ -38,4 +38,8 @@ type Repository interface {
 	ReactionExists(ctx context.Context, commentID, userID int64, reactionType string) (bool, error)
 	CreateReaction(ctx context.Context, commentID, userID int64, reactionType string) error
 	DeleteReaction(ctx context.Context, commentID, userID int64, reactionType string) error
+
+	// Mentions
+	SetMentions(ctx context.Context, commentID int64, userIDs []int64) error
+	MentionsByCommentIDs(ctx context.Context, commentIDs []int64) (map[int64][]comment_model.MentionAuthor, error)
 }

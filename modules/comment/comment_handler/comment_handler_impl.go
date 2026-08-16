@@ -31,15 +31,15 @@ func idParam(c *gin.Context) (int64, bool) {
 	return id, true
 }
 
-// hasCommentDeletePermission reads the permission list RequirePermission
-// stashed in context when it ran further down the middleware chain for the
-// admin-only routes. On the owner-only routes (no RequirePermission
-// attached) this always returns false, which is the correct fallback.
-func hasCommentDeletePermission(c *gin.Context) bool {
+// hasPermission reads the permission list stashed in context by
+// middlewares.RequirePermission or middlewares.LoadPermissions. On routes
+// with neither attached this always returns false, which is the correct
+// fallback (owner-only).
+func hasPermission(c *gin.Context, code string) bool {
 	if perms, ok := c.Get(constants.CtxPermissions); ok {
 		if list, ok := perms.([]string); ok {
 			for _, p := range list {
-				if p == constants.PermCommentDelete {
+				if p == code {
 					return true
 				}
 			}
@@ -98,7 +98,7 @@ func (h *HandlerImpl) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	data, err := h.svc.Update(c.Request.Context(), id, req, appctx.UserID(c))
+	data, err := h.svc.Update(c.Request.Context(), id, req, appctx.UserID(c), hasPermission(c, constants.PermCommentUpdate))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -111,7 +111,7 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), id, appctx.UserID(c), hasCommentDeletePermission(c)); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id, appctx.UserID(c), hasPermission(c, constants.PermCommentDelete)); err != nil {
 		httphelper.Error(c, err)
 		return
 	}

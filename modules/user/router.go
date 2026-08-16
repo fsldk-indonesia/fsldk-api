@@ -14,6 +14,10 @@ func RegisterRoutes(rg *gin.RouterGroup, h user_handler.Handler, mw *middlewares
 	g := rg.Group("/users")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
+		// Siapa pun yang login+verified boleh mencari nama pengguna untuk
+		// @mention di komentar — bukan permission user.view (lihat modules/comment).
+		g.GET("/mention-search", h.SearchMentionable)
+
 		g.GET("", mw.RequirePermission(constants.PermUserView), h.List)
 		g.GET("/:id", mw.RequirePermission(constants.PermUserView), h.Get)
 		g.POST("", mw.RequirePermission(constants.PermUserCreate), h.Create)

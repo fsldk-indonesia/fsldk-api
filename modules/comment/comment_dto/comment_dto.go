@@ -3,19 +3,25 @@ package comment_dto
 
 // CreateRequest is the body for creating a new comment or reply.
 type CreateRequest struct {
-	ContentType string `json:"contentType" validate:"required,oneof=article news"`
+	ContentType string `json:"contentType" validate:"required,oneof=article news event"`
 	ContentID   int64  `json:"contentID" validate:"required,min=1"`
 	ParentID    *int64 `json:"parentID"`
 	CommentText string `json:"commentText" validate:"max=2000"`
 	MediaURL    string `json:"mediaURL" validate:"max=500"`
 	MediaType   string `json:"mediaType" validate:"omitempty,oneof=image gif sticker"`
+	// MentionedUserIDs are the users the composer picked from the @mention
+	// autocomplete — deliberately structured (not parsed back out of
+	// commentText) so the pill rendering is always accurate. A user may
+	// mention themselves.
+	MentionedUserIDs []int64 `json:"mentionedUserIDs" validate:"omitempty,max=20,dive,gt=0"`
 }
 
 // UpdateRequest is the body for editing an existing comment.
 type UpdateRequest struct {
-	CommentText string `json:"commentText" validate:"max=2000"`
-	MediaURL    string `json:"mediaURL" validate:"max=500"`
-	MediaType   string `json:"mediaType" validate:"omitempty,oneof=image gif sticker"`
+	CommentText      string  `json:"commentText" validate:"max=2000"`
+	MediaURL         string  `json:"mediaURL" validate:"max=500"`
+	MediaType        string  `json:"mediaType" validate:"omitempty,oneof=image gif sticker"`
+	MentionedUserIDs []int64 `json:"mentionedUserIDs" validate:"omitempty,max=20,dive,gt=0"`
 }
 
 // ReactRequest is the body for toggling a reaction on a comment.
@@ -52,6 +58,7 @@ type Response struct {
 	CreatedDate string       `json:"createdDate"`
 	Author      AuthorDTO    `json:"author"`
 	Reactions   ReactionsDTO `json:"reactions"`
+	Mentions    []AuthorDTO  `json:"mentions"`
 	Replies     []Response   `json:"replies"`
 }
 

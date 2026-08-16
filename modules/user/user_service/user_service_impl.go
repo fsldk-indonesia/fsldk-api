@@ -61,6 +61,21 @@ func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, roleID int64) (
 	return out, int(total), nil
 }
 
+func (s *ServiceImpl) SearchMentionable(ctx context.Context, search string, limit int) ([]user_dto.MentionSearchResult, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	users, err := s.repo.SearchActive(ctx, strings.TrimSpace(search), limit)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	out := make([]user_dto.MentionSearchResult, 0, len(users))
+	for _, u := range users {
+		out = append(out, user_dto.MentionSearchResult{UserID: u.UserID, FullName: u.FullName, PhotoURL: u.PhotoURL.String})
+	}
+	return out, nil
+}
+
 func (s *ServiceImpl) Get(ctx context.Context, id int64) (user_dto.Response, error) {
 	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {

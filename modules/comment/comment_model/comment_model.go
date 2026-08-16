@@ -22,6 +22,16 @@ type Comment struct {
 	UpdatedBy   *int64     `gorm:"column:updatedBy" json:"updatedBy"`
 }
 
+// MentionAuthor adalah hasil join tr_comment_mention + ms_user — ringkasan
+// pengguna yang di-@mention pada satu komentar, dipakai membangun
+// comment_dto.Response.Mentions.
+type MentionAuthor struct {
+	CommentID int64   `gorm:"column:commentID"`
+	UserID    int64   `gorm:"column:userID"`
+	FullName  string  `gorm:"column:fullName"`
+	PhotoURL  *string `gorm:"column:photoURL"`
+}
+
 // CommentReaction merepresentasikan satu baris tr_comment_reaction.
 type CommentReaction struct {
 	ReactionID   int64     `gorm:"column:reactionID;primaryKey" json:"reactionID"`
@@ -40,4 +50,4 @@ var ReactionTypes = []string{"like", "dislike", "love", "heart_eyes", "laughing"
 // to. Add an entry here (and update the matching `oneof=...` validate tags
 // in comment_dto) whenever a new content module needs comments — no
 // migration required since contentType is a plain VARCHAR column.
-var ValidContentTypes = []string{"article", "news"}
+var ValidContentTypes = []string{"article", "news", "event"}

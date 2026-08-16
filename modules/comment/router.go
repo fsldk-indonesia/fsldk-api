@@ -27,8 +27,12 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h comment_handler.Handler, mw *middl
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
 		g.POST("", h.Create)
-		g.PUT("/:id", h.Update)
-		g.DELETE("/:id", h.Delete) // owner OR comment.delete — checked in service, see Delete
+		// LoadPermissions: Update/Delete otorisasinya owner ATAU pemegang
+		// comment.update/comment.delete (dicek di service) — bukan
+		// RequirePermission(code) karena keduanya tidak boleh menolak pemilik
+		// komentar yang tidak punya permission tsb.
+		g.PUT("/:id", mw.LoadPermissions(), h.Update)    // owner OR comment.update — checked in service, see Update
+		g.DELETE("/:id", mw.LoadPermissions(), h.Delete) // owner OR comment.delete — checked in service, see Delete
 		g.POST("/:id/react", h.React)
 		g.GET("/gif-search", h.GifSearch)
 		g.GET("/gif-categories", h.GifCategories)

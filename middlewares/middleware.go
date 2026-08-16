@@ -121,6 +121,25 @@ func (m *Middleware) RequirePermission(code string) gin.HandlerFunc {
 	}
 }
 
+// LoadPermissions memuat seluruh kode permission milik role pengguna dan
+// menyimpannya ke context tanpa pernah menolak request — berbeda dari
+// RequirePermission yang menolak bila kode tertentu tidak dimiliki. Dipakai
+// pada route "milik-sendiri" yang otorisasinya bercabang antara pemilik
+// konten ATAU pemegang permission tertentu (mis. edit/hapus komentar oleh
+// moderator — lihat modules/comment).
+func (m *Middleware) LoadPermissions() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if roleIDVal, ok := c.Get(constants.CtxRoleID); ok {
+			if roleID, ok := roleIDVal.(int64); ok {
+				if perms, err := m.Perm.RolePermissions(c.Request.Context(), roleID); err == nil {
+					c.Set(constants.CtxPermissions, perms)
+				}
+			}
+		}
+		c.Next()
+	}
+}
+
 func extractBearer(c *gin.Context) string {
 	h := c.GetHeader("Authorization")
 	if h == "" {
