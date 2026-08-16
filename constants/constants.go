@@ -92,6 +92,11 @@ const (
 	PermSubmissionReopen         = "submission.reopen"
 	PermSubmissionReassess       = "submission.reassess"
 	PermKaderDeactivate          = "kader.deactivate"
+
+	PermReportRegionView     = "report.region.view"
+	PermReportRegionExport   = "report.region.export"
+	PermReportNationalView   = "report.national.view"
+	PermReportNationalExport = "report.national.export"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -204,6 +209,10 @@ const (
 	TableSubmissionReview = "tr_submission_review"
 	TableLevel            = "lk_level"
 	TableLevelisasiResult = "tr_levelisasi_result"
+
+	TableFormAuditLog = "tr_form_audit_log"
+	TableUserAuditLog = "tr_user_audit_log"
+	TableExportLog    = "tr_export_log"
 )
 
 // Kunci yang disimpan pada gin.Context oleh middleware autentikasi.

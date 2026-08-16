@@ -70,6 +70,12 @@ import (
 	"fsldk-api/modules/upload/upload_service"
 	uploadpkg "fsldk-api/pkg/upload"
 
+	"fsldk-api/modules/report"
+	"fsldk-api/modules/report/report_handler"
+	"fsldk-api/modules/report/report_repository"
+	"fsldk-api/modules/report/report_service"
+	"fsldk-api/pkg/auditlog"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -83,6 +89,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	mail := mailer.New(cfg)
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
 	uploader := uploadpkg.NewUploader("assets/uploads", cfg.AppURL)
+	audit := auditlog.New(db)
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)
@@ -95,21 +102,23 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleRepo := article_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
+	reportRepo := report_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
-	formSvc := submission_form_service.NewService(formRepo)
+	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
-	userSvc := user_service.NewService(userRepo, orgSvc)
+	userSvc := user_service.NewService(userRepo, orgSvc, audit)
 	roleSvc := role_service.NewService(roleRepo)
 	newsSvc := news_service.NewService(newsRepo)
 	articleSvc := article_service.NewService(articleRepo)
-	dashSvc := dashboard_service.NewService(dashRepo)
+	dashSvc := dashboard_service.NewService(dashRepo, formRepo)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
+	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -124,6 +133,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
+	reportH := report_handler.NewHandler(reportSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -166,6 +176,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	submission_form.RegisterRoutes(api, formH, mw)
 	submission.RegisterRoutes(api, subH, mw)
 	dashboard.RegisterRoutes(api, dashH, mw)
+	report.RegisterRoutes(api, reportH, mw)
 
 	news.RegisterPublicRoutes(pub, newsH)
 	news.RegisterCMSRoutes(api, newsH, mw)

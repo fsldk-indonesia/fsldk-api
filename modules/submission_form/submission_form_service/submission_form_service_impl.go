@@ -11,15 +11,19 @@ import (
 	"fsldk-api/modules/submission_form/submission_form_dto"
 	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
+	"fsldk-api/pkg/auditlog"
 )
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo submission_form_repository.Repository
+	repo  submission_form_repository.Repository
+	audit *auditlog.Logger
 }
 
 // NewService membuat Service submission_form.
-func NewService(repo submission_form_repository.Repository) Service { return &ServiceImpl{repo: repo} }
+func NewService(repo submission_form_repository.Repository, audit *auditlog.Logger) Service {
+	return &ServiceImpl{repo: repo, audit: audit}
+}
 
 // ---------- helper ----------
 
@@ -129,6 +133,10 @@ func (s *ServiceImpl) CreateForm(ctx context.Context, req submission_form_dto.Cr
 	if err != nil {
 		return submission_form_dto.FormResponse{}, apperror.Internal("Gagal membuat form")
 	}
+	s.audit.LogForm(ctx, auditlog.Entry{
+		ActorUserID: actorID, Action: "CREATE", Entity: "ms_submission_form", EntityID: id,
+		After: map[string]interface{}{"formCode": req.FormCode, "formName": req.FormName},
+	})
 	f, err := s.repo.FindFormByID(ctx, id)
 	if err != nil {
 		return submission_form_dto.FormResponse{}, apperror.Internal("")
@@ -265,6 +273,10 @@ func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actor
 	if err := s.repo.ArchiveOtherPublished(ctx, v.FormID, versionID); err != nil {
 		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")
 	}
+	s.audit.LogForm(ctx, auditlog.Entry{
+		ActorUserID: actorID, Action: "PUBLISH", Entity: "ms_submission_form_version", EntityID: versionID,
+		After: map[string]interface{}{"formID": v.FormID, "versionNumber": v.VersionNumber},
+	})
 	v, err = s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {
 		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")

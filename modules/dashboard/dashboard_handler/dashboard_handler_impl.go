@@ -1,6 +1,7 @@
 package dashboard_handler
 
 import (
+	"fsldk-api/base/appctx"
 	"fsldk-api/base/httphelper"
 	"fsldk-api/modules/dashboard/dashboard_service"
 
@@ -14,7 +15,12 @@ type HandlerImpl struct{ svc dashboard_service.Service }
 func NewHandler(svc dashboard_service.Service) Handler { return &HandlerImpl{svc: svc} }
 
 func (h *HandlerImpl) Summary(c *gin.Context) {
-	data, err := h.svc.Summary(c.Request.Context())
+	caller := dashboard_service.CallerScope{
+		OrganizationID:       appctx.OrganizationID(c),
+		OrganizationTypeCode: appctx.OrganizationTypeCode(c),
+		WildcardTierAccess:   appctx.WildcardTierAccess(c),
+	}
+	data, err := h.svc.Summary(c.Request.Context(), caller)
 	if err != nil {
 		httphelper.Error(c, err)
 		return

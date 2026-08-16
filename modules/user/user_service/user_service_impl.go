@@ -12,6 +12,7 @@ import (
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/modules/user/user_repository"
+	"fsldk-api/pkg/auditlog"
 )
 
 // sortColumns memetakan field sort yang diizinkan ke kolom database.
@@ -25,11 +26,30 @@ var sortColumns = map[string]string{
 type ServiceImpl struct {
 	repo     user_repository.Repository
 	orgScope OrgScopeChecker
+	audit    *auditlog.Logger
 }
 
 // NewService membuat Service pengguna.
-func NewService(repo user_repository.Repository, orgScope OrgScopeChecker) Service {
-	return &ServiceImpl{repo: repo, orgScope: orgScope}
+func NewService(repo user_repository.Repository, orgScope OrgScopeChecker, audit *auditlog.Logger) Service {
+	return &ServiceImpl{repo: repo, orgScope: orgScope, audit: audit}
+}
+
+// nullIntValue mengekstrak nilai polos dari sql.NullInt64 untuk payload audit
+// (nil bila kosong), supaya afterJSON/beforeJSON tidak membocorkan bentuk
+// internal sql.NullInt64.
+func nullIntValue(v sql.NullInt64) interface{} {
+	if !v.Valid {
+		return nil
+	}
+	return v.Int64
+}
+
+// nullStringValue adalah padanan nullIntValue untuk sql.NullString.
+func nullStringValue(v sql.NullString) interface{} {
+	if !v.Valid {
+		return nil
+	}
+	return v.String
 }
 
 // toResponse memetakan model User ke DTO Response (logika pemetaan berada di
@@ -186,11 +206,17 @@ func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, ca
 	if !active {
 		_ = s.repo.SetActive(ctx, id, false, caller.UserID)
 	}
+	s.audit.LogUser(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, ActorOrganizationID: caller.OrganizationID,
+		Action: "CREATE", Entity: "ms_user", EntityID: id,
+		After: map[string]interface{}{"roleID": req.RoleID, "organizationID": nullIntValue(orgID), "wildcardTierAccess": nullStringValue(wildcard)},
+	})
 	return s.Get(ctx, id)
 }
 
 func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateRequest, caller CallerScope) (user_dto.Response, error) {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
+	before, err := s.repo.FindByID(ctx, id)
+	if err != nil {
 		return user_dto.Response{}, apperror.NotFound("Pengguna tidak ditemukan")
 	}
 	email := strings.ToLower(strings.TrimSpace(req.Email))
@@ -208,6 +234,12 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateR
 	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, orgID, wildcard, caller.UserID); err != nil {
 		return user_dto.Response{}, apperror.Internal("")
 	}
+	s.audit.LogUser(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, ActorOrganizationID: caller.OrganizationID,
+		Action: "UPDATE", Entity: "ms_user", EntityID: id,
+		Before: map[string]interface{}{"roleID": before.RoleID, "organizationID": nullIntValue(before.OrganizationID), "wildcardTierAccess": nullStringValue(before.WildcardTierAccess)},
+		After:  map[string]interface{}{"roleID": req.RoleID, "organizationID": nullIntValue(orgID), "wildcardTierAccess": nullStringValue(wildcard)},
+	})
 	if strings.TrimSpace(req.Password) != "" {
 		hashed, err := security.HashPassword(req.Password)
 		if err != nil {
