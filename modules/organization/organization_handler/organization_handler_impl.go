@@ -47,6 +47,20 @@ func (h *HandlerImpl) Me(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+func (h *HandlerImpl) Directory(c *gin.Context) {
+	typeCode := c.Query("organizationTypeCode")
+	if typeCode != "LDK" && typeCode != "PUSKOMDA" && typeCode != "PUSKOMNAS" {
+		httphelper.Error(c, apperror.BadRequest("organizationTypeCode wajib diisi (LDK/PUSKOMDA/PUSKOMNAS)"))
+		return
+	}
+	data, err := h.svc.Directory(c.Request.Context(), typeCode)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	data, total, err := h.svc.List(c.Request.Context(), callerScope(c), q, c.Query("organizationTypeCode"))

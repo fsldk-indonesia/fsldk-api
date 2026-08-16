@@ -24,6 +24,9 @@ type Service interface {
 	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
 
 	AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error)
+	// Directory mengembalikan organisasi aktif bertipe typeCode tanpa
+	// dibatasi cakupan akses pemanggil (mis. Kader memilih LDK tujuan).
+	Directory(ctx context.Context, typeCode string) ([]organization_dto.DirectoryEntry, error)
 	// AccessibleOrganizationIDs mengembalikan seluruh organizationID yang
 	// dapat diakses caller — dipakai modul lain (mis. submission) untuk
 	// menyaring data tanpa perlu mengulang logika cascade/wildcard.

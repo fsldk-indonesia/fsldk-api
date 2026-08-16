@@ -121,6 +121,15 @@ func (r *RepositoryImpl) Children(ctx context.Context, id int64) ([]organization
 	return out, err
 }
 
+func (r *RepositoryImpl) ListActiveByType(ctx context.Context, typeCode string) ([]organization_model.Organization, error) {
+	var out []organization_model.Organization
+	err := r.db.WithContext(ctx).Table("ms_organization o").
+		Select(selectCols).Joins(joinParent).
+		Where("o.organizationTypeCode = ? AND o.isActive = 1", typeCode).
+		Order("o.organizationName ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *RepositoryImpl) RootPuskomnasID(ctx context.Context) (int64, error) {
 	var id int64
 	err := r.db.WithContext(ctx).Table("ms_organization").

@@ -171,6 +171,23 @@ func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope) ([
 	return out, nil
 }
 
+func (s *ServiceImpl) Directory(ctx context.Context, typeCode string) ([]organization_dto.DirectoryEntry, error) {
+	orgs, err := s.repo.ListActiveByType(ctx, typeCode)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	out := make([]organization_dto.DirectoryEntry, 0, len(orgs))
+	for _, o := range orgs {
+		out = append(out, organization_dto.DirectoryEntry{
+			OrganizationID:   o.OrganizationID,
+			OrganizationName: o.OrganizationName,
+			ProvinceName:     o.ProvinceName.String,
+			CityName:         o.CityName.String,
+		})
+	}
+	return out, nil
+}
+
 func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string) ([]organization_dto.Response, int, error) {
 	f := organization_dto.ListFilter{
 		OrganizationTypeCode: typeFilter,

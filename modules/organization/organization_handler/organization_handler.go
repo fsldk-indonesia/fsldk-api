@@ -6,6 +6,7 @@ import "github.com/gin-gonic/gin"
 // Handler adalah kontrak handler HTTP modul organization.
 type Handler interface {
 	Me(c *gin.Context)
+	Directory(c *gin.Context)
 	List(c *gin.Context)
 	Get(c *gin.Context)
 	Children(c *gin.Context)

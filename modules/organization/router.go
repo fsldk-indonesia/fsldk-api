@@ -15,6 +15,12 @@ func RegisterRoutes(rg *gin.RouterGroup, h organization_handler.Handler, mw *mid
 	// cukup terautentikasi, sama seperti /me/menus.
 	rg.GET("/me/organizations", mw.Auth(), mw.RequireVerified(), h.Me)
 
+	// Direktori organisasi aktif lintas cakupan akses — dipakai skenario
+	// pemilihan bebas seperti Kader memilih LDK tujuan pendaftaran Sensus
+	// Kader, bukan navigasi/manajemen organisasi sehingga tidak dikunci
+	// permission admin organization.*.
+	rg.GET("/organizations/directory", mw.Auth(), mw.RequireVerified(), h.Directory)
+
 	viewPerm := mw.RequirePermission(
 		constants.PermOrganizationProfileManage,
 		constants.PermOrganizationLDKList,

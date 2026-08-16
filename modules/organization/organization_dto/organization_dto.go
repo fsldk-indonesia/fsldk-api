@@ -28,6 +28,17 @@ type MeOrganization struct {
 	ParentOrganizationID *int64 `json:"parentOrganizationID"`
 }
 
+// DirectoryEntry adalah entri ringkas organisasi aktif untuk kebutuhan
+// pemilihan bebas lintas organisasi (mis. Kader memilih LDK tujuan
+// pendaftaran) — tidak memuat data kontak, tidak dibatasi cakupan akses
+// pemanggil, karena nama/wilayah organisasi bukan data sensitif.
+type DirectoryEntry struct {
+	OrganizationID   int64  `json:"organizationID"`
+	OrganizationName string `json:"organizationName"`
+	ProvinceName     string `json:"provinceName,omitempty"`
+	CityName         string `json:"cityName,omitempty"`
+}
+
 // CreateRequest adalah body membuat organisasi baru. ParentOrganizationID
 // wajib diisi bila membuat LDK (kecuali pembuat adalah Puskomda — parent
 // otomatis dikunci ke organisasi pembuat, nilai dari client diabaikan);
