@@ -40,6 +40,11 @@ import (
 	"fsldk-api/modules/article/article_repository"
 	"fsldk-api/modules/article/article_service"
 
+	"fsldk-api/modules/event"
+	"fsldk-api/modules/event/event_handler"
+	"fsldk-api/modules/event/event_repository"
+	"fsldk-api/modules/event/event_service"
+
 	"fsldk-api/modules/dashboard"
 	"fsldk-api/modules/dashboard/dashboard_handler"
 	"fsldk-api/modules/dashboard/dashboard_repository"
@@ -75,6 +80,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleRepo := role_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
+	eventRepo := event_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
@@ -86,6 +92,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleSvc := role_service.NewService(roleRepo)
 	newsSvc := news_service.NewService(newsRepo)
 	articleSvc := article_service.NewService(articleRepo)
+	eventSvc := event_service.NewService(eventRepo)
 	dashSvc := dashboard_service.NewService(dashRepo)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
@@ -97,6 +104,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleH := role_handler.NewHandler(roleSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
+	eventH := event_handler.NewHandler(eventSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
@@ -143,6 +151,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	news.RegisterCMSRoutes(api, newsH, mw)
 	article.RegisterPublicRoutes(pub, articleH)
 	article.RegisterCMSRoutes(api, articleH, mw)
+	event.RegisterPublicRoutes(pub, eventH)
+	event.RegisterCMSRoutes(api, eventH, mw)
 
 	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
