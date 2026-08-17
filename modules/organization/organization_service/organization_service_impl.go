@@ -150,6 +150,9 @@ func (s *ServiceImpl) AccessibleOrganizationIDs(ctx context.Context, callerOrgan
 }
 
 func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error) {
+	if caller.OrganizationID == nil && caller.WildcardTierAccess == "" {
+		return []organization_dto.MeOrganization{}, nil
+	}
 	orgs, _, err := s.resolveAccessible(ctx, caller, organization_dto.ListFilter{})
 	if err != nil {
 		return nil, err
