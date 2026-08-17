@@ -28,9 +28,11 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 ## 2. Struktur Modul (Subfolder + Interface/Impl)
 
-Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
+Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`, `organization`, `submission_form`, `submission`, `report`) memiliki struktur subfolder yang identik. Contoh modul `news`:
 
 > Modul `upload` (unggah gambar CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
+>
+> Modul `submission` adalah satu-satunya modul yang **tidak** memakai `RequireOrganizationScope` generik di router-nya (lihat §5) — kepemilikan submission diperiksa di service layer sendiri (`checkOrgAccess`), karena submission ber-subjek `ORGANIZATION` terkunci ke organisasi pemanggil sedangkan ber-subjek `KADER` bebas menunjuk organisasi manapun, dua aturan yang tidak bisa diwakili satu middleware path/query param generik. Lihat §11.
 
 ```
 modules/news/
@@ -118,7 +120,8 @@ Didefinisikan di [`middlewares/`](../middlewares), dipasang berlapis per grup ro
 | `RateLimit(perMenit, burst)` | Token-bucket per-IP, angka berbeda per endpoint sensitif (login 5/menit, register 5/10menit, dst.) | Per-route (`auth.go`) |
 | `Auth()` | Parse & validasi JWT access token, simpan identitas ke `gin.Context` | Per-grup (route terproteksi) |
 | `RequireVerified()` | Tolak (403 `EMAIL_NOT_VERIFIED`) bila email belum diverifikasi | Setelah `Auth()`, kecuali endpoint di "daftar aman" |
-| `RequirePermission(code)` | Tolak (403) bila role tidak punya permission tsb. — query `map_role_permission` via `PermissionLoader` (diimplementasikan modul `permission`, di-inject untuk menghindari circular dependency) | Per-endpoint CMS |
+| `RequirePermission(code...)` | Tolak (403) bila role tidak punya **salah satu** permission tsb. (variadic, any-match) — query `map_role_permission` via `PermissionLoader` (diimplementasikan modul `permission`, di-inject untuk menghindari circular dependency) | Per-endpoint CMS |
+| `RequireOrganizationScope(paramName)` | Tolak (403) bila organisasi pada path param (`:id` dll.) di luar cakupan akses caller — cascade LDK/Puskomda/Puskomnas atau `wildcardTierAccess`, lewat `OrgScopeLoader` (diimplementasikan modul `organization`, pola sama dengan `PermissionLoader`) | Per-endpoint yang menyentuh organisasi tertentu (§11) |
 
 ---
 
@@ -132,7 +135,7 @@ Mengadaptasi pola `ldksyahid-app`: **tidak ada kolom `authProvider`**. Metode au
 | **Login lokal** | `POST /auth/login` → verifikasi bcrypt → JWT diterbitkan (klaim `emailVerified` sesuai status saat itu) |
 | **Login Google** | `POST /auth/google` (kirim ID Token) → verifikasi ke Google (`GOOGLE_TOKENINFO_URL`) → 3 kondisi: (1) `googleID` cocok → login langsung; (2) email cocok akun lokal → auto-link + tandai terverifikasi; (3) tidak cocok → auto-provision akun baru, langsung terverifikasi |
 
-JWT access token membawa klaim `userID`, `roleID`, `roleName`, `emailVerified` (lihat [`base/token`](../base/token)) — dipakai middleware tanpa perlu query ulang ke database di setiap request (kecuali untuk cek permission, yang memang harus real-time agar perubahan role langsung berlaku).
+JWT access token membawa klaim `userID`, `roleID`, `roleName`, `emailVerified`, serta `organizationID`/`organizationTypeCode`/`wildcardTierAccess` (lihat [`base/token`](../base/token) — `GenerateAccess` menerima `AccessParams` struct, bukan parameter posisional) — dipakai middleware tanpa perlu query ulang ke database di setiap request (kecuali untuk cek permission/cakupan organisasi, yang memang harus real-time agar perubahan role/organisasi langsung berlaku).
 
 ---
 
@@ -182,6 +185,11 @@ templateData, _ := os.ReadFile(path)
 | `0002_seed.up.sql` | Role bawaan (Super Admin/Editor/Kontributor), permission + atribut menu, kategori berita/artikel |
 | `0003_seed_admin.up.sql` | 1 akun Super Admin awal (kredensial di [Instalasi §7](./INSTALLATION.md#7-kredensial-admin-fsldk-bawaan)) |
 | `0004_shortlink.up.sql` | Tabel `ms_shortlink` + permission `shortlink.*` + pemetaan ke role Super Admin/Editor |
+| `0005_organization_access.up.sql` | `lk_organization_type`, `ms_organization` (self-referencing), `ms_user` +`organizationID`/`wildcardTierAccess`, 4 role baru (LDK Admin/Puskomda Verifikator/Puskomnas Verifikator/Kader), permission `organization.*` |
+| `0006_submission_form_engine.up.sql` | `ms_submission_form`/`_version`/`_section`/`_field`/`_field_option`, `ms_submission_period` (skema siap, belum dipakai — OQ-10), permission `submission_form.*` |
+| `0007_submission_core.up.sql` | `tr_submission` (generated column `ownerOrgKey`/`ownerUserKey` untuk unique constraint yang benar lintas subjek ORGANIZATION/KADER), `tr_submission_answer`, `tr_submission_status_history`, `ms_kader`, permission `submission.create/update/cancel/view` |
+| `0008_review_workflow.up.sql` | `tr_submission_review`, `lk_level` (seed PRA_MULA/MULA/MADYA/MANDIRI), `tr_levelisasi_result` (`isCurrent`/`isCurrentKey` generated column — riwayat multi-siklus), permission `submission.review.*`/`.approve.*`/`.level.establish`/`.publish`/`.reopen`/`.reassess`, `kader.deactivate` |
+| `0009_audit_reporting.up.sql` | `tr_form_audit_log`, `tr_user_audit_log`, `tr_export_log`, permission `report.region.*`/`report.national.*` |
 
 Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql`) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
 
@@ -194,6 +202,31 @@ Tidak ada logika seed di kode Go (`EnsureSuperAdmin` dkk. sudah dihapus) — **m
 ## 10. Menu Sidebar CMS Dinamis
 
 Sidebar CMS **tidak hardcode**. Item menu (selain Dashboard) diambil dari `GET /me/menus`, yang meng-query `lk_permission` (kolom `menuLabel`/`menuIcon`/`menuRoute`/`sortOrder`) di-`JOIN` `map_role_permission` sesuai role pengguna yang login — lihat [`modules/permission`](../modules/permission). Permission yang tidak berelasi ke menu (`menuRoute IS NULL`) tidak pernah muncul sebagai item menu.
+
+> Kader (satu-satunya role tanpa tier organisasi) tidak punya menu Dashboard yang berguna — frontend mengarahkannya ke halaman Pendataan alih-alih Dashboard sesudah login (`AuthRepository.defaultCmsPath()` di `fsldk-web`). Navigasi langsung/bookmark ke `/cms/dashboard` tetap didukung, mengembalikan ringkasan kosong (§12 API.md), bukan error — lihat pola yang sama di §11 di bawah.
+
+---
+
+## 11. Organization Scope & Cascade Access
+
+Modul `organization` adalah satu-satunya sumber kebenaran cakupan akses organisasi, dipakai ulang lintas modul (`submission`, `dashboard`, `report`) lewat dua jalur:
+
+1. **`RequireOrganizationScope` (middleware, §5)** — untuk endpoint yang menyentuh satu organisasi spesifik via path param (`GET/PUT /organizations/:id`, dst).
+2. **`organization_service.AccessibleOrganizationIDs(...)` (dipanggil langsung antar-service)** — untuk endpoint yang perlu menyaring *daftar* data ke seluruh organisasi yang dapat diakses caller sekaligus (`GET /submissions`, `GET /dashboard/summary`, `GET /reports/submissions/export`) — dipanggil lewat `OrgScopeResolver` interface yang di-inject ke `submission_service`/`dashboard_service`, bukan lewat middleware (karena hasilnya dipakai membangun `WHERE organizationID IN (...)`, bukan sekadar boolean allow/deny satu ID).
+
+Resolusi cakupan (`resolveAccessible` di `organization_service_impl.go`), dicek berurutan:
+
+| Kondisi caller | Cakupan |
+|---|---|
+| `wildcardTierAccess` terisi (mis. Super Admin) | Seluruh organisasi bertipe yang tercantum di `wildcardTierAccess` (`SET('LDK','PUSKOMDA','PUSKOMNAS')`) — **bypass total** cascade di bawah |
+| `organizationTypeCode == PUSKOMNAS` | Seluruh organisasi (nasional) |
+| `organizationTypeCode == PUSKOMDA` | Diri sendiri + seluruh LDK anak langsung |
+| `organizationTypeCode == LDK` | Diri sendiri saja |
+| Tidak keduanya (mis. Kader) | Tidak ada cakupan organisasi — endpoint yang memaksakan cakupan (`GET /me/organizations`, `GET /dashboard/summary`) mengembalikan **hasil kosong**, bukan `403`, karena ini kondisi valid (Kader memang beroperasi atas nama dirinya sendiri, bukan cascade organisasi manapun — lihat `submission.review.ldk`/`kader.deactivate` di API.md §9) |
+
+**Prinsip penting**: cakupan **tidak pernah** dipercaya dari input klien (query/path param `organizationID`) — selalu diresolusi ulang dari klaim JWT caller di setiap request. Percobaan akses `:id` di luar cakupan selalu `403 Forbidden("Organisasi di luar wilayah Anda")`, terlepas dari apa yang ditampilkan UI (defense-in-depth: frontend hanya menyembunyikan menu/opsi yang tidak relevan, backend yang menegakkan).
+
+Urutan pengecekan otorisasi di service layer secara konsisten menempatkan **cakupan organisasi sebelum aturan bisnis/status** (mis. `submission_service.Review()` memeriksa `checkOrgAccess` sebelum `requiredTierForStatus`) — caller di luar cakupan tidak pernah mendapat informasi (lewat kode/pesan error yang berbeda) tentang status internal data yang bukan haknya.
 
 ---
 

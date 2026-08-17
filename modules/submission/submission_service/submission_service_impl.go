@@ -824,15 +824,18 @@ func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, 
 		return submission_dto.Response{}, apperror.NotFound("Submission tidak ditemukan")
 	}
 
+	// Cakupan organisasi diperiksa sebelum status kelayakan review, sejalan
+	// dengan EstablishLevel/Publish/Reopen — caller di luar wilayah tidak
+	// perlu tahu apakah submission ini sedang bisa direview atau tidak.
+	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
+		return submission_dto.Response{}, err
+	}
 	tier, ok := requiredTierForStatus(sub.SubjectType, sub.Status)
 	if !ok {
 		return submission_dto.Response{}, apperror.InvalidStatusTransition("Status pendataan tidak dapat direview saat ini")
 	}
 	if !callerHasTier(caller, tier) {
 		return submission_dto.Response{}, apperror.Forbidden("Anda tidak berwenang mereview pendataan pada tahap ini")
-	}
-	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
-		return submission_dto.Response{}, err
 	}
 	if err := checkVersion(sub, req.Version); err != nil {
 		return submission_dto.Response{}, err
