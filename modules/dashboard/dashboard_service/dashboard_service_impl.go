@@ -118,6 +118,6 @@ func (s *ServiceImpl) Summary(ctx context.Context, caller CallerScope) (dashboar
 		}}, nil
 
 	default:
-		return dashboard_dto.Summary{}, apperror.Forbidden("Dashboard tidak tersedia untuk akun ini")
+		return dashboard_dto.Summary{OrganizationTypeCode: tier}, nil
 	}
 }
