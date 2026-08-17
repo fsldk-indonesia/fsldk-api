@@ -28,9 +28,9 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 ## 2. Struktur Modul (Subfolder + Interface/Impl)
 
-Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
+Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `event`, `comment`, `shortlink`, `dashboard`) memiliki struktur subfolder yang identik. Contoh modul `news`:
 
-> Modul `upload` (unggah gambar CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
+> Modul `upload` (unggah gambar/dokumen CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
 
 ```
 modules/news/
@@ -119,6 +119,7 @@ Didefinisikan di [`middlewares/`](../middlewares), dipasang berlapis per grup ro
 | `Auth()` | Parse & validasi JWT access token, simpan identitas ke `gin.Context` | Per-grup (route terproteksi) |
 | `RequireVerified()` | Tolak (403 `EMAIL_NOT_VERIFIED`) bila email belum diverifikasi | Setelah `Auth()`, kecuali endpoint di "daftar aman" |
 | `RequirePermission(code)` | Tolak (403) bila role tidak punya permission tsb. — query `map_role_permission` via `PermissionLoader` (diimplementasikan modul `permission`, di-inject untuk menghindari circular dependency) | Per-endpoint CMS |
+| `LoadPermissions()` | Memuat seluruh kode permission milik role pengguna ke context **tanpa pernah menolak request** (beda dari `RequirePermission`, yang menolak bila kode tertentu tidak dimiliki) — dipakai pada route "milik-sendiri" yang otorisasinya bercabang antara pemilik konten ATAU pemegang permission tertentu, mis. `PUT/DELETE /comments/:id` (owner ATAU `comment.update`/`comment.delete` — cek final di service, lihat §11) | Per-endpoint milik-sendiri yang punya jalur override moderator |
 
 ---
 
@@ -182,8 +183,14 @@ templateData, _ := os.ReadFile(path)
 | `0002_seed.up.sql` | Role bawaan (Super Admin/Editor/Kontributor), permission + atribut menu, kategori berita/artikel |
 | `0003_seed_admin.up.sql` | 1 akun Super Admin awal (kredensial di [Instalasi §7](./INSTALLATION.md#7-kredensial-admin-fsldk-bawaan)) |
 | `0004_shortlink.up.sql` | Tabel `ms_shortlink` + permission `shortlink.*` + pemetaan ke role Super Admin/Editor |
+| `0005_comment.up.sql` | Tabel `ms_comment` + `tr_comment_reaction`; role `Member` (pendaftar publik, tanpa akses CMS); permission `comment.view`/`comment.delete` → Super Admin & Editor |
+| `0005_event.up.sql` | Tabel `ms_event` + permission `event.*` → Super Admin & Editor |
+| `0006_comment_update_permission.up.sql` | Permission `comment.update` (moderasi edit komentar bukan-pemilik, lihat §11) → Super Admin & Editor |
+| `0007_comment_mention.up.sql` | Tabel `tr_comment_mention` (@mention terstruktur pada komentar, lihat §11) |
 
-Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql`) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
+`0005_comment.up.sql` dan `0005_event.up.sql` sengaja berbagi nomor urut yang sama (ditambahkan independen oleh pekerjaan berbeda) — ini aman karena `migrations.Run()` mengurutkan berdasarkan **nama file lengkap** (alfabetis: `comment` < `event`) dan mencatat status penerapan per nama file di `schema_migrations`, bukan per nomor urut semata.
+
+Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql` dst.) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
 
 **Pengecualian selama masa pra-peluncuran** (belum ada data produksi): perubahan skema tabel yang sifatnya konseptual — mis. modul `content` yang dihapus total, kolom `ms_article` (`articleExcerpt` dihapus, `articleContent`→`articleIntro`, tambah `articleWriter`/`articleEditor`/`articlePdf`), atau kolom `ms_news` (tambah `newsPublisher`/`newsReporter`/`newsEditor`) — langsung diedit di `0001_init.up.sql` itu sendiri (bukan migration baru), lalu skema database dev yang sudah berjalan disesuaikan manual lewat `ALTER TABLE`. Ini sengaja dilakukan supaya *fresh install* tetap mencerminkan skema final tanpa riwayat migration yang saling menimpa satu sama lain untuk fitur yang belum pernah dipakai siapa pun di produksi. Begitu aplikasi live dengan data nyata, pola ini **tidak berlaku lagi** — semua perubahan skema wajib lewat migration baru.
 
@@ -194,6 +201,18 @@ Tidak ada logika seed di kode Go (`EnsureSuperAdmin` dkk. sudah dihapus) — **m
 ## 10. Menu Sidebar CMS Dinamis
 
 Sidebar CMS **tidak hardcode**. Item menu (selain Dashboard) diambil dari `GET /me/menus`, yang meng-query `lk_permission` (kolom `menuLabel`/`menuIcon`/`menuRoute`/`sortOrder`) di-`JOIN` `map_role_permission` sesuai role pengguna yang login — lihat [`modules/permission`](../modules/permission). Permission yang tidak berelasi ke menu (`menuRoute IS NULL`) tidak pernah muncul sebagai item menu.
+
+---
+
+## 11. Komentar: Kedalaman Balasan, Moderasi, dan @Mention
+
+Modul `comment` (dipakai bersama oleh Artikel, Berita, dan Event — `contentType`/`contentID` generik tanpa FK, lihat `comment_model.ValidContentTypes`) punya tiga aturan bisnis yang tidak terlihat langsung dari skema tabel:
+
+**Kedalaman balasan dibatasi 1 level.** `ms_comment.parentID` adalah self-reference tanpa kolom `depth` maupun CHECK constraint — kedalaman dihitung on-the-fly oleh `comment_repository.DepthOf` (jalan ke atas lewat `parentID`), dan aturan "hanya 1 level" ditegakkan di `comment_service.Create`: membalas komentar yang `DepthOf >= 1` (sudah berupa balasan) ditolak dengan `apperror.Validation`. Artinya struktur datanya sanggup menampung nesting tak terbatas, tapi bisnisnya sengaja membatasi jadi flat: komentar root → balasan (1 level), tanpa balasan-atas-balasan.
+
+**Edit/hapus: pemilik selalu boleh, selain itu berdasar permission.** `comment_service.Update`/`Delete` menerima parameter `isModerator bool`; otorisasinya `pemilik (createdBy == userID) OR isModerator`. `isModerator` diisi handler dari `constants.PermCommentUpdate`/`PermCommentDelete` pada context — tapi context itu **hanya** terisi kalau middleware `LoadPermissions()` (§5) dipasang di route yang bersangkutan (dipasang di `PUT/DELETE /comments/:id`, bukan `RequirePermission` biasa karena rute ini tidak boleh menolak pemilik komentar yang kebetulan tidak punya permission tsb.). Permission `comment.update`/`comment.delete` sengaja *action-only* (`menuRoute IS NULL`) — tidak muncul sebagai item sidebar, hanya sebagai checklist di halaman Role Management yang mengontrol jalur moderator ini.
+
+**@Mention disimpan terstruktur, bukan di-parse dari teks.** Tabel `tr_comment_mention` (commentID + userID, `0007_comment_mention.up.sql`) mencatat persis siapa saja yang dipilih composer lewat autocomplete `GET /users/mention-search` (endpoint ini sengaja tanpa permission — cukup login+verified, siapa pun boleh dicari & memilih mention siapa pun termasuk dirinya sendiri). `CreateRequest`/`UpdateRequest` membawa `mentionedUserIDs []int64`; `comment_service` menulis ulang seluruh daftar mention lewat `SetMentions` (delete-then-insert) setiap kali komentar dibuat/diubah, lalu `Response.mentions` mengembalikannya sebagai `[]AuthorDTO` (userID/name/photo). Desain ini sengaja **tidak** menyimpan tanda `@` di dalam `commentText` sebagai delimiter mention (mis. `@{Nama}`) — parsing bebas seperti itu ambigu untuk nama multi-kata dan gampang salah cocok; klien merender pill mention dengan mencocokkan `commentText` terhadap daftar `mentions` yang sudah pasti benar, bukan menebak dari pola teks (lihat `fsldk-web` — `MentionHighlightPipe`).
 
 ---
 

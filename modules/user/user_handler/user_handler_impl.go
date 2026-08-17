@@ -40,6 +40,16 @@ func (h *HandlerImpl) List(c *gin.Context) {
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
 }
 
+func (h *HandlerImpl) SearchMentionable(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	data, err := h.svc.SearchMentionable(c.Request.Context(), c.Query("q"), limit)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) Get(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

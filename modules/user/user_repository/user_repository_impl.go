@@ -107,6 +107,21 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 	return out, total, err
 }
 
+// SearchActive returns active users whose fullName matches search (or the
+// most recently created ones when search is empty), for the @mention
+// autocomplete in comments — deliberately unfiltered by role/permission
+// since any verified user may mention any other active user (including
+// themselves).
+func (r *RepositoryImpl) SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error) {
+	q := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Where("u.isActive = ?", true)
+	if search != "" {
+		q = q.Where("u.fullName LIKE ?", "%"+search+"%")
+	}
+	var out []user_model.User
+	err := q.Select(selectCols).Order("u.fullName ASC").Limit(limit).Find(&out).Error
+	return out, err
+}
+
 func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"fullName":    fullName,

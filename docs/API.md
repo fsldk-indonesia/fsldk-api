@@ -57,16 +57,19 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 
 ---
 
-## 2. User (`/users`) — ✅🔒 + permission
+## 2. User (`/users`) — ✅🔒
 
 | Method | Endpoint | Permission | Deskripsi |
 |---|---|---|---|
+| GET | `/users/mention-search` | — (cukup login+terverifikasi) | Cari pengguna aktif untuk autocomplete @mention komentar (query: `q`, `limit` maks. 20, default 8); boleh mencari & mem-mention diri sendiri — lihat [Arsitektur §11](./ARCHITECTURE.md#11-komentar-kedalaman-balasan-moderasi-dan-mention) |
 | GET | `/users` | `user.view` | Daftar pengguna (query: `page`, `limit`, `search`, `sort`, `roleID`) |
 | GET | `/users/:id` | `user.view` | Detail pengguna |
 | POST | `/users` | `user.create` | Buat pengguna baru |
 | PUT | `/users/:id` | `user.update` | Perbarui pengguna (nama, email, role, status, password opsional) |
 | PATCH | `/users/:id/status` | `user.update` | Aktifkan/nonaktifkan |
 | DELETE | `/users/:id` | `user.delete` | Hapus (soft delete) |
+
+**`GET /users/mention-search`** → `[{ "userID": 1, "fullName": "Ahmad Fadli", "photoURL": "..." }, ...]` — hanya field minimal ini (bukan `user_dto.Response` penuh), karena endpoint ini bisa dipanggil siapa pun yang login+verified, bukan hanya pemegang `user.view`.
 
 **`POST /users`**
 ```json
@@ -139,7 +142,7 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 **`PATCH /news/:id/publish`** → `{ "isPublished": true }`
 **`PATCH /news/:id/featured`** → `{ "isFeatured": true }`
 
-`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual. `newsReporter` wajib diisi (byline wartawan/penulis liputan); `newsPublisher` (penerbit) dan `newsEditor` opsional.
+`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §9), bukan ditulis manual. `newsReporter` wajib diisi (byline wartawan/penulis liputan); `newsPublisher` (penerbit) dan `newsEditor` opsional.
 
 ---
 
@@ -180,11 +183,116 @@ Berbeda dari Berita: Artikel tidak punya `isFeatured`/`viewCount`, tapi punya ko
 }
 ```
 
-`articleWriter` wajib diisi (byline penulis); `articleEditor` opsional. `articleImage`/`articlePdf` tetap berupa string URL — nilainya hasil unggahan lewat `POST /uploads/image` / `POST /uploads/document` (lihat §7), bukan ditulis manual.
+`articleWriter` wajib diisi (byline penulis); `articleEditor` opsional. `articleImage`/`articlePdf` tetap berupa string URL — nilainya hasil unggahan lewat `POST /uploads/image` / `POST /uploads/document` (lihat §9), bukan ditulis manual.
 
 ---
 
-## 6. Shortlink
+## 6. Event
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/events` | Daftar event terpublikasi (query: `page`, `limit` default 9 maks. 100, `search`, `division`, `year`, `status` — masing-masing boleh multi-nilai dipisah koma, mis. `status=upcoming,ongoing`, `sort` default `newest`, alternatif `title`) |
+| GET | `/public/events/:slug` | Detail event (menambah `viewCount`) — turunan `status` (`upcoming`/`ongoing`/`past`) & `registOpen` dihitung dari `startDate`/`endDate`/`closeRegistDate` saat request, bukan disimpan |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/events` | `event.view` | Daftar seluruh event, published atau tidak (query: `page`, `limit`, `search`, `division`, `sort`) |
+| GET | `/events/:id` | `event.view` | Detail untuk pengelolaan |
+| POST | `/events` | `event.create` | Buat event baru |
+| PUT | `/events/:id` | `event.update` | Perbarui event |
+| DELETE | `/events/:id` | `event.delete` | Hapus event — komentar terkait (`contentType="event"`) ikut dibersihkan (lihat §7) |
+
+**`POST /events`**
+```json
+{
+  "eventTitle": "FSLDKN Ke-21",
+  "eventDivision": "Departemen Jaringan",
+  "eventContent": "<p>Deskripsi lengkap acara...</p>",
+  "eventImage": "http://localhost:8080/uploads/xxx.jpg",
+  "startDate": "2026-09-01T08:00:00",
+  "endDate": "2026-09-03T17:00:00",
+  "closeRegistDate": "2026-08-25T23:59:00",
+  "location": "Bandung",
+  "place": "Gedung Sate",
+  "locationLink": "https://maps.google.com/...",
+  "registrationLink": "https://forms.gle/...",
+  "documentLink": "https://drive.google.com/...",
+  "presentationLink": "https://drive.google.com/...",
+  "contactPerson1": "81234567890",
+  "nameCp1": "Ahmad",
+  "contactPerson2": "81234567891",
+  "nameCp2": "Siti",
+  "tag": "nasional,jaringan",
+  "isPublished": false
+}
+```
+`PUT /events/:id` memakai bentuk body yang sama persis (semua field wajib dikirim ulang, bukan partial update). Semua field tanggal menerima ISO8601 atau `YYYY-MM-DD[ HH:mm[:ss]]`, boleh dikosongkan (`""` → `null`). `eventImage` string URL hasil `POST /uploads/image` (lihat §9), bukan ditulis manual. `eventSlug` dibuat otomatis dari `eventTitle` (unik, re-slug hanya kalau judul berubah).
+
+---
+
+## 7. Komentar (`/comments`)
+
+Dipakai bersama oleh Artikel, Berita, dan Event — `contentType` (`article`/`news`/`event`) + `contentID` menunjuk ke konten manapun tanpa foreign key (lihat [Arsitektur §11](./ARCHITECTURE.md#11-komentar-kedalaman-balasan-moderasi-dan-mention)). Balasan dibatasi **1 level** (tidak bisa membalas balasan).
+
+### Publik (tanpa auth, tapi login opsional ikut mengisi `isOwner`/reaksi milik-sendiri)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/comments` | Thread komentar satu konten (query wajib: `contentType`, `contentID`) — array bersarang `replies` |
+
+### Aksi milik-sendiri — ✅🔒 (cukup login+terverifikasi, tanpa permission khusus)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| POST | `/comments` | Buat komentar/balasan baru |
+| PUT | `/comments/:id` | Ubah komentar — **pemilik selalu boleh**; bukan-pemilik butuh permission `comment.update` |
+| DELETE | `/comments/:id` | Hapus komentar (balasan & reaksi ikut terhapus via `ON DELETE CASCADE`) — **pemilik selalu boleh**; bukan-pemilik butuh permission `comment.delete` |
+| POST | `/comments/:id/react` | Toggle reaksi emoji (like/dislike/love/heart_eyes/laughing/rage/slight_smile) — kirim ulang `reactionType` yang sama untuk membatalkan |
+| GET | `/comments/gif-search` | Proxy pencarian GIF/sticker via GIPHY (query: `q`, `tab=gifs\|stickers`) — array kosong bila `GIPHY_API_KEY` tidak diisi, tidak pernah error |
+| GET | `/comments/gif-categories` | Proxy kategori GIF trending GIPHY (maks. 8) |
+
+### Moderasi admin — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/comments` | `comment.view` | Daftar komentar top-level lintas konten (query: `page`, `limit`, `search`, `contentType`, `sort`) |
+| GET | `/comments/:id` | `comment.view` | Detail satu komentar + seluruh subtree balasannya |
+| POST | `/comments/bulk-delete` | `comment.delete` | Hapus banyak komentar sekaligus — `{ "ids": [1,2,3] }`, tanpa konsep kepemilikan (murni permission) |
+
+**`POST /comments`**
+```json
+{
+  "contentType": "article",
+  "contentID": 12,
+  "parentID": null,
+  "commentText": "Terima kasih atas informasinya @Ahmad Fadli!",
+  "mediaURL": "",
+  "mediaType": "",
+  "mentionedUserIDs": [7]
+}
+```
+`parentID` diisi `commentID` induk untuk membalas (`null` untuk komentar top-level). `commentText`/`mediaURL` setidaknya satu wajib diisi. `mentionedUserIDs` opsional (maks. 20) — userID yang benar-benar dipilih lewat autocomplete `GET /users/mention-search` (§2), **bukan** hasil parsing pola teks; teks `@Nama` di `commentText` yang tidak ada di `mentionedUserIDs` tidak dianggap mention. `PUT /comments/:id` memakai bentuk body yang sama (tanpa `contentType`/`contentID`/`parentID`).
+
+**Response** (`Response`, dipakai di semua endpoint di atas):
+```json
+{
+  "commentID": 5, "contentType": "article", "contentID": 12, "commentText": "...",
+  "mediaURL": "", "mediaType": "", "parentID": null, "isOwner": true,
+  "createdDate": "2026-08-16 10:00:00",
+  "author": { "userID": 3, "name": "...", "photo": "..." },
+  "reactions": { "counts": { "like": 2 }, "userTypes": ["like"] },
+  "mentions": [{ "userID": 7, "name": "Ahmad Fadli", "photo": "..." }],
+  "replies": []
+}
+```
+
+---
+
+## 8. Shortlink
 
 Pemendek URL. Redirect yang dilihat pengunjung terjadi di **domain frontend**
 (`fsldk-web`), bukan di backend ini — endpoint publik di bawah hanya
@@ -216,7 +324,7 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ---
 
-## 7. Upload (`/uploads`) — ✅🔒
+## 9. Upload (`/uploads`) — ✅🔒
 
 Unggah berkas gambar/dokumen untuk form Artikel & Berita CMS — dipakai bersama oleh kedua modul, bukan endpoint khusus per-modul.
 
@@ -235,7 +343,7 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 
 ---
 
-## 8. Dashboard (`/dashboard`) — ✅🔒
+## 10. Dashboard (`/dashboard`) — ✅🔒
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -243,7 +351,7 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 
 ---
 
-## 9. Sistem (tanpa prefix `/api/v1`)
+## 11. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -258,9 +366,12 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 |---|---|---|---|
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
-| `shortlink.view/create/update/delete` | Shortlink | | |
+| `shortlink.view/create/update/delete` | Shortlink | `event.view/create/update/delete` | Event |
+| `comment.view/update/delete` | Komentar | | |
 
-Role bawaan: **Super Admin** (semua permission), **Editor** (news/article/shortlink penuh), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql) dan [`migrations/0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql).
+`comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §11](./ARCHITECTURE.md#11-komentar-kedalaman-balasan-moderasi-dan-mention).
+
+Role bawaan: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event penuh + moderasi komentar `comment.view/update/delete`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), dan [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql).
 
 > Konten Landing Page (visi/misi/struktur organisasi/kontak) tidak dikelola via API/database — dikelola sebagai teks tetap (hardcoded) langsung di frontend `fsldk-web`.
 

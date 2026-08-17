@@ -24,10 +24,15 @@ var allowedSortCols = map[string]string{
 }
 
 // ServiceImpl is the concrete implementation of Service.
-type ServiceImpl struct{ repo event_repository.Repository }
+type ServiceImpl struct {
+	repo    event_repository.Repository
+	comment CommentCleaner
+}
 
 // NewService constructs a Service backed by the given Repository.
-func NewService(repo event_repository.Repository) Service { return &ServiceImpl{repo: repo} }
+func NewService(repo event_repository.Repository, comment CommentCleaner) Service {
+	return &ServiceImpl{repo: repo, comment: comment}
+}
 
 // --- Public API ---
 
@@ -146,6 +151,10 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return apperror.Internal("")
 	}
+	// Best-effort: ms_comment has no FK to ms_event (see comment techspec
+	// §3.1a), so comments aren't cascaded by the database — clean them up
+	// explicitly. A failure here does not roll back the event delete.
+	_ = s.comment.DeleteByContent(ctx, "event", id)
 	return nil
 }
 

@@ -21,6 +21,7 @@ const (
 	RoleSuperAdmin  = "Super Admin"
 	RoleEditor      = "Editor"
 	RoleKontributor = "Kontributor"
+	RoleMember      = "Member" // pendaftar publik, tanpa akses CMS — lihat modules/comment
 )
 
 // Permission codes (format: module.action).
@@ -56,6 +57,10 @@ const (
 	PermEventCreate = "event.create"
 	PermEventUpdate = "event.update"
 	PermEventDelete = "event.delete"
+
+	PermCommentView   = "comment.view"
+	PermCommentUpdate = "comment.update"
+	PermCommentDelete = "comment.delete"
 )
 
 // Database table names (convention: prefix_PascalCase).
@@ -69,6 +74,8 @@ const (
 	TableArticle         = "ms_article"
 	TableArticleCategory = "lk_article_category"
 	TableShortlink       = "ms_shortlink"
+	TableComment         = "ms_comment"
+	TableCommentReaction = "tr_comment_reaction"
 	TableUserLoginLog    = "tr_user_login_log"
 	TableEmailToken      = "tr_email_token" // email verification & password reset token
 	TableEvent           = "ms_event"
