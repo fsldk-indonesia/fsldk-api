@@ -31,11 +31,26 @@ func idParam(c *gin.Context) (int64, bool) {
 
 func callerScope(c *gin.Context) organization_service.CallerScope {
 	return organization_service.CallerScope{
-		UserID:               appctx.UserID(c),
-		OrganizationID:       appctx.OrganizationID(c),
-		OrganizationTypeCode: appctx.OrganizationTypeCode(c),
-		WildcardTierAccess:   appctx.WildcardTierAccess(c),
+		UserID:                  appctx.UserID(c),
+		OrganizationID:          appctx.OrganizationID(c),
+		OrganizationTypeCode:    appctx.OrganizationTypeCode(c),
+		WildcardTierAccess:      appctx.WildcardTierAccess(c),
+		RequestedOrganizationID: requestedOrganizationID(c),
 	}
+}
+
+// requestedOrganizationID membaca query `organizationID` opsional (target
+// org-switcher) — divalidasi di service, bukan di sini.
+func requestedOrganizationID(c *gin.Context) *int64 {
+	raw := c.Query("organizationID")
+	if raw == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil
+	}
+	return &id
 }
 
 func (h *HandlerImpl) Me(c *gin.Context) {

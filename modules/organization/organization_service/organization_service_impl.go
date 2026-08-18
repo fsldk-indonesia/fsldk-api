@@ -264,6 +264,43 @@ func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQu
 		Offset:               q.Offset(),
 		OrderBy:              q.OrderBy(sortColumns, "o.organizationName ASC"),
 	}
+
+	// Bila caller memilih organisasi lain lewat org-switcher (shell
+	// cms-puskomda/cms-puskomnas), daftar LDK/Puskomda mengikuti organisasi
+	// yang DIPILIH (anak-anaknya), bukan seluruh cascade accessible caller —
+	// sebelumnya "LDK Wilayah" selalu menampilkan seluruh cascade caller
+	// (nasional untuk Puskomnas/wildcard) walau org-switcher sudah diganti.
+	if caller.RequestedOrganizationID != nil {
+		ok, err := s.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+		if err != nil {
+			return nil, 0, apperror.Internal("")
+		}
+		if !ok {
+			return nil, 0, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+		}
+		targetType, err := s.repo.TypeCodeByID(ctx, *caller.RequestedOrganizationID)
+		if err != nil {
+			if errors.Is(err, organization_repository.ErrNotFound) {
+				return nil, 0, apperror.NotFound("Organisasi tidak ditemukan")
+			}
+			return nil, 0, err
+		}
+		var orgs []organization_model.Organization
+		var total int64
+		switch targetType {
+		case constants.OrgTypePuskomnas:
+			orgs, total, err = s.repo.ListAll(ctx, f)
+		case constants.OrgTypePuskomda:
+			orgs, total, err = s.repo.ListSelfAndChildren(ctx, *caller.RequestedOrganizationID, f)
+		default:
+			return []organization_dto.Response{}, 0, nil
+		}
+		if err != nil {
+			return nil, 0, apperror.Internal("")
+		}
+		return toResponses(orgs), int(total), nil
+	}
+
 	orgs, total, err := s.resolveAccessible(ctx, caller, f)
 	if err != nil {
 		return nil, 0, err

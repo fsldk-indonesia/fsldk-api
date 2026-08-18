@@ -16,6 +16,12 @@ type CallerScope struct {
 	OrganizationID       *int64
 	OrganizationTypeCode string
 	WildcardTierAccess   string
+	// RequestedOrganizationID adalah organizationID eksplisit dari query
+	// `organizationID` (org-switcher shell cms-puskomda/cms-puskomnas) —
+	// dipakai List() untuk mempersempit hasil ke anak organisasi target
+	// (mis. LDK di bawah Puskomda yang SEDANG dipilih di switcher), bukan
+	// seluruh cascade accessible caller. Divalidasi via IsAccessible.
+	RequestedOrganizationID *int64
 }
 
 // Service adalah kontrak logika bisnis organisasi.
