@@ -124,6 +124,7 @@ const (
 	SubmissionStatusApprovedPuskomda           = "APPROVED_PUSKOMDA"
 	SubmissionStatusPuskomnasReview            = "PUSKOMNAS_REVIEW"
 	SubmissionStatusRevisionRequestedPuskomnas = "REVISION_REQUESTED_PUSKOMNAS"
+	SubmissionStatusApprovedPuskomnas          = "APPROVED_PUSKOMNAS"
 	SubmissionStatusLevelEstablished           = "LEVEL_ESTABLISHED"
 	SubmissionStatusPublished                  = "PUBLISHED"
 

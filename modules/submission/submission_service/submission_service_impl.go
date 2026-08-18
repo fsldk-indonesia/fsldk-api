@@ -974,10 +974,12 @@ func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, 
 		}
 	case constants.ReviewTierPuskomnas:
 		switch req.Decision {
+		case constants.ReviewDecisionApproved:
+			toStatus = constants.SubmissionStatusApprovedPuskomnas
 		case constants.ReviewDecisionRevisionRequested:
 			toStatus = constants.SubmissionStatusRevisionRequestedPuskomnas
 		default:
-			return submission_dto.Response{}, apperror.InvalidStatusTransition("Gunakan Penetapan Levelisasi untuk menyetujui pada tahap verifikasi akhir")
+			return submission_dto.Response{}, apperror.InvalidStatusTransition("Keputusan tidak valid untuk tahap verifikasi akhir")
 		}
 	}
 
@@ -1055,8 +1057,8 @@ func (s *ServiceImpl) EstablishLevel(ctx context.Context, id int64, caller Calle
 	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
 		return submission_dto.Response{}, err
 	}
-	if sub.Status != constants.SubmissionStatusApprovedPuskomda && sub.Status != constants.SubmissionStatusPuskomnasReview {
-		return submission_dto.Response{}, apperror.InvalidStatusTransition("Status pendataan belum siap untuk penetapan level")
+	if sub.Status != constants.SubmissionStatusApprovedPuskomnas {
+		return submission_dto.Response{}, apperror.InvalidStatusTransition("Status pendataan belum siap untuk penetapan level — harus disetujui dahulu di Verifikasi Akhir")
 	}
 	if err := checkVersion(sub, req.Version); err != nil {
 		return submission_dto.Response{}, err

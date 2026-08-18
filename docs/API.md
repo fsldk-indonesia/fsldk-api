@@ -290,7 +290,7 @@ Alur Levelisasi LDK (2 tier: Puskomda → Puskomnas) dan Sensus Kader (1 tier: L
 ```
 `checklist` bersifat freeform JSON (tidak divalidasi bentuknya oleh backend) — konvensi frontend: `{sectionCode: boolean}` mengikuti section form yang sedang direview.
 
-Status Levelisasi LDK: `DRAFT → SUBMITTED → PUSKOMDA_REVIEW/APPROVED_PUSKOMDA → PUSKOMNAS_REVIEW/LEVEL_ESTABLISHED → PUBLISHED` (dengan cabang `REVISION_REQUESTED_*` kembali ke `SUBMITTED` setelah diedit). Status Sensus Kader: `DRAFT → SUBMITTED → APPROVED_LDK` (otomatis lanjut ke `ACTIVE` + kode kader terbit) `/ REVISION_REQUESTED_LDK / REJECTED`.
+Status Levelisasi LDK: `DRAFT → SUBMITTED → PUSKOMDA_REVIEW → APPROVED_PUSKOMDA → APPROVED_PUSKOMNAS → LEVEL_ESTABLISHED → PUBLISHED` (dengan cabang `REVISION_REQUESTED_*` kembali ke `SUBMITTED` setelah diedit). `APPROVED_PUSKOMNAS` hanya dicapai lewat keputusan "Setujui" pada Verifikasi Akhir (tier Puskomnas) — Penetapan Levelisasi (`EstablishLevel`) mensyaratkan status ini, bukan `APPROVED_PUSKOMDA` langsung, supaya kedua tahap berurutan (bukan gerbang yang sama). Status Sensus Kader: `DRAFT → SUBMITTED → APPROVED_LDK` (otomatis lanjut ke `ACTIVE` + kode kader terbit) `/ REVISION_REQUESTED_LDK / REJECTED`.
 
 ---
 
