@@ -61,10 +61,22 @@ type PuskomnasSummary struct {
 	PerPuskomda             []PuskomdaBreakdown `json:"perPuskomda"`
 }
 
-// Summary adalah response GET /dashboard/summary — hanya satu dari LDK/Puskomda/
-// Puskomnas yang terisi, sesuai organizationTypeCode caller.
+// UtamaSummary adalah ringkasan dashboard khusus CMS Utama (FSLDK) — metrik
+// administrasi sistem (pengguna, konten), SENGAJA tidak memuat metrik
+// Levelisasi/Kader Puskomnas (miss-development-prompt-3.md poin 5: CMS
+// Utama harus beda dari dashboard Puskomnas, bukan menduplikasinya).
+type UtamaSummary struct {
+	TotalUsers      int `json:"totalUsers"`
+	TotalNews       int `json:"totalNews"`
+	TotalArticles   int `json:"totalArticles"`
+	TotalShortlinks int `json:"totalShortlinks"`
+}
+
+// Summary adalah response GET /dashboard/summary — hanya satu dari Utama/LDK/
+// Puskomda/Puskomnas yang terisi, sesuai konteks shell yang meminta (tier).
 type Summary struct {
 	OrganizationTypeCode string            `json:"organizationTypeCode"`
+	Utama                *UtamaSummary     `json:"utama,omitempty"`
 	LDK                  *LDKSummary       `json:"ldk,omitempty"`
 	Puskomda             *PuskomdaSummary  `json:"puskomda,omitempty"`
 	Puskomnas            *PuskomnasSummary `json:"puskomnas,omitempty"`

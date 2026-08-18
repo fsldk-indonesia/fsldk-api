@@ -166,6 +166,30 @@ func (r *RepositoryImpl) LevelDistribution(ctx context.Context) ([]dashboard_dto
 	return rows, err
 }
 
+func (r *RepositoryImpl) CountUsers(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_user").Where("isActive = 1").Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CountNews(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_news").Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CountArticles(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_article").Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CountShortlinks(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_shortlink").Count(&count).Error
+	return int(count), err
+}
+
 func (r *RepositoryImpl) PerPuskomdaBreakdown(ctx context.Context) ([]dashboard_dto.PuskomdaBreakdown, error) {
 	var rows []dashboard_dto.PuskomdaBreakdown
 	err := r.db.WithContext(ctx).Table("ms_organization p").

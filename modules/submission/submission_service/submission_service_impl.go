@@ -222,11 +222,29 @@ var editableStatuses = map[string]bool{
 // tertentu — baik lewat organizationTypeCode home org, maupun wildcardTierAccess
 // (mis. Super Admin dapat bertindak sebagai tier manapun sesuai kebutuhan
 // submission yang sedang diproses).
-func callerHasTier(caller CallerScope, tier string) bool {
+//
+// Poin tambahan (dikonfirmasi 2026-08-18, membalik DL-11 TechSpec): Puskomda/
+// Puskomnas Verifikator yang masuk ke konteks sebuah LDK di bawahnya (org-
+// switcher shell cms-ldk) sekarang boleh bertindak selengkap LDK Admin,
+// termasuk Persetujuan Kader — bukan cuma tier sendiri. Caller SUDAH lolos
+// checkOrgAccess(ctx, caller, targetOrganizationID) sebelum method ini
+// dipanggil (lihat Review()), jadi delegasi ini aman: cakupan organisasi
+// (LDK MANA yang boleh disentuh) tetap dijaga penuh oleh checkOrgAccess,
+// method ini hanya melonggarkan syarat IDENTITAS (organizationTypeCode)
+// untuk tier LDK spesifik — submission selalu milik organisasi ber-tipe LDK,
+// jadi pengecekan ini tidak pernah memberi jalan ke tier PUSKOMDA/PUSKOMNAS.
+func (s *ServiceImpl) callerHasTier(ctx context.Context, caller CallerScope, targetOrganizationID int64, tier string) bool {
 	if containsTier(caller.WildcardTierAccess, tier) {
 		return true
 	}
-	return caller.OrganizationTypeCode == tier
+	if caller.OrganizationTypeCode == tier {
+		return true
+	}
+	if tier != constants.ReviewTierLDK {
+		return false
+	}
+	targetType, err := s.orgRepo.TypeCodeByID(ctx, targetOrganizationID)
+	return err == nil && targetType == constants.OrgTypeLDK
 }
 
 // requiredTierForStatus menentukan tier reviewer yang berwenang bertindak atas
@@ -343,14 +361,24 @@ func (s *ServiceImpl) recordHistory(ctx context.Context, submissionID int64, fro
 // sekadar mengakses lewat cascade organization scope) — Puskomda/Puskomnas
 // yang "masuk" ke dashboard LDK lewat switcher tidak boleh mengubah data LDK
 // tersebut secara langsung.
-func (s *ServiceImpl) canEdit(caller CallerScope, sub submission_model.Submission) bool {
+// canEdit menentukan apakah caller boleh mengubah jawaban/status submission
+// ini. Selain kepemilikan langsung (LDK atas submission miliknya sendiri,
+// Kader atas submission miliknya sendiri), Puskomda/Puskomnas yang punya
+// org-scope access ke LDK pemilik submission ini JUGA boleh mengedit atas
+// nama LDK tersebut (dikonfirmasi 2026-08-18, sejalan dengan callerHasTier
+// — Puskomda/Puskomnas boleh bertindak selengkap LDK Admin di LDK bawahannya).
+func (s *ServiceImpl) canEdit(ctx context.Context, caller CallerScope, sub submission_model.Submission) bool {
 	if caller.WildcardTierAccess != "" {
 		return true
 	}
 	if sub.SubjectType == constants.SubjectTypeKader {
 		return caller.UserID == sub.SubmittedByUserID
 	}
-	return caller.OrganizationID != nil && *caller.OrganizationID == sub.OrganizationID
+	if caller.OrganizationID != nil && *caller.OrganizationID == sub.OrganizationID {
+		return true
+	}
+	ok, _ := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, sub.OrganizationID)
+	return ok
 }
 
 func (s *ServiceImpl) canView(ctx context.Context, caller CallerScope, sub submission_model.Submission) (bool, error) {
@@ -399,10 +427,28 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req submis
 		}
 		organizationID = org.OrganizationID
 	default:
-		if caller.OrganizationTypeCode != constants.OrgTypeLDK || caller.OrganizationID == nil {
+		switch {
+		case caller.RequestedOrganizationID != nil:
+			// Delegasi: Puskomda/Puskomnas mengisi Pendataan atas nama LDK
+			// di bawahnya (org-switcher shell cms-ldk) — dikonfirmasi
+			// 2026-08-18, sejalan pembalikan DL-11 (lihat callerHasTier).
+			ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+			if err != nil {
+				return submission_dto.Response{}, apperror.Internal("")
+			}
+			if !ok {
+				return submission_dto.Response{}, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+			}
+			targetType, err := s.orgRepo.TypeCodeByID(ctx, *caller.RequestedOrganizationID)
+			if err != nil || targetType != constants.OrgTypeLDK {
+				return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan harus berupa LDK")
+			}
+			organizationID = *caller.RequestedOrganizationID
+		case caller.OrganizationTypeCode == constants.OrgTypeLDK && caller.OrganizationID != nil:
+			organizationID = *caller.OrganizationID
+		default:
 			return submission_dto.Response{}, apperror.Forbidden("Hanya LDK yang dapat mengisi form ini")
 		}
-		organizationID = *caller.OrganizationID
 	}
 
 	existing, err := s.findOwnerSubmission(ctx, subjectType, organizationID, form.FormID, caller.UserID)
@@ -520,7 +566,7 @@ func (s *ServiceImpl) SaveAnswers(ctx context.Context, id int64, caller CallerSc
 	if err != nil {
 		return submission_dto.DetailResponse{}, apperror.NotFound("Submission tidak ditemukan")
 	}
-	if !s.canEdit(caller, sub) {
+	if !s.canEdit(ctx, caller, sub) {
 		return submission_dto.DetailResponse{}, apperror.Forbidden("Anda tidak dapat mengubah pendataan ini")
 	}
 	if !editableStatuses[sub.Status] {
@@ -562,7 +608,7 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 	if err != nil {
 		return submission_dto.Response{}, apperror.NotFound("Submission tidak ditemukan")
 	}
-	if !s.canEdit(caller, sub) {
+	if !s.canEdit(ctx, caller, sub) {
 		return submission_dto.Response{}, apperror.Forbidden("Anda tidak dapat mengirim pendataan ini")
 	}
 	if sub.Status == constants.SubmissionStatusCancelled || sub.Status == constants.SubmissionStatusRejected {
@@ -662,7 +708,7 @@ func (s *ServiceImpl) Cancel(ctx context.Context, id int64, caller CallerScope) 
 	if err != nil {
 		return apperror.NotFound("Submission tidak ditemukan")
 	}
-	if !s.canEdit(caller, sub) {
+	if !s.canEdit(ctx, caller, sub) {
 		return apperror.Forbidden("Anda tidak dapat membatalkan pendataan ini")
 	}
 	if sub.Status != constants.SubmissionStatusDraft {
@@ -899,7 +945,7 @@ func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, 
 	if !ok {
 		return submission_dto.Response{}, apperror.InvalidStatusTransition("Status pendataan tidak dapat direview saat ini")
 	}
-	if !callerHasTier(caller, tier) {
+	if !s.callerHasTier(ctx, caller, sub.OrganizationID, tier) {
 		return submission_dto.Response{}, apperror.Forbidden("Anda tidak berwenang mereview pendataan pada tahap ini")
 	}
 	if err := checkVersion(sub, req.Version); err != nil {
@@ -1003,7 +1049,7 @@ func (s *ServiceImpl) EstablishLevel(ctx context.Context, id int64, caller Calle
 	if sub.SubjectType != constants.SubjectTypeOrganization {
 		return submission_dto.Response{}, apperror.InvalidStatusTransition("Penetapan level hanya berlaku untuk form Levelisasi")
 	}
-	if !callerHasTier(caller, constants.ReviewTierPuskomnas) {
+	if !s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) {
 		return submission_dto.Response{}, apperror.Forbidden("Hanya Puskomnas yang dapat menetapkan level")
 	}
 	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
@@ -1067,7 +1113,7 @@ func (s *ServiceImpl) Publish(ctx context.Context, id int64, caller CallerScope,
 	if err != nil {
 		return submission_dto.Response{}, apperror.NotFound("Submission tidak ditemukan")
 	}
-	if !callerHasTier(caller, constants.ReviewTierPuskomnas) {
+	if !s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) {
 		return submission_dto.Response{}, apperror.Forbidden("Hanya Puskomnas yang dapat mempublikasikan hasil")
 	}
 	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
@@ -1108,7 +1154,7 @@ func (s *ServiceImpl) Reopen(ctx context.Context, id int64, caller CallerScope, 
 	if err != nil {
 		return submission_dto.Response{}, apperror.NotFound("Submission tidak ditemukan")
 	}
-	if !callerHasTier(caller, constants.ReviewTierPuskomnas) {
+	if !s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) {
 		return submission_dto.Response{}, apperror.Forbidden("Hanya Puskomnas yang dapat membuka kembali untuk koreksi")
 	}
 	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
@@ -1147,7 +1193,7 @@ func (s *ServiceImpl) Reassess(ctx context.Context, id int64, caller CallerScope
 	}
 
 	authorized := caller.WildcardTierAccess != ""
-	if !authorized && callerHasTier(caller, constants.ReviewTierPuskomnas) {
+	if !authorized && s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) {
 		if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err == nil {
 			authorized = true
 		}
@@ -1231,7 +1277,15 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 		return apperror.NotFound("Data kader tidak ditemukan")
 	}
 	if caller.WildcardTierAccess == "" && (caller.OrganizationID == nil || *caller.OrganizationID != k.OrganizationID) {
-		return apperror.Forbidden("Anda hanya dapat menonaktifkan kader milik LDK Anda sendiri")
+		// Delegasi Puskomda/Puskomnas atas nama LDK di bawahnya (2026-08-18,
+		// sejalan callerHasTier/canEdit — lihat komentar callerHasTier).
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, k.OrganizationID)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if !ok {
+			return apperror.Forbidden("Anda hanya dapat menonaktifkan kader milik LDK Anda sendiri")
+		}
 	}
 	if k.Status != constants.KaderStatusActive {
 		return apperror.InvalidStatusTransition("Hanya kader berstatus ACTIVE yang dapat dinonaktifkan")

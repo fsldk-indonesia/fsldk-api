@@ -21,4 +21,10 @@ type Repository interface {
 	CountLevelEstablished(ctx context.Context, parentOrganizationID *int64) (int, error)
 	LevelDistribution(ctx context.Context) ([]dashboard_dto.LevelCount, error)
 	PerPuskomdaBreakdown(ctx context.Context) ([]dashboard_dto.PuskomdaBreakdown, error)
+
+	// Metrik CMS Utama (Section: dashboard poin 5 miss-development-prompt-3.md).
+	CountUsers(ctx context.Context) (int, error)
+	CountNews(ctx context.Context) (int, error)
+	CountArticles(ctx context.Context) (int, error)
+	CountShortlinks(ctx context.Context) (int, error)
 }

@@ -36,6 +36,7 @@ func (h *HandlerImpl) Summary(c *gin.Context) {
 		OrganizationTypeCode:    appctx.OrganizationTypeCode(c),
 		WildcardTierAccess:      appctx.WildcardTierAccess(c),
 		RequestedOrganizationID: requestedOrganizationID(c),
+		RequestedTier:           c.Query("tier"),
 	}
 	data, err := h.svc.Summary(c.Request.Context(), caller)
 	if err != nil {

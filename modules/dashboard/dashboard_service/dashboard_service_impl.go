@@ -44,7 +44,43 @@ func (s *ServiceImpl) levelisasiFormID(ctx context.Context) int64 {
 	return form.FormID
 }
 
+// utamaSummary membangun ringkasan dashboard CMS Utama — metrik administrasi
+// sistem, sengaja terpisah total dari metrik Levelisasi/Kader Puskomnas.
+func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, error) {
+	totalUsers, err := s.repo.CountUsers(ctx)
+	if err != nil {
+		return dashboard_dto.Summary{}, apperror.Internal("")
+	}
+	totalNews, err := s.repo.CountNews(ctx)
+	if err != nil {
+		return dashboard_dto.Summary{}, apperror.Internal("")
+	}
+	totalArticles, err := s.repo.CountArticles(ctx)
+	if err != nil {
+		return dashboard_dto.Summary{}, apperror.Internal("")
+	}
+	totalShortlinks, err := s.repo.CountShortlinks(ctx)
+	if err != nil {
+		return dashboard_dto.Summary{}, apperror.Internal("")
+	}
+	return dashboard_dto.Summary{
+		OrganizationTypeCode: "FSLDK",
+		Utama: &dashboard_dto.UtamaSummary{
+			TotalUsers: totalUsers, TotalNews: totalNews, TotalArticles: totalArticles, TotalShortlinks: totalShortlinks,
+		},
+	}, nil
+}
+
 func (s *ServiceImpl) Summary(ctx context.Context, caller CallerScope) (dashboard_dto.Summary, error) {
+	// Shell CMS Utama TIDAK punya konsep organisasi/tier sama sekali — jangan
+	// jatuhkan ke deteksi berbasis identitas caller (wildcard Super Admin
+	// sebelumnya SELALU resolve ke tier Puskomnas, membuat dashboard CMS Utama
+	// tak bisa dibedakan dari dashboard Puskomnas, miss-development-prompt-3.md
+	// poin 5). `tier` di sini murni konteks shell yang diminta frontend.
+	if caller.RequestedTier == "FSLDK" {
+		return s.utamaSummary(ctx)
+	}
+
 	tier := caller.OrganizationTypeCode
 	if tier == "" && containsTier(caller.WildcardTierAccess, constants.OrgTypePuskomnas) {
 		tier = constants.OrgTypePuskomnas

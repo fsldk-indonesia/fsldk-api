@@ -17,6 +17,13 @@ type CallerScope struct {
 	// — divalidasi accessible via OrgScopeResolver.IsAccessible sebelum
 	// menggantikan home org caller sebagai subjek ringkasan dashboard.
 	RequestedOrganizationID *int64
+	// RequestedTier adalah shell CMS yang sedang diminta ("FSLDK","LDK",
+	// "PUSKOMDA","PUSKOMNAS") — dikirim frontend dari cms-layout, BUKAN
+	// dihitung dari identitas caller. Dipakai satu-satunya untuk membedakan
+	// dashboard CMS Utama dari dashboard Puskomnas untuk akun wildcard
+	// (Super Admin), yang sebelumnya selalu jatuh ke ringkasan Puskomnas di
+	// shell manapun (miss-development-prompt-3.md poin 5).
+	RequestedTier string
 }
 
 // OrgScopeResolver menyediakan validasi & resolusi tipe organisasi target.
