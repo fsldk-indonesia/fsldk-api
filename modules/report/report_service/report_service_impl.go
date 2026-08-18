@@ -94,9 +94,25 @@ func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope,
 	if err != nil {
 		return report_dto.ExportResult{}, apperror.NotFound("Form tidak ditemukan")
 	}
-	orgIDs, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
-	if err != nil {
-		return report_dto.ExportResult{}, apperror.Internal("")
+	var orgIDs []int64
+	if caller.RequestedOrganizationID != nil {
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+		if err != nil {
+			return report_dto.ExportResult{}, apperror.Internal("")
+		}
+		if !ok {
+			return report_dto.ExportResult{}, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+		}
+		orgIDs, err = s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
+		if err != nil {
+			return report_dto.ExportResult{}, apperror.Internal("")
+		}
+	} else {
+		var err error
+		orgIDs, err = s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+		if err != nil {
+			return report_dto.ExportResult{}, apperror.Internal("")
+		}
 	}
 	rows, err := s.repo.SubmissionRows(ctx, form.FormID, filter.Status, orgIDs)
 	if err != nil {

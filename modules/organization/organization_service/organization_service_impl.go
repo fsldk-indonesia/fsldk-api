@@ -108,6 +108,18 @@ func (s *ServiceImpl) IsAccessible(ctx context.Context, callerOrganizationID *in
 	}
 }
 
+// TypeCodeByID mengembalikan organizationTypeCode organisasi.
+func (s *ServiceImpl) TypeCodeByID(ctx context.Context, id int64) (string, error) {
+	t, err := s.repo.TypeCodeByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, organization_repository.ErrNotFound) {
+			return "", apperror.NotFound("Organisasi tidak ditemukan")
+		}
+		return "", err
+	}
+	return t, nil
+}
+
 func (s *ServiceImpl) resolveAccessible(ctx context.Context, caller CallerScope, f organization_dto.ListFilter) ([]organization_model.Organization, int64, error) {
 	switch {
 	case caller.WildcardTierAccess != "":
@@ -149,13 +161,66 @@ func (s *ServiceImpl) AccessibleOrganizationIDs(ctx context.Context, callerOrgan
 	return ids, nil
 }
 
-func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error) {
+// AccessibleOrganizationIDsForTarget menghitung cascade yang berakar pada
+// targetOrganizationID sendiri: LDK → dirinya saja, Puskomda → dirinya +
+// seluruh LDK anak, Puskomnas → seluruh organisasi nasional. Dipakai setelah
+// targetOrganizationID divalidasi accessible terhadap caller (IsAccessible).
+func (s *ServiceImpl) AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error) {
+	targetType, err := s.repo.TypeCodeByID(ctx, targetOrganizationID)
+	if err != nil {
+		if errors.Is(err, organization_repository.ErrNotFound) {
+			return nil, apperror.NotFound("Organisasi tidak ditemukan")
+		}
+		return nil, err
+	}
+	switch targetType {
+	case constants.OrgTypeLDK:
+		return []int64{targetOrganizationID}, nil
+	case constants.OrgTypePuskomda:
+		orgs, _, err := s.repo.ListSelfAndChildren(ctx, targetOrganizationID, organization_dto.ListFilter{})
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, len(orgs))
+		for _, o := range orgs {
+			ids = append(ids, o.OrganizationID)
+		}
+		return ids, nil
+	case constants.OrgTypePuskomnas:
+		orgs, _, err := s.repo.ListAll(ctx, organization_dto.ListFilter{})
+		if err != nil {
+			return nil, err
+		}
+		ids := make([]int64, 0, len(orgs))
+		for _, o := range orgs {
+			ids = append(ids, o.OrganizationID)
+		}
+		return ids, nil
+	default:
+		return []int64{targetOrganizationID}, nil
+	}
+}
+
+func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope, organizationTypeCode string, siblingOf *int64, q string) ([]organization_dto.MeOrganization, error) {
 	if caller.OrganizationID == nil && caller.WildcardTierAccess == "" {
 		return []organization_dto.MeOrganization{}, nil
 	}
-	orgs, _, err := s.resolveAccessible(ctx, caller, organization_dto.ListFilter{})
+	orgs, _, err := s.resolveAccessible(ctx, caller, organization_dto.ListFilter{Search: q, OrganizationTypeCode: organizationTypeCode})
 	if err != nil {
 		return nil, err
+	}
+	if q == "" && siblingOf != nil {
+		sibling, err := s.repo.FindByID(ctx, *siblingOf)
+		if err == nil && sibling.ParentOrganizationID.Valid {
+			parentID := sibling.ParentOrganizationID.Int64
+			filtered := orgs[:0]
+			for _, o := range orgs {
+				if o.ParentOrganizationID.Valid && o.ParentOrganizationID.Int64 == parentID {
+					filtered = append(filtered, o)
+				}
+			}
+			orgs = filtered
+		}
 	}
 	out := make([]organization_dto.MeOrganization, 0, len(orgs))
 	for _, o := range orgs {

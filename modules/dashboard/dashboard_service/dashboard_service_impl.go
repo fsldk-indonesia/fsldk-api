@@ -15,11 +15,12 @@ import (
 type ServiceImpl struct {
 	repo     dashboard_repository.Repository
 	formRepo submission_form_repository.Repository
+	orgScope OrgScopeResolver
 }
 
 // NewService membuat Service dashboard.
-func NewService(repo dashboard_repository.Repository, formRepo submission_form_repository.Repository) Service {
-	return &ServiceImpl{repo: repo, formRepo: formRepo}
+func NewService(repo dashboard_repository.Repository, formRepo submission_form_repository.Repository, orgScope OrgScopeResolver) Service {
+	return &ServiceImpl{repo: repo, formRepo: formRepo, orgScope: orgScope}
 }
 
 func containsTier(wildcardTierAccess, tier string) bool {
@@ -48,33 +49,55 @@ func (s *ServiceImpl) Summary(ctx context.Context, caller CallerScope) (dashboar
 	if tier == "" && containsTier(caller.WildcardTierAccess, constants.OrgTypePuskomnas) {
 		tier = constants.OrgTypePuskomnas
 	}
+	orgID := caller.OrganizationID
+
+	// Bila caller memilih organisasi lain lewat org-switcher (shell
+	// cms-ldk/cms-puskomda), ringkasan mengikuti organisasi yang DIPILIH,
+	// bukan home org caller — divalidasi accessible lebih dulu (IDOR-
+	// prevention, sama seperti submission/report). Ini akar fix untuk
+	// dashboard yang datanya tidak berubah saat pindah organisasi.
+	if caller.RequestedOrganizationID != nil {
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+		if err != nil {
+			return dashboard_dto.Summary{}, apperror.Internal("")
+		}
+		if !ok {
+			return dashboard_dto.Summary{}, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+		}
+		targetType, err := s.orgScope.TypeCodeByID(ctx, *caller.RequestedOrganizationID)
+		if err != nil {
+			return dashboard_dto.Summary{}, err
+		}
+		tier = targetType
+		orgID = caller.RequestedOrganizationID
+	}
 
 	formID := s.levelisasiFormID(ctx)
 
 	switch tier {
 	case constants.OrgTypeLDK:
-		if caller.OrganizationID == nil {
+		if orgID == nil {
 			return dashboard_dto.Summary{}, apperror.Forbidden("Akun Anda tidak terhubung ke organisasi")
 		}
-		ldk, err := s.repo.LDKSummary(ctx, *caller.OrganizationID, formID)
+		ldk, err := s.repo.LDKSummary(ctx, *orgID, formID)
 		if err != nil {
 			return dashboard_dto.Summary{}, apperror.Internal("")
 		}
 		return dashboard_dto.Summary{OrganizationTypeCode: tier, LDK: &ldk}, nil
 
 	case constants.OrgTypePuskomda:
-		if caller.OrganizationID == nil {
+		if orgID == nil {
 			return dashboard_dto.Summary{}, apperror.Forbidden("Akun Anda tidak terhubung ke organisasi")
 		}
-		counts, err := s.repo.StatusBuckets(ctx, formID, caller.OrganizationID)
+		counts, err := s.repo.StatusBuckets(ctx, formID, orgID)
 		if err != nil {
 			return dashboard_dto.Summary{}, apperror.Internal("")
 		}
-		totalLDK, err := s.repo.CountLDK(ctx, caller.OrganizationID)
+		totalLDK, err := s.repo.CountLDK(ctx, orgID)
 		if err != nil {
 			return dashboard_dto.Summary{}, apperror.Internal("")
 		}
-		kaderAktif, err := s.repo.CountActiveKader(ctx, caller.OrganizationID)
+		kaderAktif, err := s.repo.CountActiveKader(ctx, orgID)
 		if err != nil {
 			return dashboard_dto.Summary{}, apperror.Internal("")
 		}

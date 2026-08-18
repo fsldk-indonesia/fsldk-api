@@ -14,11 +14,17 @@ type CallerScope struct {
 	OrganizationID       *int64
 	OrganizationTypeCode string
 	WildcardTierAccess   string
+	// RequestedOrganizationID adalah organizationID eksplisit dari query
+	// `organizationID` (org-switcher shell cms-ldk/cms-puskomda) — divalidasi
+	// accessible via OrgScopeResolver.IsAccessible sebelum dipakai.
+	RequestedOrganizationID *int64
 }
 
 // OrgScopeResolver menyediakan resolusi cakupan akses organisasi berjenjang.
 type OrgScopeResolver interface {
+	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
 	AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error)
+	AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error)
 }
 
 // Service adalah kontrak logika bisnis report.

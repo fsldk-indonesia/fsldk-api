@@ -15,12 +15,22 @@ import (
 	"fsldk-api/base/dto"
 	"fsldk-api/constants"
 	"fsldk-api/modules/organization/organization_repository"
+	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/submission/submission_dto"
 	"fsldk-api/modules/submission/submission_model"
 	"fsldk-api/modules/submission/submission_repository"
 	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
 	"fsldk-api/modules/user/user_repository"
+)
+
+// roleNamePengunjung/roleNameKader adalah nama role sistem (bukan kode) —
+// dipakai untuk transisi otomatis akun pendaftar Sensus Kader begitu
+// disetujui LDK (lihat promoteToKaderRole), sama seperti nilai literal yang
+// sudah dipakai migrations/0002_seed.up.sql & 0005_organization_access.up.sql.
+const (
+	roleNamePengunjung = "Pengunjung"
+	roleNameKader      = "Kader"
 )
 
 var sortColumns = map[string]string{
@@ -35,6 +45,7 @@ type ServiceImpl struct {
 	formRepo submission_form_repository.Repository
 	orgRepo  organization_repository.Repository
 	userRepo user_repository.Repository
+	roleRepo role_repository.Repository
 	orgScope OrgScopeResolver
 }
 
@@ -44,9 +55,33 @@ func NewService(
 	formRepo submission_form_repository.Repository,
 	orgRepo organization_repository.Repository,
 	userRepo user_repository.Repository,
+	roleRepo role_repository.Repository,
 	orgScope OrgScopeResolver,
 ) Service {
-	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, orgScope: orgScope}
+	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, roleRepo: roleRepo, orgScope: orgScope}
+}
+
+// promoteToKaderRole mengubah role akun pendaftar Sensus Kader dari
+// Pengunjung menjadi Kader begitu pendaftarannya disetujui LDK (dipanggil
+// dari issueKaderCode). Hanya akun yang masih ber-role Pengunjung yang
+// disentuh — staf LDK/Puskomda/Puskomnas yang kebetulan juga mendaftar
+// sebagai kader TIDAK didowngrade rolenya (Section 19.1: role menjawab
+// "boleh ngapain", tidak seharusnya berubah diam-diam akibat aksi pihak lain).
+// Kegagalan di sini tidak membatalkan persetujuan kader itu sendiri (kode
+// kader sudah terlanjur terbit) — dicatat, bukan menggagalkan transaksi.
+func (s *ServiceImpl) promoteToKaderRole(ctx context.Context, userID int64) error {
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if u.RoleName != roleNamePengunjung {
+		return nil
+	}
+	kaderRoleID, err := s.roleRepo.IDByName(ctx, roleNameKader)
+	if err != nil {
+		return err
+	}
+	return s.userRepo.Update(ctx, u.UserID, u.FullName, u.Email, kaderRoleID, u.IsActive, u.OrganizationID, u.WildcardTierAccess, userID)
 }
 
 // ---------- validation rule & conditional rule ----------
@@ -642,6 +677,35 @@ func (s *ServiceImpl) Cancel(ctx context.Context, id int64, caller CallerScope) 
 
 // ---------- List & Get ----------
 
+// resolveScopedOrganizationIDs menghitung cakupan organisasi yang berlaku
+// untuk sebuah permintaan list (submission/kader): default ke seluruh
+// accessible set milik caller, tapi bila klien mengirim `organizationID`
+// eksplisit (org-switcher di shell cms-ldk/cms-puskomda), dipersempit ke
+// cascade yang berakar pada organisasi itu SETELAH divalidasi accessible
+// terhadap caller — mencegah IDOR (TechSpec Section 30) sekaligus jadi
+// perbaikan akar untuk bug "ganti organisasi di switcher, data tidak berubah".
+func (s *ServiceImpl) resolveScopedOrganizationIDs(ctx context.Context, caller CallerScope) ([]int64, error) {
+	if caller.RequestedOrganizationID != nil {
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+		if err != nil {
+			return nil, apperror.Internal("")
+		}
+		if !ok {
+			return nil, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+		}
+		ids, err := s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
+		if err != nil {
+			return nil, apperror.Internal("")
+		}
+		return ids, nil
+	}
+	ids, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	return ids, nil
+}
+
 func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, status, formCode string) ([]submission_dto.Response, int, error) {
 	filter := submission_dto.ListFilter{
 		Status:  status,
@@ -660,9 +724,9 @@ func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQu
 		uid := caller.UserID
 		filter.SubmittedByUserID = &uid
 	} else {
-		ids, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+		ids, err := s.resolveScopedOrganizationIDs(ctx, caller)
 		if err != nil {
-			return nil, 0, apperror.Internal("")
+			return nil, 0, err
 		}
 		filter.OrganizationIDs = ids
 	}
@@ -815,6 +879,7 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 		return apperror.Internal("")
 	}
 	s.recordHistory(ctx, sub.SubmissionID, constants.SubmissionStatusApprovedLDK, constants.SubmissionStatusActive, caller, "Kode kader diterbitkan otomatis")
+	_ = s.promoteToKaderRole(ctx, kader.UserID)
 	return nil
 }
 
@@ -1119,9 +1184,9 @@ func (s *ServiceImpl) Reassess(ctx context.Context, id int64, caller CallerScope
 // ---------- Kader ----------
 
 func (s *ServiceImpl) ListKaders(ctx context.Context, caller CallerScope, q dto.ListQuery, status string) ([]submission_dto.KaderResponse, int, error) {
-	ids, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	ids, err := s.resolveScopedOrganizationIDs(ctx, caller)
 	if err != nil {
-		return nil, 0, apperror.Internal("")
+		return nil, 0, err
 	}
 	if len(ids) == 0 {
 		return []submission_dto.KaderResponse{}, 0, nil

@@ -15,6 +15,15 @@ type CallerScope struct {
 	OrganizationID       *int64
 	OrganizationTypeCode string
 	WildcardTierAccess   string
+	// RequestedOrganizationID adalah organizationID eksplisit yang dikirim
+	// klien lewat query `organizationID` (mis. hasil pilihan org-switcher di
+	// shell cms-ldk/cms-puskomda) — hanya dihormati saat caller memang punya
+	// tier organisasi (OrganizationID/WildcardTierAccess terisi); untuk Kader
+	// (akun tanpa tier) tetap selalu difilter ke submission miliknya sendiri
+	// terlepas dari nilai field ini, lihat List(). Belum divalidasi accessible
+	// di sini — divalidasi di service lewat OrgScopeResolver.IsAccessible
+	// sebelum dipakai (IDOR-prevention, TechSpec Section 30).
+	RequestedOrganizationID *int64
 }
 
 // OrgScopeResolver menyediakan resolusi cakupan akses organisasi berjenjang.
@@ -22,6 +31,10 @@ type CallerScope struct {
 type OrgScopeResolver interface {
 	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
 	AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error)
+	// AccessibleOrganizationIDsForTarget mengembalikan cascade yang berakar
+	// pada targetOrganizationID (bukan home org caller) — panggil hanya
+	// setelah IsAccessible mengonfirmasi target berada dalam jangkauan caller.
+	AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error)
 }
 
 // Service adalah kontrak logika bisnis submission.

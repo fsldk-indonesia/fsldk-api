@@ -39,7 +39,13 @@ func callerScope(c *gin.Context) organization_service.CallerScope {
 }
 
 func (h *HandlerImpl) Me(c *gin.Context) {
-	data, err := h.svc.AccessibleList(c.Request.Context(), callerScope(c))
+	var siblingOf *int64
+	if raw := c.Query("siblingOf"); raw != "" {
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil && id > 0 {
+			siblingOf = &id
+		}
+	}
+	data, err := h.svc.AccessibleList(c.Request.Context(), callerScope(c), c.Query("organizationTypeCode"), siblingOf, c.Query("q"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

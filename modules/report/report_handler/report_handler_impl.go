@@ -2,6 +2,7 @@ package report_handler
 
 import (
 	"fmt"
+	"strconv"
 
 	"fsldk-api/base/appctx"
 	"fsldk-api/base/apperror"
@@ -11,6 +12,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// requestedOrganizationID membaca query `organizationID` opsional (target
+// org-switcher) — divalidasi di service, bukan di sini.
+func requestedOrganizationID(c *gin.Context) *int64 {
+	raw := c.Query("organizationID")
+	if raw == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil
+	}
+	return &id
+}
 
 // HandlerImpl adalah implementasi Handler.
 type HandlerImpl struct{ svc report_service.Service }
@@ -27,10 +42,11 @@ func (h *HandlerImpl) ExportSubmissions(c *gin.Context) {
 	format := c.DefaultQuery("format", "xlsx")
 
 	caller := report_service.CallerScope{
-		UserID:               appctx.UserID(c),
-		OrganizationID:       appctx.OrganizationID(c),
-		OrganizationTypeCode: appctx.OrganizationTypeCode(c),
-		WildcardTierAccess:   appctx.WildcardTierAccess(c),
+		UserID:                  appctx.UserID(c),
+		OrganizationID:          appctx.OrganizationID(c),
+		OrganizationTypeCode:    appctx.OrganizationTypeCode(c),
+		WildcardTierAccess:      appctx.WildcardTierAccess(c),
+		RequestedOrganizationID: requestedOrganizationID(c),
 	}
 	result, err := h.svc.ExportSubmissions(c.Request.Context(), caller, report_dto.ExportFilter{
 		FormCode: formCode,

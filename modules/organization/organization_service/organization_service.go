@@ -22,8 +22,22 @@ type CallerScope struct {
 type Service interface {
 	// IsAccessible memenuhi kontrak middlewares.OrgScopeLoader.
 	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
+	// TypeCodeByID mengembalikan organizationTypeCode organisasi — dipakai
+	// modul lain (mis. dashboard) untuk menentukan tema/tier saat caller
+	// membuka konteks organisasi lain lewat switcher.
+	TypeCodeByID(ctx context.Context, id int64) (string, error)
 
-	AccessibleList(ctx context.Context, caller CallerScope) ([]organization_dto.MeOrganization, error)
+	// AccessibleList mengembalikan daftar organisasi yang dapat diakses caller
+	// (dashboard switcher). organizationTypeCode (WAJIB diisi oleh context
+	// switcher lokal shell cms-ldk/cms-puskomda — TIDAK dipakai dropdown akun
+	// navbar global yang boleh kosong) MEMBATASI hasil hanya ke tipe tersebut
+	// — mencegah LDK/Puskomda/Puskomnas tercampur dalam satu shell (miss-
+	// development-prompt-2.md poin 2). siblingOf (opsional) mempersempit lebih
+	// lanjut ke organisasi dengan parentOrganizationID yang sama (default
+	// "sesama Puskomda/wilayah"); q (opsional, mengalahkan siblingOf bila
+	// keduanya diisi) mencari lintas seluruh accessible set caller pada tipe
+	// yang sama (efektif "nasional" untuk Puskomnas/wildcard).
+	AccessibleList(ctx context.Context, caller CallerScope, organizationTypeCode string, siblingOf *int64, q string) ([]organization_dto.MeOrganization, error)
 	// Directory mengembalikan organisasi aktif bertipe typeCode tanpa
 	// dibatasi cakupan akses pemanggil (mis. Kader memilih LDK tujuan).
 	Directory(ctx context.Context, typeCode string) ([]organization_dto.DirectoryEntry, error)
@@ -31,6 +45,12 @@ type Service interface {
 	// dapat diakses caller — dipakai modul lain (mis. submission) untuk
 	// menyaring data tanpa perlu mengulang logika cascade/wildcard.
 	AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error)
+	// AccessibleOrganizationIDsForTarget mengembalikan cascade organizationID
+	// yang berakar pada targetOrganizationID itu sendiri (bukan home org
+	// caller) — dipakai modul lain saat caller secara eksplisit memilih
+	// organisasi lain lewat switcher (mis. `?organizationID=`). Pemanggil
+	// WAJIB memvalidasi targetOrganizationID via IsAccessible lebih dulu.
+	AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error)
 	List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string) ([]organization_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (organization_dto.Response, error)
 	Children(ctx context.Context, id int64) ([]organization_dto.Response, error)
