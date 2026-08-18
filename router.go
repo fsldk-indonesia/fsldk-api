@@ -110,7 +110,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	orgSvc := organization_service.NewService(orgRepo)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
-	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
+	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
 	userSvc := user_service.NewService(userRepo, orgSvc, audit)
 	roleSvc := role_service.NewService(roleRepo)
 	newsSvc := news_service.NewService(newsRepo)
