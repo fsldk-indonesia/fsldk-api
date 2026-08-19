@@ -55,4 +55,6 @@ type Service interface {
 	ListKaders(ctx context.Context, caller CallerScope, q dto.ListQuery, status string) ([]submission_dto.KaderResponse, int, error)
 	GetKaderCode(ctx context.Context, kaderID int64, caller CallerScope) (submission_dto.KaderResponse, error)
 	DeactivateKader(ctx context.Context, kaderID int64, caller CallerScope) error
+	ReassessKader(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
+	ReinstateKader(ctx context.Context, kaderID int64, caller CallerScope) error
 }

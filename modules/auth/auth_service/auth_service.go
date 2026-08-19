@@ -17,6 +17,7 @@ type Service interface {
 	Refresh(ctx context.Context, refreshToken string) (auth_dto.AuthResponse, error)
 	Me(ctx context.Context, userID int64) (auth_dto.UserProfile, error)
 	ChangePassword(ctx context.Context, userID int64, req auth_dto.ChangePasswordRequest) error
+	UpdateContact(ctx context.Context, userID int64, req auth_dto.UpdateContactRequest) (auth_dto.UserProfile, error)
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, req auth_dto.ResetPasswordRequest) error
 }

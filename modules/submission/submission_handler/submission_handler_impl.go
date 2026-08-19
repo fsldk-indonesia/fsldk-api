@@ -287,3 +287,37 @@ func (h *HandlerImpl) DeactivateKader(c *gin.Context) {
 	}
 	httphelper.Success(c, "Kader berhasil dinonaktifkan", nil)
 }
+
+func (h *HandlerImpl) ReassessKader(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.VersionedRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.ReassessKader(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Pendataan dibuka kembali untuk diisi ulang", data)
+}
+
+func (h *HandlerImpl) ReinstateKader(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.ReinstateKader(c.Request.Context(), id, callerScope(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Data kader berhasil diputihkan kembali", nil)
+}

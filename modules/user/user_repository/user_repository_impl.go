@@ -126,6 +126,14 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email s
 	}).Error
 }
 
+func (r *RepositoryImpl) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
+	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
+		"phoneNumber": phoneNumber,
+		"address":     address,
+		"updatedDate": time.Now(),
+	}).Error
+}
+
 func (r *RepositoryImpl) SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"isActive":    active,

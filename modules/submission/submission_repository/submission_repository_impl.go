@@ -119,6 +119,11 @@ func (r *RepositoryImpl) UpdateStatus(ctx context.Context, id int64, toStatus st
 	return r.db.WithContext(ctx).Table("tr_submission").Where("submissionID = ?", id).Updates(values).Error
 }
 
+func (r *RepositoryImpl) UpdateFormVersion(ctx context.Context, id int64, formVersionID int64) error {
+	return r.db.WithContext(ctx).Table("tr_submission").Where("submissionID = ?", id).
+		Update("formVersionID", formVersionID).Error
+}
+
 func (r *RepositoryImpl) TouchVersion(ctx context.Context, id int64, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("tr_submission").Where("submissionID = ?", id).Updates(map[string]interface{}{
 		"version":         gorm.Expr("version + 1"),
@@ -143,6 +148,12 @@ func (r *RepositoryImpl) UpsertAnswer(ctx context.Context, submissionID int64, p
 			valueOptionID = VALUES(valueOptionID), valueFileURL = VALUES(valueFileURL), valueFileName = VALUES(valueFileName)`,
 		submissionID, p.FieldID, p.ValueText, p.ValueNumber, p.ValueDate, p.ValueOptionID, p.ValueFileURL, p.ValueFileName,
 	).Error
+}
+
+func (r *RepositoryImpl) RemapAnswerField(ctx context.Context, submissionID, oldFieldID, newFieldID int64) error {
+	return r.db.WithContext(ctx).Table("tr_submission_answer").
+		Where("submissionID = ? AND fieldID = ?", submissionID, oldFieldID).
+		Update("fieldID", newFieldID).Error
 }
 
 func (r *RepositoryImpl) ListAnswersBySubmission(ctx context.Context, submissionID int64) ([]submission_model.Answer, error) {

@@ -329,6 +329,24 @@ func (s *ServiceImpl) ChangePassword(ctx context.Context, userID int64, req auth
 	return nil
 }
 
+func (s *ServiceImpl) UpdateContact(ctx context.Context, userID int64, req auth_dto.UpdateContactRequest) (auth_dto.UserProfile, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return auth_dto.UserProfile{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	phone := strings.TrimSpace(req.PhoneNumber)
+	address := strings.TrimSpace(req.Address)
+	if err := s.users.UpdateContactInfo(ctx, userID,
+		sql.NullString{String: phone, Valid: phone != ""},
+		sql.NullString{String: address, Valid: address != ""},
+	); err != nil {
+		return auth_dto.UserProfile{}, apperror.Internal("")
+	}
+	u.PhoneNumber = sql.NullString{String: phone, Valid: phone != ""}
+	u.Address = sql.NullString{String: address, Valid: address != ""}
+	return s.profileFor(ctx, u)
+}
+
 func (s *ServiceImpl) ForgotPassword(ctx context.Context, email string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	u, err := s.users.FindByEmail(ctx, email)
@@ -419,6 +437,8 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 		Role:                 u.RoleName,
 		Permissions:          perms,
 		PhotoURL:             u.PhotoURL.String,
+		PhoneNumber:          u.PhoneNumber.String,
+		Address:              u.Address.String,
 		OrganizationID:       effectiveOrgID,
 		OrganizationTypeCode: effectiveOrgType,
 	}

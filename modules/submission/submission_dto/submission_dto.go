@@ -75,15 +75,19 @@ type LevelResultResponse struct {
 	PublishedDate     *time.Time `json:"publishedDate,omitempty"`
 }
 
-// KaderResponse adalah representasi data kader untuk API.
+// KaderResponse adalah representasi data kader untuk API. OrganizationName/
+// ParentOrganizationName hanya diisi saat status ACTIVE (disetujui) — dipakai
+// Profil Saya Portal Kader menampilkan Nama LDK & Nama Puskomda pembina.
 type KaderResponse struct {
-	KaderID        int64      `json:"kaderID"`
-	SubmissionID   int64      `json:"submissionID"`
-	OrganizationID int64      `json:"organizationID"`
-	UniqueCode     string     `json:"uniqueCode,omitempty"`
-	FullName       string     `json:"fullName"`
-	Status         string     `json:"status"`
-	IssuedDate     *time.Time `json:"issuedDate,omitempty"`
+	KaderID                int64      `json:"kaderID"`
+	SubmissionID           int64      `json:"submissionID"`
+	OrganizationID         int64      `json:"organizationID"`
+	OrganizationName       string     `json:"organizationName,omitempty"`
+	ParentOrganizationName string     `json:"parentOrganizationName,omitempty"`
+	UniqueCode             string     `json:"uniqueCode,omitempty"`
+	FullName               string     `json:"fullName"`
+	Status                 string     `json:"status"`
+	IssuedDate             *time.Time `json:"issuedDate,omitempty"`
 }
 
 // ListFilter menampung parameter penyaringan daftar submission.

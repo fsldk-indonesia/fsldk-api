@@ -23,6 +23,11 @@ type Repository interface {
 	Create(ctx context.Context, p user_model.CreateParams) (int64, error)
 	List(ctx context.Context, f user_dto.ListFilter) ([]user_model.User, int64, error)
 	Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error
+	// UpdateContactInfo memperbarui kolom kontak swadaya (No Whatsapp/Alamat)
+	// yang dapat diubah pemilik akun sendiri lewat Profil Saya — terpisah dari
+	// Update() (dipakai admin Kelola Pengguna) supaya self-service tidak perlu
+	// ikut mengirim field identitas/role yang tidak relevan.
+	UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error
 	SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error
 	SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error
 	LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error

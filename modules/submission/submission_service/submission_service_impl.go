@@ -561,6 +561,45 @@ func (s *ServiceImpl) buildAnswerParams(ctx context.Context, field submission_fo
 	return p, nil
 }
 
+// migrateToLatestVersion menyamakan formVersionID submission yang sedang
+// diedit ke version PUBLISHED terbaru form-nya, bila ternyata masih mengacu
+// ke version lama — akar masalah "Field X bukan bagian dari form ini" saat
+// LDK mengisi ulang submission REVISION_REQUESTED_* setelah Puskomnas
+// mempublikasikan version baru lewat Form Builder (fieldID field baru tidak
+// pernah ada di version lama yang jadi acuan validasi SaveAnswers). Jawaban
+// lama direlokasi ke fieldID versi baru lewat kecocokan fieldCode (fieldCode
+// dijamin sama persis oleh CloneVersionStructure saat version baru dibuat)
+// supaya tidak hilang dari tampilan hanya karena field-nya di-clone ulang
+// dengan ID baru; field yang benar-benar baru otomatis tampil kosong.
+func (s *ServiceImpl) migrateToLatestVersion(ctx context.Context, sub submission_model.Submission) submission_model.Submission {
+	latest, err := s.formRepo.FindPublishedVersionByForm(ctx, sub.FormID)
+	if err != nil || latest.VersionID == sub.FormVersionID {
+		return sub
+	}
+	oldFields, err := s.formRepo.ListFieldsByVersion(ctx, sub.FormVersionID)
+	if err != nil {
+		return sub
+	}
+	newFields, err := s.formRepo.ListFieldsByVersion(ctx, latest.VersionID)
+	if err != nil {
+		return sub
+	}
+	newFieldIDByCode := make(map[string]int64, len(newFields))
+	for _, f := range newFields {
+		newFieldIDByCode[f.FieldCode] = f.FieldID
+	}
+	for _, old := range oldFields {
+		if newID, ok := newFieldIDByCode[old.FieldCode]; ok && newID != old.FieldID {
+			_ = s.repo.RemapAnswerField(ctx, sub.SubmissionID, old.FieldID, newID)
+		}
+	}
+	if err := s.repo.UpdateFormVersion(ctx, sub.SubmissionID, latest.VersionID); err != nil {
+		return sub
+	}
+	sub.FormVersionID = latest.VersionID
+	return sub
+}
+
 func (s *ServiceImpl) SaveAnswers(ctx context.Context, id int64, caller CallerScope, req submission_dto.SaveAnswersRequest) (submission_dto.DetailResponse, error) {
 	sub, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -572,6 +611,7 @@ func (s *ServiceImpl) SaveAnswers(ctx context.Context, id int64, caller CallerSc
 	if !editableStatuses[sub.Status] {
 		return submission_dto.DetailResponse{}, apperror.InvalidStatusTransition("Jawaban hanya dapat diubah selama status DRAFT atau revisi")
 	}
+	sub = s.migrateToLatestVersion(ctx, sub)
 
 	fields, err := s.formRepo.ListFieldsByVersion(ctx, sub.FormVersionID)
 	if err != nil {
@@ -792,6 +832,15 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 	if err != nil {
 		return submission_dto.DetailResponse{}, apperror.Internal("")
 	}
+	if editableStatuses[sub.Status] {
+		// Migrasi ditampilkan lebih dini di sini (bukan hanya saat SaveAnswers)
+		// supaya form yang dimuat pemilik data untuk direvisi langsung
+		// menampilkan jawaban lama yang sudah direlokasi, bukan tampak kosong
+		// sampai simpan pertama. Reviewer/pihak lain tidak pernah melihat
+		// status editable (mereka melihat status review/publish), jadi migrasi
+		// ini tidak pernah mengubah data yang sedang direview/sudah terbit.
+		sub = s.migrateToLatestVersion(ctx, sub)
+	}
 	if !ok {
 		return submission_dto.DetailResponse{}, apperror.Forbidden("Anda tidak memiliki akses ke pendataan ini")
 	}
@@ -877,6 +926,12 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 	var kaderResp *submission_dto.KaderResponse
 	if k, err := s.repo.FindKaderBySubmission(ctx, sub.SubmissionID); err == nil {
 		kr := toKaderResponse(k)
+		if k.Status == constants.KaderStatusActive {
+			if org, err := s.orgRepo.FindByID(ctx, k.OrganizationID); err == nil {
+				kr.OrganizationName = org.OrganizationName
+				kr.ParentOrganizationName = org.ParentOrganizationName.String
+			}
+		}
 		kaderResp = &kr
 	}
 
@@ -906,6 +961,16 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 	kader, err := s.repo.FindKaderBySubmission(ctx, sub.SubmissionID)
 	if err != nil {
 		return apperror.Internal("Data kader tidak ditemukan")
+	}
+	if kader.UniqueCode.Valid {
+		// Re-approval setelah "Isi Ulang Pendataan" (ReassessKader) — kode
+		// kader sudah pernah terbit sebelumnya, cukup aktifkan kembali
+		// submission tanpa menerbitkan kode baru (dikonfirmasi 2026-08-19).
+		if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusActive, sql.NullTime{}, caller.UserID); err != nil {
+			return apperror.Internal("")
+		}
+		s.recordHistory(ctx, sub.SubmissionID, constants.SubmissionStatusApprovedLDK, constants.SubmissionStatusActive, caller, "Data kader diperbarui, kode kader tidak berubah")
+		return nil
 	}
 	org, err := s.orgRepo.FindByID(ctx, sub.OrganizationID)
 	if err != nil {
@@ -1295,5 +1360,88 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusInactive, sql.NullString{}, sql.NullTime{}); err != nil {
 		return apperror.Internal("")
 	}
+	return nil
+}
+
+// ReassessKader mengizinkan kader ACTIVE mengisi ulang data Sensus Kader-nya
+// sendiri ketika Puskomnas sudah mempublikasikan version form baru — TANPA
+// menerbitkan kode kader baru (dikonfirmasi 2026-08-19). Submission direset
+// ke DRAFT & dipindah ke version terbaru (lihat migrateToLatestVersion untuk
+// bagaimana jawaban lama direlokasi), lalu mengikuti alur Submit()/Review()
+// normal seperti pengisian pertama kali — issueKaderCode() sudah dijaga
+// terpisah untuk tidak menerbitkan kode baru bila kader.uniqueCode sudah ada.
+func (s *ServiceImpl) ReassessKader(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error) {
+	sub, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return submission_dto.Response{}, apperror.NotFound("Submission tidak ditemukan")
+	}
+	if sub.SubjectType != constants.SubjectTypeKader {
+		return submission_dto.Response{}, apperror.InvalidStatusTransition("Isi ulang pendataan hanya berlaku untuk Sensus Kader")
+	}
+	if sub.SubmittedByUserID != caller.UserID {
+		return submission_dto.Response{}, apperror.Forbidden("Anda hanya dapat mengisi ulang pendataan milik Anda sendiri")
+	}
+	if sub.Status != constants.SubmissionStatusActive {
+		return submission_dto.Response{}, apperror.InvalidStatusTransition("Isi ulang hanya dapat dilakukan saat status Aktif")
+	}
+	if err := checkVersion(sub, req.Version); err != nil {
+		return submission_dto.Response{}, err
+	}
+	latest, err := s.formRepo.FindPublishedVersionByForm(ctx, sub.FormID)
+	if err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
+	if latest.VersionID == sub.FormVersionID {
+		return submission_dto.Response{}, apperror.InvalidStatusTransition("Belum ada pembaruan formulir terbaru")
+	}
+	sub = s.migrateToLatestVersion(ctx, sub)
+
+	if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, caller.UserID); err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
+	s.recordHistory(ctx, sub.SubmissionID, constants.SubmissionStatusActive, constants.SubmissionStatusDraft, caller, "Isi ulang pendataan (formulir version baru)")
+
+	sub, err = s.repo.FindByID(ctx, sub.SubmissionID)
+	if err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
+	form, err := s.formRepo.FindFormByID(ctx, sub.FormID)
+	if err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
+	return s.toResponse(sub, form.FormCode), nil
+}
+
+// ReinstateKader "memutihkan kembali" kader berstatus REJECTED atas permintaan
+// LDK — submission direset total ke DRAFT (dikonfirmasi 2026-08-19: kader
+// mengisi ulang dari nol, bukan langsung aktif atau sekadar direvisi) supaya
+// bisa mendaftar ulang lewat alur normal. Kader.uniqueCode tidak pernah terisi
+// untuk kader REJECTED, jadi issueKaderCode() pada persetujuan berikutnya
+// otomatis menerbitkan kode baru seperti pendaftaran pertama kali.
+func (s *ServiceImpl) ReinstateKader(ctx context.Context, kaderID int64, caller CallerScope) error {
+	k, err := s.repo.FindKaderByID(ctx, kaderID)
+	if err != nil {
+		return apperror.NotFound("Data kader tidak ditemukan")
+	}
+	if !s.callerHasTier(ctx, caller, k.OrganizationID, constants.ReviewTierLDK) {
+		return apperror.Forbidden("Hanya LDK yang dapat memutihkan kembali data kader")
+	}
+	if err := s.checkOrgAccess(ctx, caller, k.OrganizationID); err != nil {
+		return err
+	}
+	if k.Status != constants.KaderStatusRejected {
+		return apperror.InvalidStatusTransition("Hanya data kader berstatus Ditolak yang dapat diputihkan kembali")
+	}
+	sub, err := s.repo.FindByID(ctx, k.SubmissionID)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusPending, sql.NullString{}, sql.NullTime{}); err != nil {
+		return apperror.Internal("")
+	}
+	if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, caller.UserID); err != nil {
+		return apperror.Internal("")
+	}
+	s.recordHistory(ctx, sub.SubmissionID, sub.Status, constants.SubmissionStatusDraft, caller, "Diputihkan kembali oleh LDK")
 	return nil
 }

@@ -23,6 +23,7 @@ type User struct {
 	GoogleID             sql.NullString `gorm:"column:googleID"`
 	EmailVerifiedDate    sql.NullTime   `gorm:"column:emailVerifiedDate"`
 	PhoneNumber          sql.NullString `gorm:"column:phoneNumber"`
+	Address              sql.NullString `gorm:"column:address"`
 	PhotoURL             sql.NullString `gorm:"column:photoURL"`
 	MustChangePassword   bool           `gorm:"column:mustChangePassword"`
 	IsActive             bool           `gorm:"column:isActive"`

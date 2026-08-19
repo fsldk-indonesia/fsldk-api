@@ -38,6 +38,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 		g.POST("/:id/publish", mw.RequirePermission(constants.PermSubmissionPublish), h.Publish)
 		g.POST("/:id/reopen", mw.RequirePermission(constants.PermSubmissionReopen), h.Reopen)
 		g.POST("/:id/reassess", mw.RequirePermission(constants.PermSubmissionReassess), h.Reassess)
+		g.POST("/:id/reassess-kader", mw.RequirePermission(constants.PermSubmissionCreate), h.ReassessKader)
 	}
 
 	k := rg.Group("/kaders")
@@ -46,5 +47,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 		k.GET("", mw.RequirePermission(constants.PermSubmissionReviewLDK), h.ListKaders)
 		k.GET("/:id/code", h.GetKaderCode)
 		k.POST("/:id/deactivate", mw.RequirePermission(constants.PermKaderDeactivate), h.DeactivateKader)
+		k.POST("/:id/reinstate", mw.RequirePermission(constants.PermKaderDeactivate), h.ReinstateKader)
 	}
 }
