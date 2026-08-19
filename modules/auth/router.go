@@ -29,6 +29,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h auth_handler.Handler, mw *middlewares
 			authed.GET("/me", h.Me)
 			authed.POST("/email/resend", middlewares.RateLimit(6, 6), h.ResendVerification)
 			authed.POST("/change-password", h.ChangePassword)
+			authed.PUT("/me/contact", h.UpdateContact)
 		}
 	}
 }
