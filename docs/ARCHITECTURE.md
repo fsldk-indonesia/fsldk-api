@@ -28,9 +28,9 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 ## 2. Struktur Modul (Subfolder + Interface/Impl)
 
-Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `shortlink`, `dashboard`, `organization`, `submission_form`, `submission`, `report`) memiliki struktur subfolder yang identik. Contoh modul `news`:
+Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `event`, `comment`, `shortlink`, `dashboard`, `organization`, `submission_form`, `submission`, `report`) memiliki struktur subfolder yang identik. Contoh modul `news`:
 
-> Modul `upload` (unggah gambar CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
+> Modul `upload` (unggah gambar/dokumen CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
 >
 > Modul `submission` adalah satu-satunya modul yang **tidak** memakai `RequireOrganizationScope` generik di router-nya (lihat §5) — kepemilikan submission diperiksa di service layer sendiri (`checkOrgAccess`), karena submission ber-subjek `ORGANIZATION` terkunci ke organisasi pemanggil sedangkan ber-subjek `KADER` bebas menunjuk organisasi manapun, dua aturan yang tidak bisa diwakili satu middleware path/query param generik. Lihat §11.
 
@@ -122,6 +122,7 @@ Didefinisikan di [`middlewares/`](../middlewares), dipasang berlapis per grup ro
 | `RequireVerified()` | Tolak (403 `EMAIL_NOT_VERIFIED`) bila email belum diverifikasi | Setelah `Auth()`, kecuali endpoint di "daftar aman" |
 | `RequirePermission(code...)` | Tolak (403) bila role tidak punya **salah satu** permission tsb. (variadic, any-match) — query `map_role_permission` via `PermissionLoader` (diimplementasikan modul `permission`, di-inject untuk menghindari circular dependency) | Per-endpoint CMS |
 | `RequireOrganizationScope(paramName)` | Tolak (403) bila organisasi pada path param (`:id` dll.) di luar cakupan akses caller — cascade LDK/Puskomda/Puskomnas atau `wildcardTierAccess`, lewat `OrgScopeLoader` (diimplementasikan modul `organization`, pola sama dengan `PermissionLoader`) | Per-endpoint yang menyentuh organisasi tertentu (§11) |
+| `LoadPermissions()` | Memuat seluruh kode permission milik role pengguna ke context **tanpa pernah menolak request** (beda dari `RequirePermission`, yang menolak bila kode tertentu tidak dimiliki) — dipakai pada route "milik-sendiri" yang otorisasinya bercabang antara pemilik konten ATAU pemegang permission tertentu, mis. `PUT/DELETE /comments/:id` (owner ATAU `comment.update`/`comment.delete` — cek final di service, lihat §12) | Per-endpoint milik-sendiri yang punya jalur override moderator |
 
 ---
 
@@ -171,7 +172,7 @@ templateData, _ := os.ReadFile(path)
 
 **Konsekuensi:** binary harus dijalankan dari root proyek (atau `assets/` disalin bersebelahan dengan binary saat deploy) — lihat [Instalasi §10](./INSTALLATION.md#10-build-untuk-produksi). Keuntungannya: template email & logo bisa diedit tanpa build ulang aplikasi.
 
-`assets/uploads/` memakai pola serupa untuk sisi tulis: [`pkg/upload`](../pkg/upload) (dipakai lewat modul `upload`, `POST /uploads/image`, lihat [API §7](./API.md)) menyimpan gambar unggahan CMS (Artikel & Berita) ke folder ini dengan nama acak, lalu [`router.go`](../router.go) menyajikannya sebagai berkas statis publik lewat `engine.Static("/uploads", "./assets/uploads")`. Folder ini diabaikan git (`.gitignore`) karena isinya data runtime, bukan aset sumber.
+`assets/uploads/` memakai pola serupa untuk sisi tulis: [`pkg/upload`](../pkg/upload) (dipakai lewat modul `upload`, `POST /uploads/image`, lihat [API §13](./API.md)) menyimpan gambar unggahan CMS (Artikel & Berita) ke folder ini dengan nama acak, lalu [`router.go`](../router.go) menyajikannya sebagai berkas statis publik lewat `engine.Static("/uploads", "./assets/uploads")`. Folder ini diabaikan git (`.gitignore`) karena isinya data runtime, bukan aset sumber.
 
 ---
 
@@ -186,12 +187,18 @@ templateData, _ := os.ReadFile(path)
 | `0003_seed_admin.up.sql` | 1 akun Super Admin awal (kredensial di [Instalasi §7](./INSTALLATION.md#7-kredensial-admin-fsldk-bawaan)) |
 | `0004_shortlink.up.sql` | Tabel `ms_shortlink` + permission `shortlink.*` + pemetaan ke role Super Admin/Editor |
 | `0005_organization_access.up.sql` | `lk_organization_type`, `ms_organization` (self-referencing), `ms_user` +`organizationID`/`wildcardTierAccess`, 4 role baru (LDK Admin/Puskomda Verifikator/Puskomnas Verifikator/Kader), permission `organization.*` |
+| `0005_comment.up.sql` | Tabel `ms_comment` + `tr_comment_reaction`; role `Member` (pendaftar publik, tanpa akses CMS); permission `comment.view`/`comment.delete` → Super Admin & Editor |
+| `0005_event.up.sql` | Tabel `ms_event` + permission `event.*` → Super Admin & Editor |
 | `0006_submission_form_engine.up.sql` | `ms_submission_form`/`_version`/`_section`/`_field`/`_field_option`, `ms_submission_period` (skema siap, belum dipakai — OQ-10), permission `submission_form.*` |
+| `0006_comment_update_permission.up.sql` | Permission `comment.update` (moderasi edit komentar bukan-pemilik, lihat §12) → Super Admin & Editor |
 | `0007_submission_core.up.sql` | `tr_submission` (generated column `ownerOrgKey`/`ownerUserKey` untuk unique constraint yang benar lintas subjek ORGANIZATION/KADER), `tr_submission_answer`, `tr_submission_status_history`, `ms_kader`, permission `submission.create/update/cancel/view` |
+| `0007_comment_mention.up.sql` | Tabel `tr_comment_mention` (@mention terstruktur pada komentar, lihat §12) |
 | `0008_review_workflow.up.sql` | `tr_submission_review`, `lk_level` (seed PRA_MULA/MULA/MADYA/MANDIRI), `tr_levelisasi_result` (`isCurrent`/`isCurrentKey` generated column — riwayat multi-siklus), permission `submission.review.*`/`.approve.*`/`.level.establish`/`.publish`/`.reopen`/`.reassess`, `kader.deactivate` |
 | `0009_audit_reporting.up.sql` | `tr_form_audit_log`, `tr_user_audit_log`, `tr_export_log`, permission `report.region.*`/`report.national.*` |
 
-Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql`) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
+`0005_comment.up.sql` dan `0005_event.up.sql` sengaja berbagi nomor urut yang sama (ditambahkan independen oleh pekerjaan berbeda) — ini aman karena `migrations.Run()` mengurutkan berdasarkan **nama file lengkap** (alfabetis: `comment` < `event`) dan mencatat status penerapan per nama file di `schema_migrations`, bukan per nomor urut semata.
+
+Menambahkan fitur baru setelah 0001/0002 sudah pernah diterapkan (seperti `0004_shortlink.up.sql` dst.) berarti tabel **dan** baris permission/pemetaan role-nya harus ada di migration baru itu sendiri — mengedit 0001/0002 langsung tidak akan berpengaruh ke database yang sudah menjalankannya.
 
 **Pengecualian selama masa pra-peluncuran** (belum ada data produksi): perubahan skema tabel yang sifatnya konseptual — mis. modul `content` yang dihapus total, kolom `ms_article` (`articleExcerpt` dihapus, `articleContent`→`articleIntro`, tambah `articleWriter`/`articleEditor`/`articlePdf`), atau kolom `ms_news` (tambah `newsPublisher`/`newsReporter`/`newsEditor`) — langsung diedit di `0001_init.up.sql` itu sendiri (bukan migration baru), lalu skema database dev yang sudah berjalan disesuaikan manual lewat `ALTER TABLE`. Ini sengaja dilakukan supaya *fresh install* tetap mencerminkan skema final tanpa riwayat migration yang saling menimpa satu sama lain untuk fitur yang belum pernah dipakai siapa pun di produksi. Begitu aplikasi live dengan data nyata, pola ini **tidak berlaku lagi** — semua perubahan skema wajib lewat migration baru.
 
@@ -227,6 +234,18 @@ Resolusi cakupan (`resolveAccessible` di `organization_service_impl.go`), dicek 
 **Prinsip penting**: cakupan **tidak pernah** dipercaya dari input klien (query/path param `organizationID`) — selalu diresolusi ulang dari klaim JWT caller di setiap request. Percobaan akses `:id` di luar cakupan selalu `403 Forbidden("Organisasi di luar wilayah Anda")`, terlepas dari apa yang ditampilkan UI (defense-in-depth: frontend hanya menyembunyikan menu/opsi yang tidak relevan, backend yang menegakkan).
 
 Urutan pengecekan otorisasi di service layer secara konsisten menempatkan **cakupan organisasi sebelum aturan bisnis/status** (mis. `submission_service.Review()` memeriksa `checkOrgAccess` sebelum `requiredTierForStatus`) — caller di luar cakupan tidak pernah mendapat informasi (lewat kode/pesan error yang berbeda) tentang status internal data yang bukan haknya.
+
+---
+
+## 12. Komentar: Kedalaman Balasan, Moderasi, dan @Mention
+
+Modul `comment` (dipakai bersama oleh Artikel, Berita, dan Event — `contentType`/`contentID` generik tanpa FK, lihat `comment_model.ValidContentTypes`) punya tiga aturan bisnis yang tidak terlihat langsung dari skema tabel:
+
+**Kedalaman balasan dibatasi 1 level.** `ms_comment.parentID` adalah self-reference tanpa kolom `depth` maupun CHECK constraint — kedalaman dihitung on-the-fly oleh `comment_repository.DepthOf` (jalan ke atas lewat `parentID`), dan aturan "hanya 1 level" ditegakkan di `comment_service.Create`: membalas komentar yang `DepthOf >= 1` (sudah berupa balasan) ditolak dengan `apperror.Validation`. Artinya struktur datanya sanggup menampung nesting tak terbatas, tapi bisnisnya sengaja membatasi jadi flat: komentar root → balasan (1 level), tanpa balasan-atas-balasan.
+
+**Edit/hapus: pemilik selalu boleh, selain itu berdasar permission.** `comment_service.Update`/`Delete` menerima parameter `isModerator bool`; otorisasinya `pemilik (createdBy == userID) OR isModerator`. `isModerator` diisi handler dari `constants.PermCommentUpdate`/`PermCommentDelete` pada context — tapi context itu **hanya** terisi kalau middleware `LoadPermissions()` (§5) dipasang di route yang bersangkutan (dipasang di `PUT/DELETE /comments/:id`, bukan `RequirePermission` biasa karena rute ini tidak boleh menolak pemilik komentar yang kebetulan tidak punya permission tsb.). Permission `comment.update`/`comment.delete` sengaja *action-only* (`menuRoute IS NULL`) — tidak muncul sebagai item sidebar, hanya sebagai checklist di halaman Role Management yang mengontrol jalur moderator ini.
+
+**@Mention disimpan terstruktur, bukan di-parse dari teks.** Tabel `tr_comment_mention` (commentID + userID, `0007_comment_mention.up.sql`) mencatat persis siapa saja yang dipilih composer lewat autocomplete `GET /users/mention-search` (endpoint ini sengaja tanpa permission — cukup login+verified, siapa pun boleh dicari & memilih mention siapa pun termasuk dirinya sendiri). `CreateRequest`/`UpdateRequest` membawa `mentionedUserIDs []int64`; `comment_service` menulis ulang seluruh daftar mention lewat `SetMentions` (delete-then-insert) setiap kali komentar dibuat/diubah, lalu `Response.mentions` mengembalikannya sebagai `[]AuthorDTO` (userID/name/photo). Desain ini sengaja **tidak** menyimpan tanda `@` di dalam `commentText` sebagai delimiter mention (mis. `@{Nama}`) — parsing bebas seperti itu ambigu untuk nama multi-kata dan gampang salah cocok; klien merender pill mention dengan mencocokkan `commentText` terhadap daftar `mentions` yang sudah pasti benar, bukan menebak dari pola teks (lihat `fsldk-web` — `MentionHighlightPipe`).
 
 ---
 

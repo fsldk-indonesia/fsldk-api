@@ -46,13 +46,16 @@ Base URL: `/api/v1`. Detail lengkap pada [`docs/API.md`](./docs/API.md).
 | Grup | Contoh |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/google`, `GET /auth/email/verify/:token`, `POST /auth/email/resend`, `/auth/refresh-token`, `GET /auth/me` |
-| User | `GET/POST /users`, `PUT /users/:id`, `PATCH /users/:id/status`, `POST /users/:id/reset-password` |
+| User | `GET/POST /users`, `PUT /users/:id`, `PATCH /users/:id/status`, `GET /users/mention-search` (@mention komentar, siapa pun login+verified) |
 | Role | `GET/POST /roles`, `PUT /roles/:id/permissions`, `GET /roles/:id/users` |
 | Menu | `GET /me/menus`, `GET /permissions` |
 | Berita | `GET /public/news`, `GET /public/news/:slug`, `GET/POST /news`, `PATCH /news/:id/publish` |
 | Artikel | `GET /public/articles`, `GET/POST /articles`, `PATCH /articles/:id/publish` |
-| Shortlink | `GET /s/:key` (redirect publik), `GET/POST /shortlinks`, `PUT/DELETE /shortlinks/:id` |
-| Dashboard | `GET /dashboard/summary`, `GET /dashboard/recent-news` |
+| Event | `GET /public/events`, `GET /public/events/:slug`, `GET/POST /events`, `PUT/DELETE /events/:id` |
+| Komentar | `GET /public/comments`, `POST /comments`, `PUT/DELETE /comments/:id` (pemilik atau `comment.update`/`comment.delete`), `POST /comments/:id/react` |
+| Shortlink | `GET /public/shortlinks/:key` (redirect publik), `GET/POST /shortlinks`, `PUT/DELETE /shortlinks/:id` |
+| Upload | `POST /uploads/image`, `POST /uploads/document` |
+| Dashboard | `GET /dashboard/summary` |
 | Sistem | `GET /health`, `GET /version` |
 
 ## Standar Response

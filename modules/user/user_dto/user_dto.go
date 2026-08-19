@@ -58,3 +58,13 @@ type ListFilter struct {
 	Offset  int
 	OrderBy string
 }
+
+// MentionSearchResult adalah ringkasan pengguna minimal untuk autocomplete
+// @mention pada komentar — sengaja tidak menyertakan email/role/dst. karena
+// endpoint ini bisa dipanggil siapa pun yang login+verified, bukan hanya
+// pemegang permission user.view (lihat modules/comment).
+type MentionSearchResult struct {
+	UserID   int64  `json:"userID"`
+	FullName string `json:"fullName"`
+	PhotoURL string `json:"photoURL,omitempty"`
+}

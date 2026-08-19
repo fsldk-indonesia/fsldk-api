@@ -6,6 +6,7 @@ import "github.com/gin-gonic/gin"
 // Handler adalah kontrak handler HTTP modul user.
 type Handler interface {
 	List(c *gin.Context)
+	SearchMentionable(c *gin.Context)
 	Get(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)

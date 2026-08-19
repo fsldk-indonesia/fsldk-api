@@ -57,16 +57,19 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 
 ---
 
-## 2. User (`/users`) — ✅🔒 + permission
+## 2. User (`/users`) — ✅🔒
 
 | Method | Endpoint | Permission | Deskripsi |
 |---|---|---|---|
+| GET | `/users/mention-search` | — (cukup login+terverifikasi) | Cari pengguna aktif untuk autocomplete @mention komentar (query: `q`, `limit` maks. 20, default 8); boleh mencari & mem-mention diri sendiri — lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention) |
 | GET | `/users` | `user.view` | Daftar pengguna (query: `page`, `limit`, `search`, `sort`, `roleID`) |
 | GET | `/users/:id` | `user.view` | Detail pengguna |
 | POST | `/users` | `user.create` | Buat pengguna baru |
 | PUT | `/users/:id` | `user.update` | Perbarui pengguna (nama, email, role, status, password opsional) |
 | PATCH | `/users/:id/status` | `user.update` | Aktifkan/nonaktifkan |
 | DELETE | `/users/:id` | `user.delete` | Hapus (soft delete) |
+
+**`GET /users/mention-search`** → `[{ "userID": 1, "fullName": "Ahmad Fadli", "photoURL": "..." }, ...]` — hanya field minimal ini (bukan `user_dto.Response` penuh), karena endpoint ini bisa dipanggil siapa pun yang login+verified, bukan hanya pemegang `user.view`.
 
 **`POST /users`**
 ```json
@@ -139,7 +142,7 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 **`PATCH /news/:id/publish`** → `{ "isPublished": true }`
 **`PATCH /news/:id/featured`** → `{ "isFeatured": true }`
 
-`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §7), bukan ditulis manual. `newsReporter` wajib diisi (byline wartawan/penulis liputan); `newsPublisher` (penerbit) dan `newsEditor` opsional.
+`newsImage` tetap berupa string URL — nilainya biasanya hasil unggahan lewat `POST /uploads/image` (lihat §13), bukan ditulis manual. `newsReporter` wajib diisi (byline wartawan/penulis liputan); `newsPublisher` (penerbit) dan `newsEditor` opsional.
 
 ---
 
@@ -180,11 +183,116 @@ Berbeda dari Berita: Artikel tidak punya `isFeatured`/`viewCount`, tapi punya ko
 }
 ```
 
-`articleWriter` wajib diisi (byline penulis); `articleEditor` opsional. `articleImage`/`articlePdf` tetap berupa string URL — nilainya hasil unggahan lewat `POST /uploads/image` / `POST /uploads/document` (lihat §7), bukan ditulis manual.
+`articleWriter` wajib diisi (byline penulis); `articleEditor` opsional. `articleImage`/`articlePdf` tetap berupa string URL — nilainya hasil unggahan lewat `POST /uploads/image` / `POST /uploads/document` (lihat §13), bukan ditulis manual.
 
 ---
 
-## 6. Shortlink
+## 6. Event
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/events` | Daftar event terpublikasi (query: `page`, `limit` default 9 maks. 100, `search`, `division`, `year`, `status` — masing-masing boleh multi-nilai dipisah koma, mis. `status=upcoming,ongoing`, `sort` default `newest`, alternatif `title`) |
+| GET | `/public/events/:slug` | Detail event (menambah `viewCount`) — turunan `status` (`upcoming`/`ongoing`/`past`) & `registOpen` dihitung dari `startDate`/`endDate`/`closeRegistDate` saat request, bukan disimpan |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/events` | `event.view` | Daftar seluruh event, published atau tidak (query: `page`, `limit`, `search`, `division`, `sort`) |
+| GET | `/events/:id` | `event.view` | Detail untuk pengelolaan |
+| POST | `/events` | `event.create` | Buat event baru |
+| PUT | `/events/:id` | `event.update` | Perbarui event |
+| DELETE | `/events/:id` | `event.delete` | Hapus event — komentar terkait (`contentType="event"`) ikut dibersihkan (lihat §7) |
+
+**`POST /events`**
+```json
+{
+  "eventTitle": "FSLDKN Ke-21",
+  "eventDivision": "Departemen Jaringan",
+  "eventContent": "<p>Deskripsi lengkap acara...</p>",
+  "eventImage": "http://localhost:8080/uploads/xxx.jpg",
+  "startDate": "2026-09-01T08:00:00",
+  "endDate": "2026-09-03T17:00:00",
+  "closeRegistDate": "2026-08-25T23:59:00",
+  "location": "Bandung",
+  "place": "Gedung Sate",
+  "locationLink": "https://maps.google.com/...",
+  "registrationLink": "https://forms.gle/...",
+  "documentLink": "https://drive.google.com/...",
+  "presentationLink": "https://drive.google.com/...",
+  "contactPerson1": "81234567890",
+  "nameCp1": "Ahmad",
+  "contactPerson2": "81234567891",
+  "nameCp2": "Siti",
+  "tag": "nasional,jaringan",
+  "isPublished": false
+}
+```
+`PUT /events/:id` memakai bentuk body yang sama persis (semua field wajib dikirim ulang, bukan partial update). Semua field tanggal menerima ISO8601 atau `YYYY-MM-DD[ HH:mm[:ss]]`, boleh dikosongkan (`""` → `null`). `eventImage` string URL hasil `POST /uploads/image` (lihat §13), bukan ditulis manual. `eventSlug` dibuat otomatis dari `eventTitle` (unik, re-slug hanya kalau judul berubah).
+
+---
+
+## 7. Komentar (`/comments`)
+
+Dipakai bersama oleh Artikel, Berita, dan Event — `contentType` (`article`/`news`/`event`) + `contentID` menunjuk ke konten manapun tanpa foreign key (lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention)). Balasan dibatasi **1 level** (tidak bisa membalas balasan).
+
+### Publik (tanpa auth, tapi login opsional ikut mengisi `isOwner`/reaksi milik-sendiri)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/comments` | Thread komentar satu konten (query wajib: `contentType`, `contentID`) — array bersarang `replies` |
+
+### Aksi milik-sendiri — ✅🔒 (cukup login+terverifikasi, tanpa permission khusus)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| POST | `/comments` | Buat komentar/balasan baru |
+| PUT | `/comments/:id` | Ubah komentar — **pemilik selalu boleh**; bukan-pemilik butuh permission `comment.update` |
+| DELETE | `/comments/:id` | Hapus komentar (balasan & reaksi ikut terhapus via `ON DELETE CASCADE`) — **pemilik selalu boleh**; bukan-pemilik butuh permission `comment.delete` |
+| POST | `/comments/:id/react` | Toggle reaksi emoji (like/dislike/love/heart_eyes/laughing/rage/slight_smile) — kirim ulang `reactionType` yang sama untuk membatalkan |
+| GET | `/comments/gif-search` | Proxy pencarian GIF/sticker via GIPHY (query: `q`, `tab=gifs\|stickers`) — array kosong bila `GIPHY_API_KEY` tidak diisi, tidak pernah error |
+| GET | `/comments/gif-categories` | Proxy kategori GIF trending GIPHY (maks. 8) |
+
+### Moderasi admin — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/comments` | `comment.view` | Daftar komentar top-level lintas konten (query: `page`, `limit`, `search`, `contentType`, `sort`) |
+| GET | `/comments/:id` | `comment.view` | Detail satu komentar + seluruh subtree balasannya |
+| POST | `/comments/bulk-delete` | `comment.delete` | Hapus banyak komentar sekaligus — `{ "ids": [1,2,3] }`, tanpa konsep kepemilikan (murni permission) |
+
+**`POST /comments`**
+```json
+{
+  "contentType": "article",
+  "contentID": 12,
+  "parentID": null,
+  "commentText": "Terima kasih atas informasinya @Ahmad Fadli!",
+  "mediaURL": "",
+  "mediaType": "",
+  "mentionedUserIDs": [7]
+}
+```
+`parentID` diisi `commentID` induk untuk membalas (`null` untuk komentar top-level). `commentText`/`mediaURL` setidaknya satu wajib diisi. `mentionedUserIDs` opsional (maks. 20) — userID yang benar-benar dipilih lewat autocomplete `GET /users/mention-search` (§2), **bukan** hasil parsing pola teks; teks `@Nama` di `commentText` yang tidak ada di `mentionedUserIDs` tidak dianggap mention. `PUT /comments/:id` memakai bentuk body yang sama (tanpa `contentType`/`contentID`/`parentID`).
+
+**Response** (`Response`, dipakai di semua endpoint di atas):
+```json
+{
+  "commentID": 5, "contentType": "article", "contentID": 12, "commentText": "...",
+  "mediaURL": "", "mediaType": "", "parentID": null, "isOwner": true,
+  "createdDate": "2026-08-16 10:00:00",
+  "author": { "userID": 3, "name": "...", "photo": "..." },
+  "reactions": { "counts": { "like": 2 }, "userTypes": ["like"] },
+  "mentions": [{ "userID": 7, "name": "Ahmad Fadli", "photo": "..." }],
+  "replies": []
+}
+```
+
+---
+
+## 8. Shortlink
 
 Pemendek URL. Redirect yang dilihat pengunjung terjadi di **domain frontend**
 (`fsldk-web`), bukan di backend ini — endpoint publik di bawah hanya
@@ -216,7 +324,7 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ---
 
-## 7. Organization (`/organizations`, `/me/organizations`) — ✅🔒
+## 9. Organization (`/organizations`, `/me/organizations`) — ✅🔒
 
 Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") caller diresolusi server-side dari `organizationID`/`organizationTypeCode` (cascade: LDK→diri sendiri, Puskomda→diri+LDK di bawahnya, Puskomnas→seluruh organisasi) **atau** `wildcardTierAccess` (mem-bypass cascade untuk akun seperti Super Admin) — **tidak pernah** dipercaya dari input klien. Endpoint bertanda `RequireOrganizationScope` menolak (`403`) permintaan ke `:id` di luar cakupan caller, terlepas dari apa yang ditampilkan UI.
 
@@ -239,7 +347,7 @@ Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") calle
 
 ---
 
-## 8. Submission Form — Form Builder (`/submission-forms`) — ✅🔒
+## 10. Submission Form — Form Builder (`/submission-forms`) — ✅🔒
 
 Mesin form metadata-driven yang dipakai dua form konkret (`LEVELISASI_LDK`, `SENSUS_KADER`) — hierarki Form → Version (DRAFT/PUBLISHED/ARCHIVED) → Section → Field (10 tipe: TEXT/TEXTAREA/NUMBER/DATE/SELECT/MULTISELECT/RADIO/CHECKBOX/FILE_DOCUMENT/FILE_IMAGE) → Option. Struktur version hanya bisa diubah selama `DRAFT`; setelah `PUBLISHED`, immutable (ditegakkan di service layer) — perubahan berikutnya lewat version baru (opsional clone dari version manapun).
 
@@ -263,7 +371,7 @@ Mesin form metadata-driven yang dipakai dua form konkret (`LEVELISASI_LDK`, `SEN
 
 ---
 
-## 9. Submission — Pendataan & Review (`/submissions`, `/kaders`) — ✅🔒
+## 11. Submission — Pendataan & Review (`/submissions`, `/kaders`) — ✅🔒
 
 Alur Levelisasi LDK (2 tier: Puskomda → Puskomnas) dan Sensus Kader (1 tier: LDK, keputusan final). Kepemilikan/cakupan data diperiksa di **service layer** (bukan `RequireOrganizationScope` generik) karena submission ber-subjek `ORGANIZATION` dikunci ke organisasi pemanggil sendiri, sedangkan submission ber-subjek `KADER` bebas menunjuk LDK manapun. Seluruh aksi mutasi (`review`/`establish-level`/`publish`/`reopen`/`reassess`) mensyaratkan `version` (optimistic locking) — selisih dengan versi tersimpan → `409 Conflict`.
 
@@ -294,7 +402,7 @@ Status Levelisasi LDK: `DRAFT → SUBMITTED → PUSKOMDA_REVIEW → APPROVED_PUS
 
 ---
 
-## 10. Report (`/reports`) — ✅🔒
+## 12. Report (`/reports`) — ✅🔒
 
 Ekspor laporan submission Levelisasi — **bukan** endpoint JSON, response berupa berkas biner (`Content-Disposition: attachment`), sinkron (tanpa job queue). Cakupan data mengikuti cascade organisasi caller yang sama seperti `/submissions`.
 
@@ -306,7 +414,7 @@ Nama berkas: `laporan-{formCode}-{yyyyMMdd-HHmmss}.{ext}`. Setiap ekspor dicatat
 
 ---
 
-## 11. Upload (`/uploads`) — ✅🔒
+## 13. Upload (`/uploads`) — ✅🔒
 
 Unggah berkas gambar/dokumen — dipakai bersama oleh form Artikel/Berita CMS **dan** field `FILE_IMAGE`/`FILE_DOCUMENT` pada pengisian submission (§9), bukan endpoint khusus per-modul.
 
@@ -319,13 +427,13 @@ Unggah berkas gambar/dokumen — dipakai bersama oleh form Artikel/Berita CMS **
 Validasi: ekstensi `jpg`/`jpeg`/`png`/`webp`/`gif`, maksimal 5MB.
 
 **`POST /uploads/document`** (multipart/form-data, field `document`) → `{ "url": "http://localhost:8080/uploads/<nama-acak>.pdf" }`
-Validasi: ekstensi `pdf`/`docx`/`xlsx` (docx/xlsx ditambahkan untuk dokumen pendukung submission — lihat §9; naskah Artikel di §5 tetap PDF saja secara konvensi), maksimal 20MB.
+Validasi: ekstensi `pdf`/`docx`/`xlsx` (docx/xlsx ditambahkan untuk dokumen pendukung submission — lihat §11; naskah Artikel di §5 tetap PDF saja secara konvensi), maksimal 20MB.
 
 Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 byte + ekstensi asli) dan menyajikannya sebagai berkas statis publik di `/uploads/*`. `url` hasil unggahan inilah yang dikirim sebagai nilai `articleImage`/`newsImage`/`articlePdf` pada `POST`/`PUT` Artikel & Berita — kolom tersebut tetap berupa string URL di database, tidak ada perubahan skema tambahan di luar yang sudah dijelaskan di §5.
 
 ---
 
-## 12. Dashboard (`/dashboard`) — ✅🔒
+## 14. Dashboard (`/dashboard`) — ✅🔒
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -341,7 +449,7 @@ Caller tanpa tier organisasi/wildcard (mis. Kader) mendapat `{organizationTypeCo
 
 ---
 
-## 13. Sistem (tanpa prefix `/api/v1`)
+## 15. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
 |---|---|---|
@@ -356,14 +464,17 @@ Caller tanpa tier organisasi/wildcard (mis. Kader) mendapat `{organizationTypeCo
 |---|---|---|---|
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
-| `shortlink.view/create/update/delete` | Shortlink | `organization.create/profile.manage/deactivate` | Organisasi |
+| `shortlink.view/create/update/delete` | Shortlink | `event.view/create/update/delete` | Event |
+| `comment.view/update/delete` | Komentar | `organization.create/profile.manage/deactivate` | Organisasi |
 | `organization.ldk.list/ldk.list.national/puskomda.list` | Organisasi (daftar) | `submission_form.view/manage` | Form Builder |
 | `submission.create/update/cancel/view` | Pendataan (pemilik) | `submission.review.ldk` | Persetujuan Kader (LDK) |
 | `submission.review.tier1/approve.tier1` | Verifikasi/Persetujuan Wilayah (Puskomda) | `submission.review.tier2` | Verifikasi Akhir (Puskomnas) |
 | `submission.level.establish/publish/reopen/reassess` | Penetapan Level/Publikasi/Koreksi (Puskomnas) | `kader.deactivate` | Nonaktifkan Kader (LDK) |
 | `report.region.view/export` | Laporan Wilayah (Puskomda) | `report.national.view/export` | Laporan Nasional (Puskomnas) |
 
-Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink penuh), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql) dan [`migrations/0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql).
+`comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention).
+
+Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event penuh + moderasi komentar `comment.view/update/delete`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), dan [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql).
 
 Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per akun, tanpa multi-role:
 

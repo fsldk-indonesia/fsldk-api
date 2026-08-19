@@ -1,8 +1,8 @@
-// Package constants memuat konstanta terpusat yang digunakan lintas modul:
-// kode error, nama role & permission bawaan, nama tabel, dan kunci context.
+﻿// Package constants holds centralized constants used across modules:
+// error codes, default role & permission names, table names, and context keys.
 package constants
 
-// Kode response internal (dikirim pada field "code" pada envelope response).
+// Internal response codes (sent on the "code" field of the response envelope).
 const (
 	CodeSuccess                 = "00"
 	CodeValidationError         = "40"
@@ -18,11 +18,12 @@ const (
 	CodeInvalidStatusTransition = "42-STATUS"
 )
 
-// Role bawaan sistem.
+// Default system roles.
 const (
 	RoleSuperAdmin           = "Super Admin"
 	RoleEditor               = "Editor"
 	RoleKontributor          = "Kontributor"
+	RoleMember               = "Member" // pendaftar publik, tanpa akses CMS — lihat modules/comment
 	RoleLDKAdmin             = "LDK Admin"
 	RolePuskomdaVerifikator  = "Puskomda Verifikator"
 	RolePuskomnasVerifikator = "Puskomnas Verifikator"
@@ -37,7 +38,7 @@ const (
 	OrgTypePuskomnas = "PUSKOMNAS"
 )
 
-// Kode permission (format modul.aksi).
+// Permission codes (format: module.action).
 const (
 	PermNewsView    = "news.view"
 	PermNewsCreate  = "news.create"
@@ -97,6 +98,15 @@ const (
 	PermReportRegionExport   = "report.region.export"
 	PermReportNationalView   = "report.national.view"
 	PermReportNationalExport = "report.national.export"
+
+	PermEventView   = "event.view"
+	PermEventCreate = "event.create"
+	PermEventUpdate = "event.update"
+	PermEventDelete = "event.delete"
+
+	PermCommentView   = "comment.view"
+	PermCommentUpdate = "comment.update"
+	PermCommentDelete = "comment.delete"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -179,7 +189,7 @@ const (
 	FieldTypeFileImage   = "FILE_IMAGE"
 )
 
-// Nama tabel database (konvensi prefix_snake_case).
+// Database table names (convention: prefix_PascalCase).
 const (
 	TableUser            = "ms_user"
 	TableRole            = "ms_role"
@@ -190,8 +200,11 @@ const (
 	TableArticle         = "ms_article"
 	TableArticleCategory = "lk_article_category"
 	TableShortlink       = "ms_shortlink"
+	TableComment         = "ms_comment"
+	TableCommentReaction = "tr_comment_reaction"
 	TableUserLoginLog    = "tr_user_login_log"
 	TableEmailToken      = "tr_email_token" // token verifikasi email & reset password
+	TableEvent           = "ms_event"
 
 	TableOrganization     = "ms_organization"
 	TableOrganizationType = "lk_organization_type"
@@ -216,7 +229,7 @@ const (
 	TableExportLog    = "tr_export_log"
 )
 
-// Kunci yang disimpan pada gin.Context oleh middleware autentikasi.
+// Keys stored on gin.Context by the authentication middleware.
 const (
 	CtxUserID               = "ctxUserID"
 	CtxUserEmail            = "ctxUserEmail"
@@ -230,7 +243,7 @@ const (
 	CtxTargetOrganizationID = "ctxTargetOrganizationID"
 )
 
-// Jenis token email.
+// Email token types.
 const (
 	EmailTokenVerification  = "verification"
 	EmailTokenPasswordReset = "password_reset"

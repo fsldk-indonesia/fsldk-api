@@ -69,6 +69,33 @@ func (m *Middleware) Auth() gin.HandlerFunc {
 	}
 }
 
+// OptionalAuth parses the access token the same way Auth() does when one is
+// present, but never rejects the request when it's missing or invalid — it
+// just proceeds as a guest. Used on public routes that still want to know
+// the caller's identity when they happen to be logged in (e.g. the public
+// comment thread marking isOwner / the caller's own reactions), without
+// requiring login to read them.
+func (m *Middleware) OptionalAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw := extractBearer(c)
+		if raw == "" {
+			c.Next()
+			return
+		}
+		claims, err := m.Token.ParseAccess(raw)
+		if err != nil {
+			c.Next()
+			return
+		}
+		c.Set(constants.CtxUserID, claims.UserID)
+		c.Set(constants.CtxUserEmail, claims.Email)
+		c.Set(constants.CtxRoleID, claims.RoleID)
+		c.Set(constants.CtxRoleName, claims.RoleName)
+		c.Set(constants.CtxEmailVerified, claims.EmailVerified)
+		c.Next()
+	}
+}
+
 // RequireVerified menolak request bila email pengguna belum terverifikasi.
 // Harus dipasang setelah Auth().
 func (m *Middleware) RequireVerified() gin.HandlerFunc {
@@ -153,6 +180,25 @@ func (m *Middleware) RequireOrganizationScope(paramName string) gin.HandlerFunc 
 			return
 		}
 		c.Set(constants.CtxTargetOrganizationID, targetID)
+		c.Next()
+	}
+}
+
+// LoadPermissions memuat seluruh kode permission milik role pengguna dan
+// menyimpannya ke context tanpa pernah menolak request — berbeda dari
+// RequirePermission yang menolak bila kode tertentu tidak dimiliki. Dipakai
+// pada route "milik-sendiri" yang otorisasinya bercabang antara pemilik
+// konten ATAU pemegang permission tertentu (mis. edit/hapus komentar oleh
+// moderator — lihat modules/comment).
+func (m *Middleware) LoadPermissions() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if roleIDVal, ok := c.Get(constants.CtxRoleID); ok {
+			if roleID, ok := roleIDVal.(int64); ok {
+				if perms, err := m.Perm.RolePermissions(c.Request.Context(), roleID); err == nil {
+					c.Set(constants.CtxPermissions, perms)
+				}
+			}
+		}
 		c.Next()
 	}
 }

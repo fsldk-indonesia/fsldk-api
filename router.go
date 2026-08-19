@@ -55,6 +55,16 @@ import (
 	"fsldk-api/modules/article/article_repository"
 	"fsldk-api/modules/article/article_service"
 
+	"fsldk-api/modules/event"
+	"fsldk-api/modules/event/event_handler"
+	"fsldk-api/modules/event/event_repository"
+	"fsldk-api/modules/event/event_service"
+
+	"fsldk-api/modules/comment"
+	"fsldk-api/modules/comment/comment_handler"
+	"fsldk-api/modules/comment/comment_repository"
+	"fsldk-api/modules/comment/comment_service"
+
 	"fsldk-api/modules/dashboard"
 	"fsldk-api/modules/dashboard/dashboard_handler"
 	"fsldk-api/modules/dashboard/dashboard_repository"
@@ -100,9 +110,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	subRepo := submission_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
+	eventRepo := event_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
 	reportRepo := report_repository.NewRepository(db)
+	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 
 	// Service (logika bisnis)
@@ -113,12 +125,18 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
 	userSvc := user_service.NewService(userRepo, orgSvc, audit)
 	roleSvc := role_service.NewService(roleRepo)
-	newsSvc := news_service.NewService(newsRepo)
-	articleSvc := article_service.NewService(articleRepo)
 	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
+	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
+	// sebagai CommentCleaner untuk membersihkan komentar saat konten induknya
+	// dihapus (ms_comment tidak punya FK ke ms_article/ms_news/ms_event, lihat
+	// comment techspec §3.1a).
+	commentSvc := comment_service.NewService(commentRepo, uploader, cfg.GiphyAPIKey)
+	newsSvc := news_service.NewService(newsRepo, commentSvc)
+	articleSvc := article_service.NewService(articleRepo, commentSvc)
+	eventSvc := event_service.NewService(eventRepo, commentSvc)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -130,10 +148,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	subH := submission_handler.NewHandler(subSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
+	eventH := event_handler.NewHandler(eventSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	reportH := report_handler.NewHandler(reportSvc)
+	commentH := comment_handler.NewHandler(commentSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -182,11 +202,16 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	news.RegisterCMSRoutes(api, newsH, mw)
 	article.RegisterPublicRoutes(pub, articleH)
 	article.RegisterCMSRoutes(api, articleH, mw)
+	event.RegisterPublicRoutes(pub, eventH)
+	event.RegisterCMSRoutes(api, eventH, mw)
 
 	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
 
 	upload.RegisterCMSRoutes(api, uploadH, mw)
+
+	comment.RegisterPublicRoutes(pub, commentH, mw)
+	comment.RegisterCMSRoutes(api, commentH, mw)
 
 	return engine
 }

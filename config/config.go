@@ -49,6 +49,8 @@ type AppConfig struct {
 	MailFromName    string `mapstructure:"MAIL_FROM_NAME"`
 
 	CorsAllowedOrigins string `mapstructure:"CORS_ALLOWED_ORIGINS"`
+
+	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
 }
 
 // AllowedGoogleDomains mengembalikan daftar domain email yang diizinkan login Google.
