@@ -187,6 +187,28 @@ func (h *HandlerImpl) EstablishLevel(c *gin.Context) {
 	httphelper.Success(c, "Level berhasil ditetapkan", data)
 }
 
+func (h *HandlerImpl) SaveFieldScores(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.SaveFieldScoresRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.SaveFieldScores(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Skor berhasil disimpan", data)
+}
+
 func (h *HandlerImpl) Publish(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

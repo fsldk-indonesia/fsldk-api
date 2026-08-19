@@ -90,6 +90,20 @@ type KaderParams struct {
 	FullName       string
 }
 
+// FieldScore merepresentasikan satu baris tr_submission_field_score — skor
+// MANUAL (diberikan Puskomnas) untuk field UseScoring bertipe non-Single-
+// Choice. Skor otomatis (Single Choice) tidak pernah disimpan di sini,
+// selalu dihitung ulang dari jawaban + score opsi (lihat scoring.go).
+type FieldScore struct {
+	ScoreID        int64        `gorm:"column:scoreID;primaryKey"`
+	SubmissionID   int64        `gorm:"column:submissionID"`
+	FieldID        int64        `gorm:"column:fieldID"`
+	RawScore       float64      `gorm:"column:rawScore"`
+	ScoredByUserID int64        `gorm:"column:scoredByUserID"`
+	CreatedDate    time.Time    `gorm:"column:createdDate"`
+	UpdatedDate    sql.NullTime `gorm:"column:updatedDate"`
+}
+
 // Review merepresentasikan satu baris tr_submission_review.
 type Review struct {
 	ReviewID       int64          `gorm:"column:reviewID;primaryKey"`

@@ -33,15 +33,19 @@ type FormDetailResponse struct {
 }
 
 // OptionResponse adalah representasi pilihan field (SELECT/RADIO/CHECKBOX/MULTISELECT).
+// Score hanya terisi bila field induk UseScoring && ScoringMethod=="AUTOMATIC".
 type OptionResponse struct {
-	OptionID    int64  `json:"optionID"`
-	OptionValue string `json:"optionValue"`
-	OptionLabel string `json:"optionLabel"`
-	SortOrder   int    `json:"sortOrder"`
-	IsActive    bool   `json:"isActive"`
+	OptionID    int64    `json:"optionID"`
+	OptionValue string   `json:"optionValue"`
+	OptionLabel string   `json:"optionLabel"`
+	SortOrder   int      `json:"sortOrder"`
+	IsActive    bool     `json:"isActive"`
+	Score       *float64 `json:"score,omitempty"`
 }
 
-// FieldResponse adalah representasi satu field form.
+// FieldResponse adalah representasi satu field form. UseScoring/ScoringMethod/
+// MinScore/MaxScore/Weight adalah konfigurasi scoring (enhancement Flexible
+// Scoring) — lihat submission_form_model.Field.
 type FieldResponse struct {
 	FieldID              int64            `json:"fieldID"`
 	SectionID            int64            `json:"sectionID"`
@@ -54,6 +58,11 @@ type FieldResponse struct {
 	ConditionalOnFieldID *int64           `json:"conditionalOnFieldID,omitempty"`
 	ConditionalRule      json.RawMessage  `json:"conditionalRule,omitempty"`
 	HelpText             string           `json:"helpText,omitempty"`
+	UseScoring           bool             `json:"useScoring"`
+	ScoringMethod        string           `json:"scoringMethod,omitempty"`
+	MinScore             *float64         `json:"minScore,omitempty"`
+	MaxScore             *float64         `json:"maxScore,omitempty"`
+	Weight               *float64         `json:"weight,omitempty"`
 	Options              []OptionResponse `json:"options"`
 }
 
@@ -109,6 +118,10 @@ type UpdateSectionRequest struct {
 }
 
 // CreateFieldRequest adalah body menambah field pada sebuah section.
+// UseScoring/ScoringMethod/MinScore/MaxScore/Weight opsional — divalidasi
+// lebih lanjut di service layer (CreateField), bukan lewat tag validate,
+// karena aturan lengkapnya saling bergantung (mis. wajib hanya saat
+// UseScoring true, ScoringMethod=AUTOMATIC hanya untuk SELECT/RADIO).
 type CreateFieldRequest struct {
 	FieldCode            string          `json:"fieldCode" validate:"required,codeidentifier,min=2,max=50"`
 	FieldLabel           string          `json:"fieldLabel" validate:"required,min=2,max=200"`
@@ -119,6 +132,11 @@ type CreateFieldRequest struct {
 	ConditionalOnFieldID *int64          `json:"conditionalOnFieldID"`
 	ConditionalRule      json.RawMessage `json:"conditionalRule"`
 	HelpText             string          `json:"helpText" validate:"max=500"`
+	UseScoring           bool            `json:"useScoring"`
+	ScoringMethod        string          `json:"scoringMethod" validate:"omitempty,oneof=AUTOMATIC MANUAL"`
+	MinScore             *float64        `json:"minScore"`
+	MaxScore             *float64        `json:"maxScore"`
+	Weight               *float64        `json:"weight"`
 }
 
 // UpdateFieldRequest adalah body memperbarui field. FieldCode tidak dapat
@@ -132,19 +150,28 @@ type UpdateFieldRequest struct {
 	ConditionalOnFieldID *int64          `json:"conditionalOnFieldID"`
 	ConditionalRule      json.RawMessage `json:"conditionalRule"`
 	HelpText             string          `json:"helpText" validate:"max=500"`
+	UseScoring           bool            `json:"useScoring"`
+	ScoringMethod        string          `json:"scoringMethod" validate:"omitempty,oneof=AUTOMATIC MANUAL"`
+	MinScore             *float64        `json:"minScore"`
+	MaxScore             *float64        `json:"maxScore"`
+	Weight               *float64        `json:"weight"`
 }
 
-// CreateOptionRequest adalah body menambah pilihan pada sebuah field.
+// CreateOptionRequest adalah body menambah pilihan pada sebuah field. Score
+// wajib diisi (divalidasi di service) hanya bila field induk menggunakan
+// scoring otomatis.
 type CreateOptionRequest struct {
-	OptionValue string `json:"optionValue" validate:"required,max=100"`
-	OptionLabel string `json:"optionLabel" validate:"required,max=200"`
-	SortOrder   int    `json:"sortOrder"`
+	OptionValue string   `json:"optionValue" validate:"required,max=100"`
+	OptionLabel string   `json:"optionLabel" validate:"required,max=200"`
+	SortOrder   int      `json:"sortOrder"`
+	Score       *float64 `json:"score"`
 }
 
 // UpdateOptionRequest adalah body memperbarui pilihan.
 type UpdateOptionRequest struct {
-	OptionValue string `json:"optionValue" validate:"required,max=100"`
-	OptionLabel string `json:"optionLabel" validate:"required,max=200"`
-	SortOrder   int    `json:"sortOrder"`
-	IsActive    bool   `json:"isActive"`
+	OptionValue string   `json:"optionValue" validate:"required,max=100"`
+	OptionLabel string   `json:"optionLabel" validate:"required,max=200"`
+	SortOrder   int      `json:"sortOrder"`
+	IsActive    bool     `json:"isActive"`
+	Score       *float64 `json:"score"`
 }

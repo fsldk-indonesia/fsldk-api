@@ -37,28 +37,40 @@ type Section struct {
 }
 
 // Field merepresentasikan satu baris ms_submission_form_field.
+// UseScoring/ScoringMethod/MinScore/MaxScore/Weight adalah konfigurasi
+// scoring (enhancement Flexible Scoring) — ScoringMethod hanya terisi saat
+// UseScoring true ("AUTOMATIC" untuk Single Choice/SELECT/RADIO, "MANUAL"
+// untuk tipe field lain, diberikan Puskomnas lewat tr_submission_field_score).
 type Field struct {
-	FieldID              int64          `gorm:"column:fieldID;primaryKey"`
-	SectionID            int64          `gorm:"column:sectionID"`
-	FieldCode            string         `gorm:"column:fieldCode"`
-	FieldLabel           string         `gorm:"column:fieldLabel"`
-	FieldType            string         `gorm:"column:fieldType"`
-	IsRequired           bool           `gorm:"column:isRequired"`
-	SortOrder            int            `gorm:"column:sortOrder"`
-	ValidationRuleJSON   sql.NullString `gorm:"column:validationRuleJSON"`
-	ConditionalOnFieldID sql.NullInt64  `gorm:"column:conditionalOnFieldID"`
-	ConditionalRuleJSON  sql.NullString `gorm:"column:conditionalRuleJSON"`
-	HelpText             sql.NullString `gorm:"column:helpText"`
+	FieldID              int64           `gorm:"column:fieldID;primaryKey"`
+	SectionID            int64           `gorm:"column:sectionID"`
+	FieldCode            string          `gorm:"column:fieldCode"`
+	FieldLabel           string          `gorm:"column:fieldLabel"`
+	FieldType            string          `gorm:"column:fieldType"`
+	IsRequired           bool            `gorm:"column:isRequired"`
+	SortOrder            int             `gorm:"column:sortOrder"`
+	ValidationRuleJSON   sql.NullString  `gorm:"column:validationRuleJSON"`
+	ConditionalOnFieldID sql.NullInt64   `gorm:"column:conditionalOnFieldID"`
+	ConditionalRuleJSON  sql.NullString  `gorm:"column:conditionalRuleJSON"`
+	HelpText             sql.NullString  `gorm:"column:helpText"`
+	UseScoring           bool            `gorm:"column:useScoring"`
+	ScoringMethod        sql.NullString  `gorm:"column:scoringMethod"`
+	MinScore             sql.NullFloat64 `gorm:"column:minScore"`
+	MaxScore             sql.NullFloat64 `gorm:"column:maxScore"`
+	Weight               sql.NullFloat64 `gorm:"column:weight"`
 }
 
 // Option merepresentasikan satu baris ms_submission_form_field_option.
+// Score hanya relevan saat field induk UseScoring && ScoringMethod=="AUTOMATIC"
+// (Single Choice) — nilai skor mentah yang didapat bila opsi ini dipilih.
 type Option struct {
-	OptionID    int64  `gorm:"column:optionID;primaryKey"`
-	FieldID     int64  `gorm:"column:fieldID"`
-	OptionValue string `gorm:"column:optionValue"`
-	OptionLabel string `gorm:"column:optionLabel"`
-	SortOrder   int    `gorm:"column:sortOrder"`
-	IsActive    bool   `gorm:"column:isActive"`
+	OptionID    int64           `gorm:"column:optionID;primaryKey"`
+	FieldID     int64           `gorm:"column:fieldID"`
+	OptionValue string          `gorm:"column:optionValue"`
+	OptionLabel string          `gorm:"column:optionLabel"`
+	SortOrder   int             `gorm:"column:sortOrder"`
+	IsActive    bool            `gorm:"column:isActive"`
+	Score       sql.NullFloat64 `gorm:"column:score"`
 }
 
 // FieldParams menampung data untuk membuat/memperbarui field.
@@ -73,4 +85,9 @@ type FieldParams struct {
 	ConditionalOnFieldID sql.NullInt64
 	ConditionalRuleJSON  sql.NullString
 	HelpText             sql.NullString
+	UseScoring           bool
+	ScoringMethod        sql.NullString
+	MinScore             sql.NullFloat64
+	MaxScore             sql.NullFloat64
+	Weight               sql.NullFloat64
 }

@@ -935,12 +935,41 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 		kaderResp = &kr
 	}
 
+	// Skor konsolidasi (enhancement Flexible Scoring) dihitung & dikirim untuk
+	// Puskomnas (pemberi skor manual) DAN LDK pemilik submission sendiri
+	// (dikonfirmasi 2026-08-19: LDK perlu melihat detail & ringkasan skornya
+	// sendiri sebagai umpan balik — sejalan dengan levelResult yang juga sudah
+	// ditampilkan ke LDK). Puskomda TETAP tidak pernah melihatnya, termasuk
+	// saat berdelegasi ke konteks LDK (organizationTypeCode asli caller yang
+	// dicek di sini, bukan callerHasTier(...,LDK) yang sengaja longgar untuk
+	// delegasi — lihat komentar callerHasTier). Skor murni informatif, tidak
+	// memengaruhi EstablishLevel.
+	var consolidatedScore *submission_dto.ConsolidatedScoreResponse
+	canSeeScore := s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) || caller.OrganizationTypeCode == constants.OrgTypeLDK
+	if sub.SubjectType == constants.SubjectTypeOrganization && canSeeScore {
+		options, err := s.formRepo.ListOptionsByVersion(ctx, sub.FormVersionID)
+		if err == nil {
+			manualRows, err := s.repo.ListFieldScoresBySubmission(ctx, sub.SubmissionID)
+			if err == nil {
+				manualByField := make(map[int64]float64, len(manualRows))
+				for _, m := range manualRows {
+					manualByField[m.FieldID] = m.RawScore
+				}
+				cs := computeConsolidatedScore(fields, options, answers, manualByField)
+				if len(cs.Fields) > 0 {
+					consolidatedScore = &cs
+				}
+			}
+		}
+	}
+
 	return submission_dto.DetailResponse{
-		Response:      s.toResponse(sub, form.FormCode),
-		Answers:       answerResponses,
-		StatusHistory: historyResponses,
-		LevelResult:   levelResult,
-		Kader:         kaderResp,
+		Response:          s.toResponse(sub, form.FormCode),
+		Answers:           answerResponses,
+		StatusHistory:     historyResponses,
+		LevelResult:       levelResult,
+		Kader:             kaderResp,
+		ConsolidatedScore: consolidatedScore,
 	}, nil
 }
 
@@ -1173,6 +1202,62 @@ func (s *ServiceImpl) EstablishLevel(ctx context.Context, id int64, caller Calle
 		return submission_dto.Response{}, apperror.Internal("")
 	}
 	return s.toResponse(sub, form.FormCode), nil
+}
+
+// SaveFieldScores menyimpan skor MANUAL (hanya Puskomnas — dikonfirmasi
+// 2026-08-19, bukan Puskomda seperti draft awal dokumen enhancement) untuk
+// field UseScoring bertipe MANUAL pada satu submission Levelisasi. Dapat
+// dipanggil berkali-kali (upsert per field, pola sama seperti SaveAnswers)
+// sebelum/sesudah keputusan Verifikasi Akhir maupun Penetapan Levelisasi —
+// skor bersifat informatif murni, tidak divalidasi terhadap status tertentu
+// selain memastikan submission sudah pernah dikirim (bukan DRAFT/CANCELLED).
+func (s *ServiceImpl) SaveFieldScores(ctx context.Context, id int64, caller CallerScope, req submission_dto.SaveFieldScoresRequest) (submission_dto.DetailResponse, error) {
+	sub, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return submission_dto.DetailResponse{}, apperror.NotFound("Submission tidak ditemukan")
+	}
+	if sub.SubjectType != constants.SubjectTypeOrganization {
+		return submission_dto.DetailResponse{}, apperror.InvalidStatusTransition("Skor hanya berlaku untuk form Levelisasi")
+	}
+	if !s.callerHasTier(ctx, caller, sub.OrganizationID, constants.ReviewTierPuskomnas) {
+		return submission_dto.DetailResponse{}, apperror.Forbidden("Hanya Puskomnas yang dapat memberikan skor")
+	}
+	if err := s.checkOrgAccess(ctx, caller, sub.OrganizationID); err != nil {
+		return submission_dto.DetailResponse{}, err
+	}
+	if sub.Status == constants.SubmissionStatusDraft || sub.Status == constants.SubmissionStatusCancelled {
+		return submission_dto.DetailResponse{}, apperror.InvalidStatusTransition("Belum ada yang dapat dinilai selama pendataan masih draf")
+	}
+
+	fields, err := s.formRepo.ListFieldsByVersion(ctx, sub.FormVersionID)
+	if err != nil {
+		return submission_dto.DetailResponse{}, apperror.Internal("")
+	}
+	fieldByID := make(map[int64]submission_form_model.Field, len(fields))
+	for _, f := range fields {
+		fieldByID[f.FieldID] = f
+	}
+
+	for _, item := range req.Scores {
+		field, ok := fieldByID[item.FieldID]
+		if !ok {
+			return submission_dto.DetailResponse{}, apperror.BadRequest(fmt.Sprintf("Field %d bukan bagian dari form ini", item.FieldID))
+		}
+		if !field.UseScoring || field.ScoringMethod.String != constants.ScoringMethodManual {
+			return submission_dto.DetailResponse{}, apperror.BadRequest(fmt.Sprintf("Field %q tidak menerima skor manual", field.FieldLabel))
+		}
+		if field.MinScore.Valid && item.RawScore < field.MinScore.Float64 {
+			return submission_dto.DetailResponse{}, apperror.BadRequest(fmt.Sprintf("Skor field %q tidak boleh kurang dari %.2f", field.FieldLabel, field.MinScore.Float64))
+		}
+		if field.MaxScore.Valid && item.RawScore > field.MaxScore.Float64 {
+			return submission_dto.DetailResponse{}, apperror.BadRequest(fmt.Sprintf("Skor field %q tidak boleh lebih dari %.2f", field.FieldLabel, field.MaxScore.Float64))
+		}
+		if err := s.repo.UpsertFieldScore(ctx, sub.SubmissionID, item.FieldID, item.RawScore, caller.UserID); err != nil {
+			return submission_dto.DetailResponse{}, apperror.Internal("")
+		}
+	}
+
+	return s.Get(ctx, id, caller)
 }
 
 func (s *ServiceImpl) Publish(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error) {

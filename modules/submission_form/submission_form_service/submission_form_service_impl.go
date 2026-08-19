@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"math"
 	"strings"
 
 	"fsldk-api/base/apperror"
@@ -49,6 +51,56 @@ func nullStringToJSON(s sql.NullString) json.RawMessage {
 	return json.RawMessage(s.String)
 }
 
+func nullFloat(f *float64) sql.NullFloat64 {
+	if f == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *f, Valid: true}
+}
+
+func floatPtr(f sql.NullFloat64) *float64 {
+	if !f.Valid {
+		return nil
+	}
+	v := f.Float64
+	return &v
+}
+
+// singleChoiceFieldTypes adalah tipe field yang boleh memakai scoring
+// AUTOMATIC (Single Choice — tepat satu opsi terpilih per jawaban).
+var singleChoiceFieldTypes = map[string]bool{
+	constants.FieldTypeSelect: true,
+	constants.FieldTypeRadio:  true,
+}
+
+// validateScoringConfig memvalidasi & menyiapkan nilai scoring field siap
+// pakai untuk FieldParams — dipanggil dari CreateField/UpdateField. Aturan
+// (design/development/enahnce-development-submission-dashboard/
+// new-enhance-development.md §2/§10): scoring tidak dikunci ke skala 1-4
+// tertentu, minScore/maxScore/weight bebas dikonfigurasi per field; AUTOMATIC
+// hanya valid untuk field Single Choice (SELECT/RADIO).
+func validateScoringConfig(fieldType string, useScoring bool, scoringMethod string, minScore, maxScore, weight *float64) (sql.NullString, sql.NullFloat64, sql.NullFloat64, sql.NullFloat64, error) {
+	if !useScoring {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, nil
+	}
+	if scoringMethod == "" {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, apperror.BadRequest("scoringMethod wajib diisi saat useScoring aktif")
+	}
+	if scoringMethod == constants.ScoringMethodAutomatic && !singleChoiceFieldTypes[fieldType] {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, apperror.BadRequest("Scoring otomatis hanya berlaku untuk field Single Choice (SELECT/RADIO)")
+	}
+	if minScore == nil || maxScore == nil {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, apperror.BadRequest("minScore dan maxScore wajib diisi saat useScoring aktif")
+	}
+	if *maxScore <= *minScore {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, apperror.BadRequest("maxScore harus lebih besar dari minScore")
+	}
+	if weight == nil || *weight <= 0 || *weight > 100 {
+		return sql.NullString{}, sql.NullFloat64{}, sql.NullFloat64{}, sql.NullFloat64{}, apperror.BadRequest("weight wajib diisi, antara 0 (eksklusif) dan 100 saat useScoring aktif")
+	}
+	return sql.NullString{String: scoringMethod, Valid: true}, nullFloat(minScore), nullFloat(maxScore), nullFloat(weight), nil
+}
+
 func toFormResponse(f submission_form_model.Form) submission_form_dto.FormResponse {
 	return submission_form_dto.FormResponse{
 		FormID:      f.FormID,
@@ -79,6 +131,7 @@ func toOptionResponse(o submission_form_model.Option) submission_form_dto.Option
 		OptionLabel: o.OptionLabel,
 		SortOrder:   o.SortOrder,
 		IsActive:    o.IsActive,
+		Score:       floatPtr(o.Score),
 	}
 }
 
@@ -94,6 +147,11 @@ func toFieldResponse(f submission_form_model.Field, options []submission_form_dt
 		ValidationRule:  nullStringToJSON(f.ValidationRuleJSON),
 		ConditionalRule: nullStringToJSON(f.ConditionalRuleJSON),
 		HelpText:        f.HelpText.String,
+		UseScoring:      f.UseScoring,
+		ScoringMethod:   f.ScoringMethod.String,
+		MinScore:        floatPtr(f.MinScore),
+		MaxScore:        floatPtr(f.MaxScore),
+		Weight:          floatPtr(f.Weight),
 		Options:         options,
 	}
 	if f.ConditionalOnFieldID.Valid {
@@ -271,6 +329,68 @@ func (s *ServiceImpl) GetPublishedByFormCode(ctx context.Context, formCode strin
 	return s.buildVersionDetail(ctx, v)
 }
 
+// validateScoringBeforePublish adalah gerbang akhir konsistensi scoring
+// sebelum struktur version jadi immutable (design/development/
+// enahnce-development-submission-dashboard/new-enhance-development.md §10):
+// total weight seluruh field UseScoring harus tepat 100%, dan field AUTOMATIC
+// harus punya seluruh opsi aktif berskor dengan minScore/maxScore field yang
+// persis sama dengan skor opsi terendah/tertinggi (supaya normalisasi raw/max
+// selalu tepat 0%-100% sesuai contoh dokumen).
+func (s *ServiceImpl) validateScoringBeforePublish(ctx context.Context, versionID int64) error {
+	fields, err := s.repo.ListFieldsByVersion(ctx, versionID)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	options, err := s.repo.ListOptionsByVersion(ctx, versionID)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	optionsByField := map[int64][]submission_form_model.Option{}
+	for _, o := range options {
+		optionsByField[o.FieldID] = append(optionsByField[o.FieldID], o)
+	}
+
+	var totalWeight float64
+	for _, f := range fields {
+		if !f.UseScoring {
+			continue
+		}
+		if f.Weight.Valid {
+			totalWeight += f.Weight.Float64
+		}
+		if f.ScoringMethod.String != constants.ScoringMethodAutomatic {
+			continue
+		}
+		var minSeen, maxSeen float64
+		seenAny := false
+		for _, o := range optionsByField[f.FieldID] {
+			if !o.IsActive {
+				continue
+			}
+			if !o.Score.Valid {
+				return apperror.Unprocessable(fmt.Sprintf("Opsi %q pada field %q belum memiliki score", o.OptionLabel, f.FieldLabel))
+			}
+			if !seenAny || o.Score.Float64 < minSeen {
+				minSeen = o.Score.Float64
+			}
+			if !seenAny || o.Score.Float64 > maxSeen {
+				maxSeen = o.Score.Float64
+			}
+			seenAny = true
+		}
+		if !seenAny {
+			return apperror.Unprocessable(fmt.Sprintf("Field %q menggunakan scoring otomatis tapi belum memiliki opsi aktif", f.FieldLabel))
+		}
+		if !f.MinScore.Valid || !f.MaxScore.Valid || f.MinScore.Float64 != minSeen || f.MaxScore.Float64 != maxSeen {
+			return apperror.Unprocessable(fmt.Sprintf("minScore/maxScore field %q harus persis sama dengan score opsi terendah/tertinggi (%.2f/%.2f)", f.FieldLabel, minSeen, maxSeen))
+		}
+	}
+	if totalWeight > 0 && math.Abs(totalWeight-100) > 0.01 {
+		return apperror.Unprocessable(fmt.Sprintf("Total bobot (weight) seluruh field scoring pada version ini harus 100%%, saat ini %.2f%%", totalWeight))
+	}
+	return nil
+}
+
 func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.VersionDetailResponse, error) {
 	v, err := s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {
@@ -278,6 +398,9 @@ func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actor
 	}
 	if v.Status != constants.FormVersionDraft {
 		return submission_form_dto.VersionDetailResponse{}, apperror.Unprocessable("Hanya version berstatus DRAFT yang dapat dipublish")
+	}
+	if err := s.validateScoringBeforePublish(ctx, versionID); err != nil {
+		return submission_form_dto.VersionDetailResponse{}, err
 	}
 	if err := s.repo.PublishVersion(ctx, versionID, actorID); err != nil {
 		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")
@@ -406,6 +529,10 @@ func (s *ServiceImpl) CreateField(ctx context.Context, sectionID int64, req subm
 	if err != nil {
 		return submission_form_dto.FieldResponse{}, err
 	}
+	scoringMethod, minScore, maxScore, weight, err := validateScoringConfig(req.FieldType, req.UseScoring, req.ScoringMethod, req.MinScore, req.MaxScore, req.Weight)
+	if err != nil {
+		return submission_form_dto.FieldResponse{}, err
+	}
 
 	id, err := s.repo.CreateField(ctx, submission_form_model.FieldParams{
 		SectionID:            sectionID,
@@ -418,6 +545,11 @@ func (s *ServiceImpl) CreateField(ctx context.Context, sectionID int64, req subm
 		ConditionalOnFieldID: conditionalOnFieldID,
 		ConditionalRuleJSON:  conditionalRule,
 		HelpText:             nullString(req.HelpText),
+		UseScoring:           req.UseScoring,
+		ScoringMethod:        scoringMethod,
+		MinScore:             minScore,
+		MaxScore:             maxScore,
+		Weight:               weight,
 	})
 	if err != nil {
 		return submission_form_dto.FieldResponse{}, apperror.Conflict("Kode field sudah digunakan pada section ini")
@@ -456,6 +588,10 @@ func (s *ServiceImpl) UpdateField(ctx context.Context, fieldID int64, req submis
 	if err != nil {
 		return submission_form_dto.FieldResponse{}, err
 	}
+	scoringMethod, minScore, maxScore, weight, err := validateScoringConfig(req.FieldType, req.UseScoring, req.ScoringMethod, req.MinScore, req.MaxScore, req.Weight)
+	if err != nil {
+		return submission_form_dto.FieldResponse{}, err
+	}
 
 	if err := s.repo.UpdateField(ctx, fieldID, submission_form_model.FieldParams{
 		SectionID:            existing.SectionID,
@@ -468,6 +604,11 @@ func (s *ServiceImpl) UpdateField(ctx context.Context, fieldID int64, req submis
 		ConditionalOnFieldID: conditionalOnFieldID,
 		ConditionalRuleJSON:  conditionalRule,
 		HelpText:             nullString(req.HelpText),
+		UseScoring:           req.UseScoring,
+		ScoringMethod:        scoringMethod,
+		MinScore:             minScore,
+		MaxScore:             maxScore,
+		Weight:               weight,
 	}); err != nil {
 		return submission_form_dto.FieldResponse{}, apperror.Internal("")
 	}
@@ -500,14 +641,38 @@ func (s *ServiceImpl) DeleteField(ctx context.Context, fieldID int64) error {
 
 // ---------- Option ----------
 
+// validateOptionScore memastikan score opsi konsisten dengan konfigurasi
+// scoring field induknya: wajib diisi & berada dalam [minScore,maxScore] bila
+// field memakai scoring otomatis (Single Choice); diabaikan (boleh nil) untuk
+// field lain — score pada opsi field non-automatic tidak punya arti.
+func validateOptionScore(field submission_form_model.Field, score *float64) error {
+	if !field.UseScoring || field.ScoringMethod.String != constants.ScoringMethodAutomatic {
+		return nil
+	}
+	if score == nil {
+		return apperror.BadRequest("Score wajib diisi untuk opsi pada field dengan scoring otomatis")
+	}
+	if field.MinScore.Valid && *score < field.MinScore.Float64 {
+		return apperror.BadRequest("Score opsi tidak boleh kurang dari minScore field")
+	}
+	if field.MaxScore.Valid && *score > field.MaxScore.Float64 {
+		return apperror.BadRequest("Score opsi tidak boleh lebih dari maxScore field")
+	}
+	return nil
+}
+
 func (s *ServiceImpl) CreateOption(ctx context.Context, fieldID int64, req submission_form_dto.CreateOptionRequest) (submission_form_dto.OptionResponse, error) {
-	if _, err := s.repo.FindFieldByID(ctx, fieldID); err != nil {
+	field, err := s.repo.FindFieldByID(ctx, fieldID)
+	if err != nil {
 		return submission_form_dto.OptionResponse{}, apperror.NotFound("Field tidak ditemukan")
 	}
 	if err := s.requireDraftByField(ctx, fieldID); err != nil {
 		return submission_form_dto.OptionResponse{}, err
 	}
-	id, err := s.repo.CreateOption(ctx, fieldID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder)
+	if err := validateOptionScore(field, req.Score); err != nil {
+		return submission_form_dto.OptionResponse{}, err
+	}
+	id, err := s.repo.CreateOption(ctx, fieldID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, nullFloat(req.Score))
 	if err != nil {
 		return submission_form_dto.OptionResponse{}, apperror.Conflict("Nilai pilihan sudah digunakan pada field ini")
 	}
@@ -526,7 +691,14 @@ func (s *ServiceImpl) UpdateOption(ctx context.Context, optionID int64, req subm
 	if err := s.requireDraftByField(ctx, opt.FieldID); err != nil {
 		return submission_form_dto.OptionResponse{}, err
 	}
-	if err := s.repo.UpdateOption(ctx, optionID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, req.IsActive); err != nil {
+	field, err := s.repo.FindFieldByID(ctx, opt.FieldID)
+	if err != nil {
+		return submission_form_dto.OptionResponse{}, apperror.Internal("")
+	}
+	if err := validateOptionScore(field, req.Score); err != nil {
+		return submission_form_dto.OptionResponse{}, err
+	}
+	if err := s.repo.UpdateOption(ctx, optionID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, req.IsActive, nullFloat(req.Score)); err != nil {
 		return submission_form_dto.OptionResponse{}, apperror.Internal("")
 	}
 	o, err := s.repo.FindOptionByID(ctx, optionID)

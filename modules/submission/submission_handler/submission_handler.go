@@ -14,6 +14,7 @@ type Handler interface {
 
 	Review(c *gin.Context)
 	EstablishLevel(c *gin.Context)
+	SaveFieldScores(c *gin.Context)
 	Publish(c *gin.Context)
 	Reopen(c *gin.Context)
 	Reassess(c *gin.Context)

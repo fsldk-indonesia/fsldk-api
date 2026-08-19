@@ -57,6 +57,11 @@ type Repository interface {
 	CreateReview(ctx context.Context, p submission_model.ReviewParams) (int64, error)
 	ListReviewsBySubmission(ctx context.Context, submissionID int64) ([]submission_model.Review, error)
 
+	// UpsertFieldScore menyimpan/memperbarui skor MANUAL (Puskomnas) untuk
+	// satu field pada satu submission — lihat submission_model.FieldScore.
+	UpsertFieldScore(ctx context.Context, submissionID, fieldID int64, rawScore float64, scoredByUserID int64) error
+	ListFieldScoresBySubmission(ctx context.Context, submissionID int64) ([]submission_model.FieldScore, error)
+
 	// FindCurrentLevelResult mencari baris tr_levelisasi_result dengan
 	// isCurrent=1 milik sebuah organisasi (hasil resmi yang berlaku saat ini).
 	FindCurrentLevelResult(ctx context.Context, organizationID int64) (submission_model.LevelisasiResult, error)

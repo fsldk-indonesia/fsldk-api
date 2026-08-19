@@ -64,6 +64,23 @@ type ReopenRequest struct {
 	Version int    `json:"version" validate:"required"`
 }
 
+// FieldScoreInput adalah satu skor manual (Puskomnas) untuk satu field pada
+// body PUT /submissions/:id/scores. RawScore sengaja tidak diberi tag
+// `required` — 0 adalah nilai skor yang sah pada skala tertentu (mis. skala
+// custom 0/3/7/10); rentang valid divalidasi di service terhadap
+// minScore/maxScore field, bukan lewat validator generik.
+type FieldScoreInput struct {
+	FieldID  int64   `json:"fieldID" validate:"required"`
+	RawScore float64 `json:"rawScore"`
+}
+
+// SaveFieldScoresRequest adalah body menyimpan skor manual (dapat dipanggil
+// berkali-kali, hanya untuk field UseScoring bertipe MANUAL — lihat
+// submission_service.SaveFieldScores).
+type SaveFieldScoresRequest struct {
+	Scores []FieldScoreInput `json:"scores" validate:"required,min=1,dive"`
+}
+
 // LevelResultResponse adalah representasi hasil levelisasi untuk API.
 type LevelResultResponse struct {
 	ResultID          int64      `json:"resultID"`
@@ -139,11 +156,41 @@ type Response struct {
 	CreatedDate    time.Time  `json:"createdDate"`
 }
 
+// FieldScoreResponse adalah breakdown skor satu field UseScoring — dipakai
+// untuk audit/troubleshooting (enhancement Flexible Scoring §11: sistem
+// harus bisa membedakan Raw/Maximum/Normalized/Weight/Weighted Score/Source).
+type FieldScoreResponse struct {
+	FieldID       int64   `json:"fieldID"`
+	FieldCode     string  `json:"fieldCode"`
+	FieldLabel    string  `json:"fieldLabel"`
+	HasScore      bool    `json:"hasScore"`
+	RawScore      float64 `json:"rawScore,omitempty"`
+	MaxScore      float64 `json:"maxScore"`
+	Normalized    float64 `json:"normalized,omitempty"`
+	Weight        float64 `json:"weight"`
+	WeightedScore float64 `json:"weightedScore,omitempty"`
+	Source        string  `json:"source"` // "AUTOMATIC" | "MANUAL"
+}
+
+// ConsolidatedScoreResponse adalah hasil konsolidasi seluruh field UseScoring
+// pada satu submission — murni informatif (tidak memengaruhi EstablishLevel),
+// dikirim ke Puskomnas & LDK pemilik submission saja, TIDAK ke Puskomda
+// (lihat submission_service.Get).
+type ConsolidatedScoreResponse struct {
+	Fields     []FieldScoreResponse `json:"fields"`
+	FinalScore float64              `json:"finalScore"`
+	// IsComplete true hanya bila SELURUH field UseScoring pada version ini
+	// sudah punya raw score (otomatis terjawab atau manual diberikan) — FE
+	// harus menganggap FinalScore belum final selama false.
+	IsComplete bool `json:"isComplete"`
+}
+
 // DetailResponse adalah submission beserta jawaban & riwayat statusnya.
 type DetailResponse struct {
 	Response
-	Answers       []AnswerResponse        `json:"answers"`
-	StatusHistory []StatusHistoryResponse `json:"statusHistory"`
-	LevelResult   *LevelResultResponse    `json:"levelResult,omitempty"`
-	Kader         *KaderResponse          `json:"kader,omitempty"`
+	Answers          []AnswerResponse           `json:"answers"`
+	StatusHistory    []StatusHistoryResponse    `json:"statusHistory"`
+	LevelResult      *LevelResultResponse       `json:"levelResult,omitempty"`
+	Kader            *KaderResponse             `json:"kader,omitempty"`
+	ConsolidatedScore *ConsolidatedScoreResponse `json:"consolidatedScore,omitempty"`
 }

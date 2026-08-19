@@ -274,6 +274,24 @@ func (r *RepositoryImpl) ListReviewsBySubmission(ctx context.Context, submission
 	return out, err
 }
 
+func (r *RepositoryImpl) UpsertFieldScore(ctx context.Context, submissionID, fieldID int64, rawScore float64, scoredByUserID int64) error {
+	return r.db.WithContext(ctx).Exec(
+		`INSERT INTO tr_submission_field_score
+			(submissionID, fieldID, rawScore, scoredByUserID, createdDate)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+			rawScore = VALUES(rawScore), scoredByUserID = VALUES(scoredByUserID), updatedDate = VALUES(createdDate)`,
+		submissionID, fieldID, rawScore, scoredByUserID, time.Now(),
+	).Error
+}
+
+func (r *RepositoryImpl) ListFieldScoresBySubmission(ctx context.Context, submissionID int64) ([]submission_model.FieldScore, error) {
+	var out []submission_model.FieldScore
+	err := r.db.WithContext(ctx).Table("tr_submission_field_score").
+		Where("submissionID = ?", submissionID).Find(&out).Error
+	return out, err
+}
+
 func (r *RepositoryImpl) FindCurrentLevelResult(ctx context.Context, organizationID int64) (submission_model.LevelisasiResult, error) {
 	var res submission_model.LevelisasiResult
 	err := r.db.WithContext(ctx).Table("tr_levelisasi_result").

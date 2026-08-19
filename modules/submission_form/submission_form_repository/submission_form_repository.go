@@ -40,9 +40,9 @@ type Repository interface {
 	DeleteField(ctx context.Context, id int64) error
 	ListFieldsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Field, error)
 
-	CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int) (int64, error)
+	CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64) (int64, error)
 	FindOptionByID(ctx context.Context, id int64) (submission_form_model.Option, error)
-	UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool) error
+	UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64) error
 	DeleteOption(ctx context.Context, id int64) error
 	ListOptionsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Option, error)
 	ListOptionsByField(ctx context.Context, fieldID int64) ([]submission_form_model.Option, error)

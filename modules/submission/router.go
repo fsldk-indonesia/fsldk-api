@@ -25,16 +25,12 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 		g.POST("/:id/cancel", mw.RequirePermission(constants.PermSubmissionCancel), h.Cancel)
 		g.GET("", mw.RequirePermission(constants.PermSubmissionView), h.List)
 		g.GET("/:id", mw.RequirePermission(constants.PermSubmissionView), h.Get)
-
-		// Tier reviewer (LDK/Puskomda/Puskomnas) diresolusi otomatis di
-		// service layer dari organizationTypeCode pemanggil + status
-		// submission saat ini — permission di sini hanya memastikan
-		// pemanggil punya setidaknya satu kapabilitas review.
 		g.POST("/:id/review", mw.RequirePermission(
 			constants.PermSubmissionReviewLDK, constants.PermSubmissionReviewTier1,
 			constants.PermSubmissionApproveTier1, constants.PermSubmissionReviewTier2,
 		), h.Review)
 		g.POST("/:id/establish-level", mw.RequirePermission(constants.PermSubmissionLevelEstablish), h.EstablishLevel)
+		g.PUT("/:id/scores", mw.RequirePermission(constants.PermSubmissionReviewTier2), h.SaveFieldScores)
 		g.POST("/:id/publish", mw.RequirePermission(constants.PermSubmissionPublish), h.Publish)
 		g.POST("/:id/reopen", mw.RequirePermission(constants.PermSubmissionReopen), h.Reopen)
 		g.POST("/:id/reassess", mw.RequirePermission(constants.PermSubmissionReassess), h.Reassess)

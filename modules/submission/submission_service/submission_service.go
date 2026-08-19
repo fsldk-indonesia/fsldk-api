@@ -48,6 +48,7 @@ type Service interface {
 
 	Review(ctx context.Context, id int64, caller CallerScope, req submission_dto.ReviewRequest) (submission_dto.Response, error)
 	EstablishLevel(ctx context.Context, id int64, caller CallerScope, req submission_dto.EstablishLevelRequest) (submission_dto.Response, error)
+	SaveFieldScores(ctx context.Context, id int64, caller CallerScope, req submission_dto.SaveFieldScoresRequest) (submission_dto.DetailResponse, error)
 	Publish(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
 	Reopen(ctx context.Context, id int64, caller CallerScope, req submission_dto.ReopenRequest) (submission_dto.Response, error)
 	Reassess(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)

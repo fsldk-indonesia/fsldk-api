@@ -189,6 +189,11 @@ const (
 	FieldTypeFileImage   = "FILE_IMAGE"
 )
 
+const (
+	ScoringMethodAutomatic = "AUTOMATIC"
+	ScoringMethodManual    = "MANUAL"
+)
+
 // Database table names (convention: prefix_PascalCase).
 const (
 	TableUser            = "ms_user"
