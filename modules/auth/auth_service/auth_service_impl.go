@@ -329,6 +329,32 @@ func (s *ServiceImpl) ChangePassword(ctx context.Context, userID int64, req auth
 	return nil
 }
 
+// resolvedPhotoURL menerapkan prioritas tampil foto profil: foto yang
+// diunggah sendiri (customPhotoURL, lihat UpdatePhoto) selalu menang bila
+// ada, baru fallback ke photoURL (disinkronkan otomatis dari akun Google
+// setiap login — lihat LoginGoogle) — inisial huruf adalah fallback terakhir,
+// ditangani di frontend saat keduanya kosong. Duplikat kecil dari helper yang
+// sama di user_service (package berbeda, model tidak boleh punya method).
+func resolvedPhotoURL(u user_model.User) string {
+	if u.CustomPhotoURL.Valid && u.CustomPhotoURL.String != "" {
+		return u.CustomPhotoURL.String
+	}
+	return u.PhotoURL.String
+}
+
+func (s *ServiceImpl) UpdatePhoto(ctx context.Context, userID int64, req auth_dto.UpdatePhotoRequest) (auth_dto.UserProfile, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return auth_dto.UserProfile{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	url := strings.TrimSpace(req.PhotoURL)
+	if err := s.users.UpdateCustomPhoto(ctx, userID, url); err != nil {
+		return auth_dto.UserProfile{}, apperror.Internal("")
+	}
+	u.CustomPhotoURL = sql.NullString{String: url, Valid: url != ""}
+	return s.profileFor(ctx, u)
+}
+
 func (s *ServiceImpl) UpdateContact(ctx context.Context, userID int64, req auth_dto.UpdateContactRequest) (auth_dto.UserProfile, error) {
 	u, err := s.users.FindByID(ctx, userID)
 	if err != nil {
@@ -436,7 +462,7 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 		EmailVerified:        emailVerified(u),
 		Role:                 u.RoleName,
 		Permissions:          perms,
-		PhotoURL:             u.PhotoURL.String,
+		PhotoURL:             resolvedPhotoURL(u),
 		PhoneNumber:          u.PhoneNumber.String,
 		Address:              u.Address.String,
 		OrganizationID:       effectiveOrgID,

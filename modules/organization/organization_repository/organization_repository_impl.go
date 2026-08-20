@@ -13,7 +13,7 @@ import (
 
 const selectCols = "o.organizationID, o.organizationTypeCode, o.parentOrganizationID, " +
 	"p.organizationName AS parentOrganizationName, o.organizationName, o.organizationCode, " +
-	"o.provinceName, o.cityName, o.contactEmail, o.contactPhone, o.isActive, o.createdDate"
+	"o.provinceName, o.cityName, o.contactEmail, o.contactPhone, o.isActive, o.photoURL, o.createdDate"
 
 const joinParent = "LEFT JOIN ms_organization p ON p.organizationID = o.parentOrganizationID"
 
@@ -164,13 +164,14 @@ func (r *RepositoryImpl) Create(ctx context.Context, p organization_model.Create
 	return newID, err
 }
 
-func (r *RepositoryImpl) Update(ctx context.Context, id int64, name, province, city, email, phone string, updatedBy int64) error {
+func (r *RepositoryImpl) Update(ctx context.Context, id int64, name, province, city, email, phone, photoURL string, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_organization").Where("organizationID = ?", id).Updates(map[string]interface{}{
 		"organizationName": name,
 		"provinceName":     province,
 		"cityName":         city,
 		"contactEmail":     email,
 		"contactPhone":     phone,
+		"photoURL":         photoURL,
 		"updatedDate":      time.Now(),
 		"updatedBy":        updatedBy,
 	}).Error

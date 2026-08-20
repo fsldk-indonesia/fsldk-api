@@ -25,6 +25,7 @@ type User struct {
 	PhoneNumber          sql.NullString `gorm:"column:phoneNumber"`
 	Address              sql.NullString `gorm:"column:address"`
 	PhotoURL             sql.NullString `gorm:"column:photoURL"`
+	CustomPhotoURL       sql.NullString `gorm:"column:customPhotoURL"`
 	MustChangePassword   bool           `gorm:"column:mustChangePassword"`
 	IsActive             bool           `gorm:"column:isActive"`
 	CreatedDate          time.Time      `gorm:"column:createdDate"`

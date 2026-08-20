@@ -45,6 +45,13 @@ type ResetPasswordRequest struct {
 	PasswordConfirmation string `json:"passwordConfirmation" validate:"required,eqfield=Password"`
 }
 
+// UpdatePhotoRequest adalah body mengganti foto profil sendiri (Profil Saya)
+// — URL hasil unggahan lewat POST /uploads/image, disimpan ke kolom
+// customPhotoURL (terpisah dari photoURL yang murni disinkronkan Google).
+type UpdatePhotoRequest struct {
+	PhotoURL string `json:"photoURL" validate:"required,url,max=255"`
+}
+
 // UpdateContactRequest adalah body memperbarui kontak swadaya (Profil Saya) —
 // No Whatsapp (kolom phoneNumber) & Alamat, terpisah dari data identitas/role
 // yang hanya boleh diubah admin lewat Kelola Pengguna.

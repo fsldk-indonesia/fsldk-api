@@ -32,6 +32,6 @@ type Repository interface {
 	ListActiveByType(ctx context.Context, typeCode string) ([]organization_model.Organization, error)
 
 	Create(ctx context.Context, p organization_model.CreateParams) (int64, error)
-	Update(ctx context.Context, id int64, name, province, city, email, phone string, updatedBy int64) error
+	Update(ctx context.Context, id int64, name, province, city, email, phone, photoURL string, updatedBy int64) error
 	SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error
 }

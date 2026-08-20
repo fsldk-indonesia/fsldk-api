@@ -58,6 +58,7 @@ func toResponse(o organization_model.Organization) organization_dto.Response {
 		ProvinceName:           o.ProvinceName.String,
 		CityName:               o.CityName.String,
 		ContactEmail:           o.ContactEmail.String,
+		PhotoURL:               o.PhotoURL.String,
 		ContactPhone:           o.ContactPhone.String,
 		IsActive:               o.IsActive,
 		CreatedDate:            o.CreatedDate,
@@ -395,7 +396,7 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req organization_dto
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
 		return organization_dto.Response{}, apperror.NotFound("Organisasi tidak ditemukan")
 	}
-	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.OrganizationName), req.ProvinceName, req.CityName, req.ContactEmail, req.ContactPhone, actorID); err != nil {
+	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.OrganizationName), req.ProvinceName, req.CityName, req.ContactEmail, req.ContactPhone, req.PhotoURL, actorID); err != nil {
 		return organization_dto.Response{}, apperror.Internal("")
 	}
 	return s.Get(ctx, id)

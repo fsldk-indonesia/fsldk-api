@@ -52,6 +52,17 @@ func nullStringValue(v sql.NullString) interface{} {
 	return v.String
 }
 
+// resolvedPhotoURL menerapkan prioritas tampil foto profil: foto yang
+// diunggah sendiri (customPhotoURL) selalu menang bila ada, baru fallback ke
+// photoURL (disinkronkan otomatis dari akun Google) — inisial huruf adalah
+// fallback terakhir, ditangani di frontend saat keduanya kosong.
+func resolvedPhotoURL(u user_model.User) string {
+	if u.CustomPhotoURL.Valid && u.CustomPhotoURL.String != "" {
+		return u.CustomPhotoURL.String
+	}
+	return u.PhotoURL.String
+}
+
 // toResponse memetakan model User ke DTO Response (logika pemetaan berada di
 // service, bukan pada model/dto, agar keduanya tetap murni struct data).
 func toResponse(u user_model.User) user_dto.Response {
@@ -64,7 +75,7 @@ func toResponse(u user_model.User) user_dto.Response {
 		OrganizationTypeCode: u.OrganizationTypeCode.String,
 		EmailVerified:        u.EmailVerifiedDate.Valid,
 		IsActive:             u.IsActive,
-		PhotoURL:             u.PhotoURL.String,
+		PhotoURL:             resolvedPhotoURL(u),
 		HasGoogle:            u.GoogleID.Valid,
 		HasPassword:          u.Password.Valid && u.Password.String != "",
 	}
@@ -171,7 +182,7 @@ func (s *ServiceImpl) SearchMentionable(ctx context.Context, search string, limi
 	}
 	out := make([]user_dto.MentionSearchResult, 0, len(users))
 	for _, u := range users {
-		out = append(out, user_dto.MentionSearchResult{UserID: u.UserID, FullName: u.FullName, PhotoURL: u.PhotoURL.String})
+		out = append(out, user_dto.MentionSearchResult{UserID: u.UserID, FullName: u.FullName, PhotoURL: resolvedPhotoURL(u)})
 	}
 	return out, nil
 }

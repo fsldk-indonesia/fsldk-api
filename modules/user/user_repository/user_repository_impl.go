@@ -12,9 +12,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// u.address & u.customPhotoURL ditambahkan belakangan (lihat migrations
+// 0015/0017) — sebelumnya tidak ikut di-select di sini sehingga FindByID/
+// FindByEmail/List/SearchActive tidak pernah membaca baliknya walau kolomnya
+// sudah bisa ditulis (bug laten, diperbaiki sekaligus saat menambah customPhotoURL).
 const selectCols = "u.userID, u.roleID, r.roleName, u.organizationID, o.organizationTypeCode, " +
 	"u.wildcardTierAccess, u.fullName, u.email, u.username, u.password, " +
-	"u.googleID, u.emailVerifiedDate, u.phoneNumber, u.photoURL, u.mustChangePassword, " +
+	"u.googleID, u.emailVerifiedDate, u.phoneNumber, u.address, u.photoURL, u.customPhotoURL, u.mustChangePassword, " +
 	"u.isActive, u.createdDate, u.createdBy, u.updatedDate, u.updatedBy"
 
 const joinRole = "JOIN ms_role r ON r.roleID = u.roleID"
@@ -183,6 +187,13 @@ func (r *RepositoryImpl) UpdatePhoto(ctx context.Context, id int64, photoURL str
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"photoURL":    photoURL,
 		"updatedDate": time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error {
+	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
+		"customPhotoURL": photoURL,
+		"updatedDate":    time.Now(),
 	}).Error
 }
 

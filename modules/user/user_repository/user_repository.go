@@ -38,6 +38,12 @@ type Repository interface {
 	SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error
 	LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error
 	UpdatePhoto(ctx context.Context, id int64, photoURL string) error
+	// UpdateCustomPhoto menyimpan foto yang diunggah sendiri lewat Profil
+	// Saya — kolom TERPISAH dari photoURL (yang murni disinkronkan otomatis
+	// dari akun Google, lihat auth_service_impl.go LoginGoogle) supaya tidak
+	// pernah tertimpa login Google berikutnya. Prioritas tampil (dihitung di
+	// resolvedPhotoURL): customPhotoURL > photoURL > inisial huruf di FE.
+	UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error
 	MarkEmailVerified(ctx context.Context, id int64) error
 	SoftDelete(ctx context.Context, id int64, updatedBy int64) error
 	LogLogin(ctx context.Context, userID int64, ip, ua, status string) error
