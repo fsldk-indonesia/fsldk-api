@@ -48,8 +48,11 @@ type ResetPasswordRequest struct {
 // UpdatePhotoRequest adalah body mengganti foto profil sendiri (Profil Saya)
 // — URL hasil unggahan lewat POST /uploads/image, disimpan ke kolom
 // customPhotoURL (terpisah dari photoURL yang murni disinkronkan Google).
+// PhotoURL sengaja "omitempty" (bukan "required") — string kosong adalah
+// payload valid dari tombol Hapus (lihat ServiceImpl.UpdatePhoto, yang
+// menyimpannya sebagai customPhotoURL NULL), bukan input yang tidak lengkap.
 type UpdatePhotoRequest struct {
-	PhotoURL string `json:"photoURL" validate:"required,url,max=255"`
+	PhotoURL string `json:"photoURL" validate:"omitempty,url,max=255"`
 }
 
 // UpdateContactRequest adalah body memperbarui kontak swadaya (Profil Saya) —
