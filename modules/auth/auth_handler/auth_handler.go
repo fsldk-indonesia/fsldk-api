@@ -15,6 +15,7 @@ type Handler interface {
 	Logout(c *gin.Context)
 	ChangePassword(c *gin.Context)
 	UpdateContact(c *gin.Context)
+	UpdatePhoto(c *gin.Context)
 	ForgotPassword(c *gin.Context)
 	ResetPassword(c *gin.Context)
 }

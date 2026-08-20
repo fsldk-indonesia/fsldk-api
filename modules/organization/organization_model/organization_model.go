@@ -20,6 +20,7 @@ type Organization struct {
 	ContactEmail           sql.NullString `gorm:"column:contactEmail"`
 	ContactPhone           sql.NullString `gorm:"column:contactPhone"`
 	IsActive               bool           `gorm:"column:isActive"`
+	PhotoURL               sql.NullString `gorm:"column:photoURL"`
 	CreatedDate            time.Time      `gorm:"column:createdDate"`
 }
 

@@ -15,6 +15,7 @@ type Response struct {
 	CityName               string    `json:"cityName,omitempty"`
 	ContactEmail           string    `json:"contactEmail,omitempty"`
 	ContactPhone           string    `json:"contactPhone,omitempty"`
+	PhotoURL               string    `json:"photoURL,omitempty"`
 	IsActive               bool      `json:"isActive"`
 	CreatedDate            time.Time `json:"createdDate"`
 }
@@ -61,6 +62,7 @@ type UpdateRequest struct {
 	CityName         string `json:"cityName" validate:"max=100"`
 	ContactEmail     string `json:"contactEmail" validate:"omitempty,email,max=100"`
 	ContactPhone     string `json:"contactPhone" validate:"max=30"`
+	PhotoURL         string `json:"photoURL" validate:"omitempty,url,max=255"`
 }
 
 // ListFilter menampung parameter penyaringan daftar organisasi.
