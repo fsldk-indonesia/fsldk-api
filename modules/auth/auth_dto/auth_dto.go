@@ -45,17 +45,40 @@ type ResetPasswordRequest struct {
 	PasswordConfirmation string `json:"passwordConfirmation" validate:"required,eqfield=Password"`
 }
 
+// UpdatePhotoRequest adalah body mengganti foto profil sendiri (Profil Saya)
+// — URL hasil unggahan lewat POST /uploads/image, disimpan ke kolom
+// customPhotoURL (terpisah dari photoURL yang murni disinkronkan Google).
+// PhotoURL sengaja "omitempty" (bukan "required") — string kosong adalah
+// payload valid dari tombol Hapus (lihat ServiceImpl.UpdatePhoto, yang
+// menyimpannya sebagai customPhotoURL NULL), bukan input yang tidak lengkap.
+type UpdatePhotoRequest struct {
+	PhotoURL string `json:"photoURL" validate:"omitempty,url,max=255"`
+}
+
+// UpdateContactRequest adalah body memperbarui kontak swadaya (Profil Saya) —
+// No Whatsapp (kolom phoneNumber) & Alamat, terpisah dari data identitas/role
+// yang hanya boleh diubah admin lewat Kelola Pengguna.
+type UpdateContactRequest struct {
+	PhoneNumber string `json:"phoneNumber" validate:"omitempty,max=30"`
+	Address     string `json:"address" validate:"omitempty,max=255"`
+}
+
 // ---------- Response ----------
 
 // UserProfile adalah profil pengguna yang dikembalikan bersama sesi.
 type UserProfile struct {
-	UserID        int64    `json:"userID"`
-	FullName      string   `json:"fullName"`
-	Email         string   `json:"email"`
-	EmailVerified bool     `json:"emailVerified"`
-	Role          string   `json:"role"`
-	Permissions   []string `json:"permissions"`
-	PhotoURL      string   `json:"photoURL,omitempty"`
+	UserID               int64    `json:"userID"`
+	FullName             string   `json:"fullName"`
+	Email                string   `json:"email"`
+	EmailVerified        bool     `json:"emailVerified"`
+	Role                 string   `json:"role"`
+	Permissions          []string `json:"permissions"`
+	PhotoURL             string   `json:"photoURL,omitempty"`
+	PhoneNumber          string   `json:"phoneNumber,omitempty"`
+	Address              string   `json:"address,omitempty"`
+	OrganizationID       *int64   `json:"organizationID,omitempty"`
+	OrganizationTypeCode string   `json:"organizationTypeCode,omitempty"`
+	WildcardTierAccess   []string `json:"wildcardTierAccess,omitempty"`
 }
 
 // AuthResponse adalah hasil login/google/refresh.

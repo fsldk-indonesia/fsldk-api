@@ -21,6 +21,10 @@ var validate *validator.Validate
 // mengizinkan tanda hubung yang lazim dipakai sebagai kunci shortlink).
 var shortlinkKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
+// codeIdentifierPattern mengizinkan huruf, angka, dan garis bawah — dipakai
+// tag kustom `codeidentifier` untuk kode form/section/field (mis. LEVELISASI_LDK).
+var codeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
 // phoneNumberCharsetPattern membatasi karakter yang diizinkan pada input
 // nomor telepon bebas-format (angka, spasi, +, -, kurung) — dipakai tag
 // kustom `phonenumber`. Cek digit minimal dilakukan terpisah di bawah supaya
@@ -39,6 +43,9 @@ func init() {
 	})
 	_ = validate.RegisterValidation("shortlinkkey", func(fl validator.FieldLevel) bool {
 		return shortlinkKeyPattern.MatchString(fl.Field().String())
+	})
+	_ = validate.RegisterValidation("codeidentifier", func(fl validator.FieldLevel) bool {
+		return codeIdentifierPattern.MatchString(fl.Field().String())
 	})
 	// phonenumber: mencegah input non-angka (mis. "abcdefgh") lolos validasi
 	// lalu jadi string kosong setelah normalisasi (base/security tidak
@@ -112,6 +119,8 @@ func humanMessage(fe validator.FieldError) string {
 		return fmt.Sprintf("%s hanya boleh berisi huruf dan angka", field)
 	case "shortlinkkey":
 		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan tanda hubung (-)", field)
+	case "codeidentifier":
+		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan garis bawah (_)", field)
 	case "phonenumber":
 		return fmt.Sprintf("%s harus berupa nomor telepon yang valid (minimal 8 digit)", field)
 	default:

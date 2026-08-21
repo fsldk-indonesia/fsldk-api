@@ -81,9 +81,25 @@ func Conflict(message string) *AppError {
 	return New(http.StatusConflict, constants.CodeConflict, message)
 }
 
+// DuplicateSubmission membuat error 409 dengan kode khusus DUPLICATE_SUBMISSION.
+func DuplicateSubmission(message string) *AppError {
+	if message == "" {
+		message = "Sudah ada pendataan aktif untuk organisasi/form ini"
+	}
+	return New(http.StatusConflict, constants.CodeDuplicateSubmission, message)
+}
+
 // Unprocessable membuat error 422 (pelanggaran aturan bisnis).
 func Unprocessable(message string) *AppError {
 	return New(http.StatusUnprocessableEntity, constants.CodeUnprocessable, message)
+}
+
+// InvalidStatusTransition membuat error 422 dengan kode khusus INVALID_STATUS_TRANSITION.
+func InvalidStatusTransition(message string) *AppError {
+	if message == "" {
+		message = "Aksi tidak valid untuk status pendataan saat ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeInvalidStatusTransition, message)
 }
 
 // TooManyRequests membuat error 429.

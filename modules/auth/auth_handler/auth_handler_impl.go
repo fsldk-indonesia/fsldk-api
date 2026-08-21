@@ -129,6 +129,32 @@ func (h *HandlerImpl) ChangePassword(c *gin.Context) {
 	httphelper.Success(c, "Kata sandi berhasil diubah", nil)
 }
 
+func (h *HandlerImpl) UpdateContact(c *gin.Context) {
+	req, ok := bind[auth_dto.UpdateContactRequest](c)
+	if !ok {
+		return
+	}
+	profile, err := h.svc.UpdateContact(c.Request.Context(), appctx.UserID(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kontak berhasil diperbarui", profile)
+}
+
+func (h *HandlerImpl) UpdatePhoto(c *gin.Context) {
+	req, ok := bind[auth_dto.UpdatePhotoRequest](c)
+	if !ok {
+		return
+	}
+	profile, err := h.svc.UpdatePhoto(c.Request.Context(), appctx.UserID(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Foto profil berhasil diperbarui", profile)
+}
+
 func (h *HandlerImpl) ForgotPassword(c *gin.Context) {
 	req, ok := bind[auth_dto.ForgotPasswordRequest](c)
 	if !ok {

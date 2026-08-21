@@ -11,8 +11,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// u.photoURL di-COALESCE dengan customPhotoURL (foto yang diunggah sendiri
+// lewat Profil Saya selalu diprioritaskan di atas foto sinkron Google) —
+// sama seperti resolvedPhotoURL() di auth_service/user_service, tapi di
+// level SQL karena query ini murni proyeksi read-only lintas baris komentar.
 const selectCols = "cm.commentID, cm.contentType, cm.contentID, cm.parentID, cm.commentText, cm.mediaURL, cm.mediaType, " +
-	"cm.createdDate, cm.createdBy, u.fullName AS authorName, u.photoURL AS authorPhoto, cm.updatedDate, cm.updatedBy"
+	"cm.createdDate, cm.createdBy, u.fullName AS authorName, COALESCE(NULLIF(u.customPhotoURL, ''), u.photoURL) AS authorPhoto, cm.updatedDate, cm.updatedBy"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
 type RepositoryImpl struct{ db *gorm.DB }
@@ -299,7 +303,7 @@ func (r *RepositoryImpl) MentionsByCommentIDs(ctx context.Context, commentIDs []
 	}
 	var rows []comment_model.MentionAuthor
 	err := r.db.WithContext(ctx).Table("tr_comment_mention m").
-		Select("m.commentID, m.userID, u.fullName, u.photoURL").
+		Select("m.commentID, m.userID, u.fullName, COALESCE(NULLIF(u.customPhotoURL, ''), u.photoURL) AS photoURL").
 		Joins("JOIN ms_user u ON u.userID = m.userID").
 		Where("m.commentID IN ?", commentIDs).
 		Order("m.mentionID ASC").

@@ -32,6 +32,21 @@ import (
 	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/role/role_service"
 
+	"fsldk-api/modules/organization"
+	"fsldk-api/modules/organization/organization_handler"
+	"fsldk-api/modules/organization/organization_repository"
+	"fsldk-api/modules/organization/organization_service"
+
+	"fsldk-api/modules/submission_form"
+	"fsldk-api/modules/submission_form/submission_form_handler"
+	"fsldk-api/modules/submission_form/submission_form_repository"
+	"fsldk-api/modules/submission_form/submission_form_service"
+
+	"fsldk-api/modules/submission"
+	"fsldk-api/modules/submission/submission_handler"
+	"fsldk-api/modules/submission/submission_repository"
+	"fsldk-api/modules/submission/submission_service"
+
 	"fsldk-api/modules/news"
 	"fsldk-api/modules/news/news_handler"
 	"fsldk-api/modules/news/news_repository"
@@ -80,6 +95,12 @@ import (
 	"fsldk-api/modules/upload/upload_service"
 	uploadpkg "fsldk-api/pkg/upload"
 
+	"fsldk-api/modules/report"
+	"fsldk-api/modules/report/report_handler"
+	"fsldk-api/modules/report/report_repository"
+	"fsldk-api/modules/report/report_service"
+	"fsldk-api/pkg/auditlog"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -93,16 +114,21 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	mail := mailer.New(cfg)
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
 	uploader := uploadpkg.NewUploader("assets/uploads", cfg.AppURL)
+	audit := auditlog.New(db)
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)
 	userRepo := user_repository.NewRepository(db)
 	roleRepo := role_repository.NewRepository(db)
+	orgRepo := organization_repository.NewRepository(db)
+	formRepo := submission_form_repository.NewRepository(db)
+	subRepo := submission_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
+	reportRepo := report_repository.NewRepository(db)
 	shortlinkReqRepo := shortlinkrequest_repository.NewRepository(db)
 	settingRepo := setting_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
@@ -110,10 +136,13 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
-	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, tm, tokenStore, mail, gverify, cfg)
-	userSvc := user_service.NewService(userRepo)
+	orgSvc := organization_service.NewService(orgRepo)
+	formSvc := submission_form_service.NewService(formRepo, audit)
+	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
+	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
+	userSvc := user_service.NewService(userRepo, orgSvc, audit)
 	roleSvc := role_service.NewService(roleRepo)
-	dashSvc := dashboard_service.NewService(dashRepo)
+	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	settingSvc := setting_service.NewService(settingRepo)
 	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,
@@ -138,6 +167,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
+	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
 	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
 	// sebagai CommentCleaner untuk membersihkan komentar saat konten induknya
 	// dihapus (ms_comment tidak punya FK ke ms_article/ms_news/ms_event, lihat
@@ -152,6 +182,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permH := permission_handler.NewHandler(permSvc)
 	userH := user_handler.NewHandler(userSvc)
 	roleH := role_handler.NewHandler(roleSvc)
+	orgH := organization_handler.NewHandler(orgSvc)
+	formH := submission_form_handler.NewHandler(formSvc)
+	subH := submission_handler.NewHandler(subSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	eventH := event_handler.NewHandler(eventSvc)
@@ -160,10 +193,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
+	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
 
-	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader)
-	mw := middlewares.New(tm, cfg, permSvc)
+	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
+	// memenuhi kontrak OrgScopeLoader)
+	mw := middlewares.New(tm, cfg, permSvc, orgSvc)
 
 	// Engine
 	if cfg.AppEnv == "production" {
@@ -198,7 +233,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permission.RegisterRoutes(api, permH, mw)
 	user.RegisterRoutes(api, userH, mw)
 	role.RegisterRoutes(api, roleH, mw)
+	organization.RegisterRoutes(api, orgH, mw)
+	submission_form.RegisterRoutes(api, formH, mw)
+	submission.RegisterRoutes(api, subH, mw)
 	dashboard.RegisterRoutes(api, dashH, mw)
+	report.RegisterRoutes(api, reportH, mw)
 
 	news.RegisterPublicRoutes(pub, newsH)
 	news.RegisterCMSRoutes(api, newsH, mw)

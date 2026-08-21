@@ -4,8 +4,10 @@ package middlewares
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
+	"fsldk-api/base/appctx"
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/token"
@@ -22,16 +24,24 @@ type PermissionLoader interface {
 	RolePermissions(ctx context.Context, roleID int64) ([]string, error)
 }
 
+// OrgScopeLoader menentukan apakah sebuah organisasi target dapat diakses
+// oleh pengguna pemanggil, berdasarkan organisasi asal (cascade) atau
+// wildcardTierAccess-nya. Diimplementasikan oleh modul organization.
+type OrgScopeLoader interface {
+	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
+}
+
 // Middleware menampung dependensi yang dibutuhkan seluruh middleware.
 type Middleware struct {
 	Token *token.Manager
 	Cfg   config.AppConfig
 	Perm  PermissionLoader
+	Org   OrgScopeLoader
 }
 
 // New membuat instance Middleware.
-func New(tm *token.Manager, cfg config.AppConfig, perm PermissionLoader) *Middleware {
-	return &Middleware{Token: tm, Cfg: cfg, Perm: perm}
+func New(tm *token.Manager, cfg config.AppConfig, perm PermissionLoader, org OrgScopeLoader) *Middleware {
+	return &Middleware{Token: tm, Cfg: cfg, Perm: perm, Org: org}
 }
 
 // Auth memvalidasi access token dan menyimpan identitas pengguna ke context.
@@ -52,6 +62,9 @@ func (m *Middleware) Auth() gin.HandlerFunc {
 		c.Set(constants.CtxRoleID, claims.RoleID)
 		c.Set(constants.CtxRoleName, claims.RoleName)
 		c.Set(constants.CtxEmailVerified, claims.EmailVerified)
+		c.Set(constants.CtxOrganizationID, claims.OrganizationID)
+		c.Set(constants.CtxOrganizationTypeCode, claims.OrganizationTypeCode)
+		c.Set(constants.CtxWildcardTierAccess, claims.WildcardTierAccess)
 		c.Next()
 	}
 }
@@ -95,9 +108,11 @@ func (m *Middleware) RequireVerified() gin.HandlerFunc {
 	}
 }
 
-// RequirePermission memastikan role pengguna memiliki permission tertentu.
-// Harus dipasang setelah Auth().
-func (m *Middleware) RequirePermission(code string) gin.HandlerFunc {
+// RequirePermission memastikan role pengguna memiliki salah satu dari kode
+// permission yang diberikan (any-match — berguna untuk endpoint yang sama
+// dipakai lintas tier dengan permission menu berbeda). Harus dipasang
+// setelah Auth().
+func (m *Middleware) RequirePermission(codes ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		roleIDVal, ok := c.Get(constants.CtxRoleID)
 		if !ok {
@@ -111,13 +126,61 @@ func (m *Middleware) RequirePermission(code string) gin.HandlerFunc {
 			return
 		}
 		for _, p := range perms {
-			if p == code {
-				c.Set(constants.CtxPermissions, perms)
-				c.Next()
-				return
+			for _, code := range codes {
+				if p == code {
+					c.Set(constants.CtxPermissions, perms)
+					c.Next()
+					return
+				}
 			}
 		}
 		httphelper.Error(c, apperror.Forbidden("Anda tidak memiliki hak akses untuk aksi ini"))
+	}
+}
+
+// RequireOrganizationScope memastikan organisasi target (dibaca dari path
+// atau query param bernama paramName, default ke organisasi asal pengguna
+// bila param kosong) berada dalam jangkauan akses pengguna. Harus dipasang
+// setelah Auth(). ID organisasi target yang tervalidasi disimpan di
+// constants.CtxTargetOrganizationID untuk dipakai handler/service.
+func (m *Middleware) RequireOrganizationScope(paramName string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		callerOrgID := appctx.OrganizationID(c)
+		callerOrgType := appctx.OrganizationTypeCode(c)
+		wildcard := appctx.WildcardTierAccess(c)
+
+		raw := c.Param(paramName)
+		if raw == "" {
+			raw = c.Query(paramName)
+		}
+
+		var targetID int64
+		if raw == "" {
+			if callerOrgID == nil {
+				httphelper.Error(c, apperror.Forbidden("Akun Anda tidak terhubung ke organisasi manapun"))
+				return
+			}
+			targetID = *callerOrgID
+		} else {
+			id, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil || id <= 0 {
+				httphelper.Error(c, apperror.BadRequest("ID organisasi tidak valid"))
+				return
+			}
+			targetID = id
+		}
+
+		ok, err := m.Org.IsAccessible(c.Request.Context(), callerOrgID, callerOrgType, wildcard, targetID)
+		if err != nil {
+			httphelper.Error(c, apperror.Internal(""))
+			return
+		}
+		if !ok {
+			httphelper.Error(c, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini"))
+			return
+		}
+		c.Set(constants.CtxTargetOrganizationID, targetID)
+		c.Next()
 	}
 }
 

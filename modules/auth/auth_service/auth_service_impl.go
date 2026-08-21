@@ -14,6 +14,7 @@ import (
 	"fsldk-api/constants"
 	"fsldk-api/modules/auth/auth_dto"
 	"fsldk-api/modules/auth/auth_repository"
+	"fsldk-api/modules/organization/organization_repository"
 	"fsldk-api/modules/permission/permission_service"
 	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/user/user_model"
@@ -22,21 +23,37 @@ import (
 	"fsldk-api/pkg/mailer"
 )
 
+// Nama role sistem (bukan kode) yang butuh penurunan tier efektif — konsisten
+// dengan literal yang sama dipakai migrations/0005_organization_access.up.sql.
+const (
+	roleNamePuskomdaVerifikator  = "Puskomda Verifikator"
+	roleNamePuskomnasVerifikator = "Puskomnas Verifikator"
+)
+
 // emailVerified & hasPassword adalah helper murni fungsi (bukan method pada
 // model) yang mengevaluasi status akun berdasarkan field user_model.User.
 func emailVerified(u user_model.User) bool { return u.EmailVerifiedDate.Valid }
 func hasPassword(u user_model.User) bool   { return u.Password.Valid && u.Password.String != "" }
 
+func organizationID(u user_model.User) *int64 {
+	if !u.OrganizationID.Valid {
+		return nil
+	}
+	id := u.OrganizationID.Int64
+	return &id
+}
+
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	users  user_repository.Repository
-	roles  role_repository.Repository
-	perms  permission_service.Service
-	tokens *token.Manager
-	store  auth_repository.TokenStore
-	mail   mailer.Mailer
-	google *googleauth.Verifier
-	cfg    config.AppConfig
+	users   user_repository.Repository
+	roles   role_repository.Repository
+	perms   permission_service.Service
+	orgRepo organization_repository.Repository
+	tokens  *token.Manager
+	store   auth_repository.TokenStore
+	mail    mailer.Mailer
+	google  *googleauth.Verifier
+	cfg     config.AppConfig
 }
 
 // NewService membuat Service auth.
@@ -44,13 +61,65 @@ func NewService(
 	users user_repository.Repository,
 	roles role_repository.Repository,
 	perms permission_service.Service,
+	orgRepo organization_repository.Repository,
 	tokens *token.Manager,
 	store auth_repository.TokenStore,
 	mail mailer.Mailer,
 	google *googleauth.Verifier,
 	cfg config.AppConfig,
 ) Service {
-	return &ServiceImpl{users: users, roles: roles, perms: perms, tokens: tokens, store: store, mail: mail, google: google, cfg: cfg}
+	return &ServiceImpl{users: users, roles: roles, perms: perms, orgRepo: orgRepo, tokens: tokens, store: store, mail: mail, google: google, cfg: cfg}
+}
+
+// resolveEffectiveOrg menghitung organizationID+organizationTypeCode EFEKTIF
+// akun ini. ms_user.organizationID kini SELALU menunjuk ke satu LDK spesifik
+// untuk seluruh role berjenjang organisasi (form Kelola Pengguna disederhanakan
+// jadi "pilih 1 LDK saja" untuk role apapun — dikonfirmasi 2026-08-19, supaya
+// admin tidak perlu tahu harus pilih organisasi bertipe apa untuk role mana),
+// BUKAN organisasi bertipe LDK/PUSKOMDA/PUSKOMNAS campur seperti sebelumnya.
+// Cakupan akses tier PUSKOMDA/PUSKOMNAS diturunkan dari LDK yang di-assign
+// lewat rantai parentOrganizationID, ditentukan oleh ROLE:
+//   - LDK Admin/Kader (& role lain): organizationID mentah apa adanya (sudah
+//     benar type-nya, LDK, tidak perlu diturunkan).
+//   - Puskomda Verifikator: Puskomda induk langsung dari LDK yang di-assign.
+//   - Puskomnas Verifikator: root Puskomnas nasional — LDK yang di-assign
+//     tidak memengaruhi cakupan sama sekali (Puskomnas selalu tunggal), field
+//     Organisasi tetap wajib diisi di form cuma untuk konsistensi UI.
+func (s *ServiceImpl) resolveEffectiveOrg(ctx context.Context, u user_model.User) (*int64, string, error) {
+	assigned := organizationID(u)
+	assignedType := u.OrganizationTypeCode.String
+	switch u.RoleName {
+	case roleNamePuskomdaVerifikator:
+		if assigned == nil {
+			return nil, "", nil
+		}
+		if assignedType == constants.OrgTypePuskomda {
+			// Data lama (akun dibuat sebelum form Kelola Pengguna
+			// disederhanakan) — organizationID sudah langsung menunjuk
+			// Puskomda itu sendiri, tidak perlu diturunkan.
+			return assigned, constants.OrgTypePuskomda, nil
+		}
+		ldk, err := s.orgRepo.FindByID(ctx, *assigned)
+		if err != nil {
+			return nil, "", err
+		}
+		if !ldk.ParentOrganizationID.Valid {
+			return nil, "", nil
+		}
+		parentID := ldk.ParentOrganizationID.Int64
+		return &parentID, constants.OrgTypePuskomda, nil
+	case roleNamePuskomnasVerifikator:
+		if assignedType == constants.OrgTypePuskomnas {
+			return assigned, constants.OrgTypePuskomnas, nil
+		}
+		rootID, err := s.orgRepo.RootPuskomnasID(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		return &rootID, constants.OrgTypePuskomnas, nil
+	default:
+		return assigned, assignedType, nil
+	}
 }
 
 func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest) (auth_dto.RegisterResponse, error) {
@@ -260,6 +329,50 @@ func (s *ServiceImpl) ChangePassword(ctx context.Context, userID int64, req auth
 	return nil
 }
 
+// resolvedPhotoURL menerapkan prioritas tampil foto profil: foto yang
+// diunggah sendiri (customPhotoURL, lihat UpdatePhoto) selalu menang bila
+// ada, baru fallback ke photoURL (disinkronkan otomatis dari akun Google
+// setiap login — lihat LoginGoogle) — inisial huruf adalah fallback terakhir,
+// ditangani di frontend saat keduanya kosong. Duplikat kecil dari helper yang
+// sama di user_service (package berbeda, model tidak boleh punya method).
+func resolvedPhotoURL(u user_model.User) string {
+	if u.CustomPhotoURL.Valid && u.CustomPhotoURL.String != "" {
+		return u.CustomPhotoURL.String
+	}
+	return u.PhotoURL.String
+}
+
+func (s *ServiceImpl) UpdatePhoto(ctx context.Context, userID int64, req auth_dto.UpdatePhotoRequest) (auth_dto.UserProfile, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return auth_dto.UserProfile{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	url := strings.TrimSpace(req.PhotoURL)
+	if err := s.users.UpdateCustomPhoto(ctx, userID, url); err != nil {
+		return auth_dto.UserProfile{}, apperror.Internal("")
+	}
+	u.CustomPhotoURL = sql.NullString{String: url, Valid: url != ""}
+	return s.profileFor(ctx, u)
+}
+
+func (s *ServiceImpl) UpdateContact(ctx context.Context, userID int64, req auth_dto.UpdateContactRequest) (auth_dto.UserProfile, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return auth_dto.UserProfile{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	phone := strings.TrimSpace(req.PhoneNumber)
+	address := strings.TrimSpace(req.Address)
+	if err := s.users.UpdateContactInfo(ctx, userID,
+		sql.NullString{String: phone, Valid: phone != ""},
+		sql.NullString{String: address, Valid: address != ""},
+	); err != nil {
+		return auth_dto.UserProfile{}, apperror.Internal("")
+	}
+	u.PhoneNumber = sql.NullString{String: phone, Valid: phone != ""}
+	u.Address = sql.NullString{String: address, Valid: address != ""}
+	return s.profileFor(ctx, u)
+}
+
 func (s *ServiceImpl) ForgotPassword(ctx context.Context, email string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	u, err := s.users.FindByEmail(ctx, email)
@@ -305,7 +418,16 @@ func (s *ServiceImpl) buildAuthResponse(ctx context.Context, u user_model.User) 
 	if err != nil {
 		return auth_dto.AuthResponse{}, err
 	}
-	access, err := s.tokens.GenerateAccess(u.UserID, u.RoleID, u.Email, u.RoleName, emailVerified(u))
+	access, err := s.tokens.GenerateAccess(token.AccessParams{
+		UserID:               u.UserID,
+		RoleID:               u.RoleID,
+		Email:                u.Email,
+		RoleName:             u.RoleName,
+		EmailVerified:        emailVerified(u),
+		OrganizationID:       profile.OrganizationID,
+		OrganizationTypeCode: profile.OrganizationTypeCode,
+		WildcardTierAccess:   u.WildcardTierAccess.String,
+	})
 	if err != nil {
 		return auth_dto.AuthResponse{}, apperror.Internal("")
 	}
@@ -329,15 +451,27 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 	if perms == nil {
 		perms = []string{}
 	}
-	return auth_dto.UserProfile{
-		UserID:        u.UserID,
-		FullName:      u.FullName,
-		Email:         u.Email,
-		EmailVerified: emailVerified(u),
-		Role:          u.RoleName,
-		Permissions:   perms,
-		PhotoURL:      u.PhotoURL.String,
-	}, nil
+	effectiveOrgID, effectiveOrgType, err := s.resolveEffectiveOrg(ctx, u)
+	if err != nil {
+		return auth_dto.UserProfile{}, apperror.Internal("")
+	}
+	profile := auth_dto.UserProfile{
+		UserID:               u.UserID,
+		FullName:             u.FullName,
+		Email:                u.Email,
+		EmailVerified:        emailVerified(u),
+		Role:                 u.RoleName,
+		Permissions:          perms,
+		PhotoURL:             resolvedPhotoURL(u),
+		PhoneNumber:          u.PhoneNumber.String,
+		Address:              u.Address.String,
+		OrganizationID:       effectiveOrgID,
+		OrganizationTypeCode: effectiveOrgType,
+	}
+	if u.WildcardTierAccess.Valid && u.WildcardTierAccess.String != "" {
+		profile.WildcardTierAccess = strings.Split(u.WildcardTierAccess.String, ",")
+	}
+	return profile, nil
 }
 
 func (s *ServiceImpl) isDomainAllowed(email string) bool {

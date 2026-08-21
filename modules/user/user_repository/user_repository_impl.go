@@ -2,6 +2,7 @@ package user_repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"time"
 
@@ -11,11 +12,17 @@ import (
 	"gorm.io/gorm"
 )
 
-const selectCols = "u.userID, u.roleID, r.roleName, u.fullName, u.email, u.username, u.password, " +
-	"u.googleID, u.emailVerifiedDate, u.phoneNumber, u.photoURL, u.mustChangePassword, " +
+// u.address & u.customPhotoURL ditambahkan belakangan (lihat migrations
+// 0015/0017) — sebelumnya tidak ikut di-select di sini sehingga FindByID/
+// FindByEmail/List/SearchActive tidak pernah membaca baliknya walau kolomnya
+// sudah bisa ditulis (bug laten, diperbaiki sekaligus saat menambah customPhotoURL).
+const selectCols = "u.userID, u.roleID, r.roleName, u.organizationID, o.organizationTypeCode, " +
+	"u.wildcardTierAccess, u.fullName, u.email, u.username, u.password, " +
+	"u.googleID, u.emailVerifiedDate, u.phoneNumber, u.address, u.photoURL, u.customPhotoURL, u.mustChangePassword, " +
 	"u.isActive, u.createdDate, u.createdBy, u.updatedDate, u.updatedBy"
 
 const joinRole = "JOIN ms_role r ON r.roleID = u.roleID"
+const joinOrg = "LEFT JOIN ms_organization o ON o.organizationID = u.organizationID"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
 type RepositoryImpl struct{ db *gorm.DB }
@@ -28,6 +35,7 @@ func (r *RepositoryImpl) findOne(ctx context.Context, where string, arg interfac
 	err := r.db.WithContext(ctx).Table("ms_user u").
 		Select(selectCols).
 		Joins(joinRole).
+		Joins(joinOrg).
 		Where(where, arg).
 		Take(&u).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -66,16 +74,18 @@ func (r *RepositoryImpl) Create(ctx context.Context, p user_model.CreateParams) 
 		verifiedAt = time.Now()
 	}
 	values := map[string]interface{}{
-		"roleID":            p.RoleID,
-		"fullName":          p.FullName,
-		"email":             p.Email,
-		"password":          p.Password,
-		"googleID":          p.GoogleID,
-		"photoURL":          p.PhotoURL,
-		"emailVerifiedDate": verifiedAt,
-		"isActive":          true,
-		"createdDate":       time.Now(),
-		"createdBy":         p.CreatedBy,
+		"roleID":             p.RoleID,
+		"organizationID":     p.OrganizationID,
+		"wildcardTierAccess": p.WildcardTierAccess,
+		"fullName":           p.FullName,
+		"email":              p.Email,
+		"password":           p.Password,
+		"googleID":           p.GoogleID,
+		"photoURL":           p.PhotoURL,
+		"emailVerifiedDate":  verifiedAt,
+		"isActive":           true,
+		"createdDate":        time.Now(),
+		"createdBy":          p.CreatedBy,
 	}
 	var newID int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -88,7 +98,7 @@ func (r *RepositoryImpl) Create(ctx context.Context, p user_model.CreateParams) 
 }
 
 func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]user_model.User, int64, error) {
-	base := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole)
+	base := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Joins(joinOrg)
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
 		base = base.Where("(u.fullName LIKE ? OR u.email LIKE ?)", like, like)
@@ -122,14 +132,24 @@ func (r *RepositoryImpl) SearchActive(ctx context.Context, search string, limit 
 	return out, err
 }
 
-func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, updatedBy int64) error {
+func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
-		"fullName":    fullName,
-		"email":       email,
-		"roleID":      roleID,
-		"isActive":    isActive,
+		"fullName":           fullName,
+		"email":              email,
+		"roleID":             roleID,
+		"isActive":           isActive,
+		"organizationID":     organizationID,
+		"wildcardTierAccess": wildcardTierAccess,
+		"updatedDate":        time.Now(),
+		"updatedBy":          updatedBy,
+	}).Error
+}
+
+func (r *RepositoryImpl) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
+	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
+		"phoneNumber": phoneNumber,
+		"address":     address,
 		"updatedDate": time.Now(),
-		"updatedBy":   updatedBy,
 	}).Error
 }
 
@@ -167,6 +187,13 @@ func (r *RepositoryImpl) UpdatePhoto(ctx context.Context, id int64, photoURL str
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"photoURL":    photoURL,
 		"updatedDate": time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error {
+	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
+		"customPhotoURL": photoURL,
+		"updatedDate":    time.Now(),
 	}).Error
 }
 
