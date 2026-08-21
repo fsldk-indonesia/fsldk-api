@@ -22,17 +22,21 @@ import (
 )
 
 const (
-	assetsDir             = "assets"
-	logoAsset             = "logo-fsldk.png"
-	logoCID               = "logo-fsldk.png"
-	templateVerification  = "verification"
-	templatePasswordReset = "password_reset"
+	assetsDir                 = "assets"
+	logoAsset                 = "logo-fsldk.png"
+	logoCID                   = "logo-fsldk.png"
+	templateVerification      = "verification"
+	templatePasswordReset     = "password_reset"
+	templateShortlinkApproved = "shortlink_approved"
+	templateShortlinkRejected = "shortlink_rejected"
 )
 
 // Mailer adalah kontrak layanan email.
 type Mailer interface {
 	SendVerificationEmail(toEmail, toName, verifyURL string) error
 	SendPasswordResetEmail(toEmail, toName, resetURL string) error
+	SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error
+	SendShortlinkRejectedEmail(toEmail, toName, reason string) error
 }
 
 type smtpMailer struct {
@@ -62,6 +66,26 @@ func (m *smtpMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) er
 		return err
 	}
 	return m.send(toEmail, "Atur Ulang Kata Sandi — FSLDK Indonesia", body, resetURL)
+}
+
+func (m *smtpMailer) SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error {
+	body, err := generateFromAsset(templateShortlinkApproved, map[string]string{
+		"Name": toName, "URL": shortURL, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Permintaan Shortlink Disetujui — FSLDK Indonesia", body, shortURL)
+}
+
+func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) error {
+	body, err := generateFromAsset(templateShortlinkRejected, map[string]string{
+		"Name": toName, "Reason": reason, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "")
 }
 
 func (m *smtpMailer) send(to, subject, htmlBody, link string) error {

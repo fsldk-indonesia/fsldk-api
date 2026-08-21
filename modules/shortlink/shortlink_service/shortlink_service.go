@@ -18,4 +18,10 @@ type Service interface {
 	// Resolve mencari shortlink berdasarkan kunci, mencatat kunjungan, dan
 	// mengembalikan URL tujuan untuk di-redirect oleh handler.
 	Resolve(ctx context.Context, key string) (string, error)
+
+	// GenerateUniqueKey & KeyExists dipakai ulang oleh shortlinkrequest_service
+	// saat approve (§6 techspec) — murni baca, tidak menulis, supaya logic
+	// generate-key acak yang sudah ada di Create tidak diduplikasi.
+	GenerateUniqueKey(ctx context.Context) (string, error)
+	KeyExists(ctx context.Context, key string) (bool, error)
 }

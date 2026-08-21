@@ -324,6 +324,46 @@ mengembalikan `destinationURL` sebagai JSON; frontend-lah yang melakukan
 
 ---
 
+## 8a. Permintaan Shortlink (`/shortlink-requests`)
+
+Alur permintaan publik + persetujuan admin di atas modul Shortlink (§8) — pengunjung tanpa akun mengajukan tautan. **Dua jalur bisa menyelesaikan sebuah permintaan**: admin (`shortlink.approve`) meninjau lalu approve/reject lewat CMS, ATAU PIC membalas notifikasi WhatsApp ("YES"/"NO"/tombol quick-reply) — keduanya melewati mekanisme atomik yang sama (`UPDATE ... WHERE status='pending'`, lihat Arsitektur §12), jadi tidak pernah diproses dobel dari jalur mana pun. Approve membuat baris `ms_shortlink` baru dalam satu transaksi (reuse logic generate-key `shortlink_service`). Notifikasi WhatsApp (via Kirimdev) + email dikirim lewat job queue (Arsitektur §13) — retry otomatis dengan backoff kalau gagal, bukan sekali-coba.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate Limit | Deskripsi |
+|---|---|---|---|
+| POST | `/public/shortlink-requests` | 3x / menit / IP | Ajukan permintaan shortlink baru (status awal `pending`) |
+| GET | `/public/shortlink-requests/pic` | — | `{ "picName": "...", "picWhatsapp": "..." }` — subset read-only App Settings untuk kartu "Konfirmasi via WhatsApp" di halaman pengajuan; `picWhatsapp` bisa `""` bila belum dikonfigurasi (bukan error) |
+| POST | `/public/webhooks/kirimdev` | — | Balasan WhatsApp inbound dari PIC (signature+timestamp HMAC diverifikasi di handler) — **bisa memicu approve/reject** lewat `HandleWhatsAppReply` (jalur approval kedua, Arsitektur §12); selalu `200 OK` kecuali signature gagal |
+
+**`POST /public/shortlink-requests`**
+```json
+{
+  "requesterName": "Ahmad Fadli",
+  "requesterEmail": "ahmad@fsldk.id",
+  "requesterWhatsapp": "081234567890",
+  "destinationURL": "https://fsldk-indonesia.com/berita/artikel-panjang",
+  "requestedKey": "acara2026",
+  "note": "Untuk poster acara nasional"
+}
+```
+Seluruh field wajib diisi termasuk `requestedKey` & `note` (mengikuti perilaku form referensi). `requesterWhatsapp` dinormalisasi ke format `62xxxxxxxxxx` di service. Fallback generate-key otomatis saat approve tetap ada di kode untuk baris lama yang `requestedKey`-nya masih `NULL`, tapi tidak lagi bisa tercapai lewat submission baru.
+
+**`GET /public/shortlink-requests/pic`** tidak meng-expose endpoint `/settings` penuh ke publik (App Settings tetap CMS-only, Super Admin only, §10a) — hanya dua nilai `shortlink_pic_name`/`shortlink_pic_whatsapp` dari grup `layanan`.
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/shortlink-requests` | `shortlink.view` | Daftar permintaan (query: `page`, `limit`, `search`, `status=pending\|approved\|rejected`) |
+| GET | `/shortlink-requests/:id` | `shortlink.view` | Detail satu permintaan |
+| POST | `/shortlink-requests/:id/approve` | `shortlink.approve` | Setujui — buat shortlink baru + notifikasi requester |
+| POST | `/shortlink-requests/:id/reject` | `shortlink.approve` | Tolak — `{ "rejectionReason": "..." }` + notifikasi requester |
+
+Approve/Reject menolak (`409 Conflict`) bila permintaan sudah pernah diproses (`status != pending`) — berlaku untuk KEDUA jalur (CMS maupun balasan WhatsApp, Arsitektur §12), bukan cuma jalur CMS. Response `Response` juga menyertakan `reviewedVia` (`"cms"` | `"whatsapp"`) untuk membedakan jalur mana yang menyelesaikan permintaan.
+
+---
+
 ## 9. Upload (`/uploads`) — ✅🔒
 
 Unggah berkas gambar/dokumen untuk form Artikel & Berita CMS — dipakai bersama oleh kedua modul, bukan endpoint khusus per-modul.
@@ -351,6 +391,33 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 
 ---
 
+## 10a. App Settings (`/settings`) — ✅🔒, Super Admin only
+
+Konfigurasi runtime key-value generik (bukan spesifik satu fitur) — dipakai lintas fitur lewat `setting_service.GetValue(group, key)`, mis. nomor/nama PIC yang menerima notifikasi permintaan shortlink (§8a).
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/settings` | `setting.view` | Daftar seluruh setting (tidak dipaginasi) |
+| PUT | `/settings/:id` | `setting.update` | Perbarui `settingValue` satu setting — `{ "settingValue": "..." }` |
+
+---
+
+## 10b. Job Queue (`/job-queue`) — ✅🔒, Super Admin only
+
+Dashboard monitoring antrian pengiriman WhatsApp/email asinkron (Arsitektur §13) — dipakai `shortlinkrequest_service` untuk notifikasi Permintaan Shortlink, didesain reusable untuk fitur lain.
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/job-queue` | `jobqueue.view` | Daftar job (query: `page`, `limit`, `search`, `status=pending\|processing\|completed\|failed`, `queue=whatsapp\|email`) |
+| GET | `/job-queue/stats` | `jobqueue.view` | `{ "pending", "delayed", "processing", "stuck", "failed", "completed" }` — jumlah job per bucket |
+| GET | `/job-queue/:id` | `jobqueue.view` | Detail satu job |
+| POST | `/job-queue/:id/retry` | `jobqueue.retry` | Coba ulang — hanya dari status `failed`, mengembalikan `attempts=0` |
+| DELETE | `/job-queue/:id` | `jobqueue.delete` | Hapus — hanya dari status `failed`/`completed` |
+
+Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
+
+---
+
 ## 11. Sistem (tanpa prefix `/api/v1`)
 
 | Method | Endpoint | Deskripsi |
@@ -366,12 +433,15 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 |---|---|---|---|
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
-| `shortlink.view/create/update/delete` | Shortlink | `event.view/create/update/delete` | Event |
-| `comment.view/update/delete` | Komentar | | |
+| `shortlink.view/create/update/delete/approve` | Shortlink (+ Permintaan Shortlink) | `event.view/create/update/delete` | Event |
+| `comment.view/update/delete` | Komentar | `setting.view/update` | App Settings |
+| `jobqueue.view/retry/delete` | Job Queue | | |
 
 `comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §11](./ARCHITECTURE.md#11-komentar-kedalaman-balasan-moderasi-dan-mention).
 
-Role bawaan: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event penuh + moderasi komentar `comment.view/update/delete`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), dan [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql).
+`shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§10a/§10b) — keduanya modul operasional platform, bukan konten editorial.
+
+Role bawaan: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event penuh termasuk `shortlink.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), dan [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql).
 
 > Konten Landing Page (visi/misi/struktur organisasi/kontak) tidak dikelola via API/database — dikelola sebagai teks tetap (hardcoded) langsung di frontend `fsldk-web`.
 

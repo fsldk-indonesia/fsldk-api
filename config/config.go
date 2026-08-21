@@ -4,7 +4,9 @@
 package config
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -51,6 +53,53 @@ type AppConfig struct {
 	CorsAllowedOrigins string `mapstructure:"CORS_ALLOWED_ORIGINS"`
 
 	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
+
+	KirimdevAPIKey             string `mapstructure:"KIRIMDEV_API_KEY"`
+	KirimdevPhoneNumberID      string `mapstructure:"KIRIMDEV_PHONE_NUMBER_ID"`
+	KirimdevBaseURL            string `mapstructure:"KIRIMDEV_BASE_URL"`
+	KirimdevTemplateLanguage   string `mapstructure:"KIRIMDEV_TEMPLATE_LANGUAGE"`
+	KirimdevWebhookSecretsRaw  string `mapstructure:"KIRIMDEV_WEBHOOK_SECRETS"`      // comma-separated, lihat KirimdevWebhookSecrets()
+	KirimdevReplyWindowMinutes int    `mapstructure:"KIRIMDEV_REPLY_WINDOW_MINUTES"` // toleransi replay signature webhook (§7 techspec)
+
+	// Job queue (modules/jobqueue, §1b techspec) — dipakai shortlinkrequest_service
+	// untuk kirim WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
+	JobQueueWorkerCount           int     `mapstructure:"JOBQUEUE_WORKER_COUNT"`
+	JobQueuePollIntervalMS        int     `mapstructure:"JOBQUEUE_POLL_INTERVAL_MS"`
+	JobQueueStuckThresholdMinutes int     `mapstructure:"JOBQUEUE_STUCK_THRESHOLD_MINUTES"`
+	JobQueueDefaultMaxAttempts    int     `mapstructure:"JOBQUEUE_DEFAULT_MAX_ATTEMPTS"`
+	JobQueueBackoffScheduleRaw    string  `mapstructure:"JOBQUEUE_BACKOFF_SCHEDULE_SECONDS"` // comma-separated detik, mis. "15,30,60"
+	JobQueueWhatsAppRatePerMinute float64 `mapstructure:"JOBQUEUE_WHATSAPP_RATE_PER_MINUTE"`
+}
+
+// JobQueueBackoffSchedule mem-parsing JOBQUEUE_BACKOFF_SCHEDULE_SECONDS
+// ("15,30,60") menjadi []time.Duration. Entri yang tidak valid dilewati.
+func (c AppConfig) JobQueueBackoffSchedule() []time.Duration {
+	parts := strings.Split(c.JobQueueBackoffScheduleRaw, ",")
+	out := make([]time.Duration, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v == "" {
+			continue
+		}
+		if secs, err := strconv.Atoi(v); err == nil {
+			out = append(out, time.Duration(secs)*time.Second)
+		}
+	}
+	return out
+}
+
+// KirimdevWebhookSecrets mengembalikan daftar secret webhook Kirimdev yang
+// valid (comma-separated di env) — mendukung multi-value agar rotasi secret
+// tidak menyebabkan downtime (secret lama & baru sama-sama valid sementara).
+func (c AppConfig) KirimdevWebhookSecrets() []string {
+	parts := strings.Split(c.KirimdevWebhookSecretsRaw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // AllowedGoogleDomains mengembalikan daftar domain email yang diizinkan login Google.
@@ -135,4 +184,15 @@ func setDefaults() {
 	viper.SetDefault("MAIL_FROM_NAME", "FSLDK Indonesia")
 
 	viper.SetDefault("CORS_ALLOWED_ORIGINS", "http://localhost:4200")
+
+	viper.SetDefault("KIRIMDEV_BASE_URL", "https://api.kirimdev.com/v1")
+	viper.SetDefault("KIRIMDEV_TEMPLATE_LANGUAGE", "id")
+	viper.SetDefault("KIRIMDEV_REPLY_WINDOW_MINUTES", 5)
+
+	viper.SetDefault("JOBQUEUE_WORKER_COUNT", 2)
+	viper.SetDefault("JOBQUEUE_POLL_INTERVAL_MS", 1500)
+	viper.SetDefault("JOBQUEUE_STUCK_THRESHOLD_MINUTES", 10)
+	viper.SetDefault("JOBQUEUE_DEFAULT_MAX_ATTEMPTS", 5)
+	viper.SetDefault("JOBQUEUE_BACKOFF_SCHEDULE_SECONDS", "15,30,60")
+	viper.SetDefault("JOBQUEUE_WHATSAPP_RATE_PER_MINUTE", 8)
 }
