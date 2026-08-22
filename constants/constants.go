@@ -109,6 +109,12 @@ const (
 	PermCommentView   = "comment.view"
 	PermCommentUpdate = "comment.update"
 	PermCommentDelete = "comment.delete"
+
+	PermCampaignCreate   = "kantong_amal.campaign.create"
+	PermCampaignView     = "kantong_amal.campaign.view"
+	PermCampaignReview   = "kantong_amal.campaign.review"
+	PermCampaignPublish  = "kantong_amal.campaign.publish"
+	PermCampaignModerate = "kantong_amal.campaign.moderate"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -270,6 +276,20 @@ const (
 	LedgerReferenceDonation   = "DONATION"
 	LedgerReferenceWithdrawal = "WITHDRAWAL"
 	LedgerReferenceAdjustment = "ADJUSTMENT"
+)
+
+// Status ms_campaign.
+const (
+	CampaignStatusDraft             = "DRAFT"
+	CampaignStatusSubmitted         = "SUBMITTED"
+	CampaignStatusRevisionRequested = "REVISION_REQUESTED"
+	CampaignStatusApproved          = "APPROVED"
+	CampaignStatusPublished         = "PUBLISHED"
+	CampaignStatusPaused            = "PAUSED"
+	CampaignStatusCompleted         = "COMPLETED"
+	CampaignStatusRejected          = "REJECTED"
+	CampaignStatusArchived          = "ARCHIVED"
+	CampaignStatusExpired           = "EXPIRED"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

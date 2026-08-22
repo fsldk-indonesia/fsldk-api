@@ -1,0 +1,58 @@
+package campaign_service
+
+import (
+	"testing"
+
+	"fsldk-api/constants"
+)
+
+var campaignAllStatuses = []string{
+	constants.CampaignStatusDraft,
+	constants.CampaignStatusSubmitted,
+	constants.CampaignStatusRevisionRequested,
+	constants.CampaignStatusApproved,
+	constants.CampaignStatusPublished,
+	constants.CampaignStatusPaused,
+	constants.CampaignStatusCompleted,
+	constants.CampaignStatusRejected,
+	constants.CampaignStatusArchived,
+	constants.CampaignStatusExpired,
+}
+
+// TestIsValidTransition_ExhaustiveMatrix menguji seluruh 10x10 kombinasi
+// status asal/tujuan (100 pasangan) terhadap daftar transisi sah yang
+// didefinisikan independen dari validTransitions — memastikan tidak ada
+// transisi tak sengaja terbuka/tertutup akibat salah ketik di map asli.
+func TestIsValidTransition_ExhaustiveMatrix(t *testing.T) {
+	valid := map[[2]string]bool{
+		{constants.CampaignStatusDraft, constants.CampaignStatusSubmitted}:             true,
+		{constants.CampaignStatusRevisionRequested, constants.CampaignStatusSubmitted}: true,
+		{constants.CampaignStatusSubmitted, constants.CampaignStatusApproved}:          true,
+		{constants.CampaignStatusSubmitted, constants.CampaignStatusRevisionRequested}: true,
+		{constants.CampaignStatusSubmitted, constants.CampaignStatusRejected}:          true,
+		{constants.CampaignStatusApproved, constants.CampaignStatusPublished}:          true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusPaused}:            true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusCompleted}:         true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusExpired}:           true,
+		{constants.CampaignStatusPaused, constants.CampaignStatusPublished}:            true,
+		{constants.CampaignStatusCompleted, constants.CampaignStatusArchived}:          true,
+	}
+
+	for _, from := range campaignAllStatuses {
+		for _, to := range campaignAllStatuses {
+			want := valid[[2]string{from, to}]
+			if got := isValidTransition(from, to); got != want {
+				t.Errorf("isValidTransition(%s, %s) = %v, want %v", from, to, got, want)
+			}
+		}
+	}
+}
+
+func TestIsValidTransition_UnknownStatusRejected(t *testing.T) {
+	if isValidTransition("UNKNOWN", constants.CampaignStatusSubmitted) {
+		t.Fatal("expected transition from unknown status to be rejected")
+	}
+	if isValidTransition(constants.CampaignStatusDraft, "UNKNOWN") {
+		t.Fatal("expected transition to unknown status to be rejected")
+	}
+}

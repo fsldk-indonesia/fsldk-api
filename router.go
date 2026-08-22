@@ -86,6 +86,11 @@ import (
 	"fsldk-api/modules/report/report_service"
 	"fsldk-api/pkg/auditlog"
 
+	"fsldk-api/modules/campaign"
+	"fsldk-api/modules/campaign/campaign_handler"
+	"fsldk-api/modules/campaign/campaign_repository"
+	"fsldk-api/modules/campaign/campaign_service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -116,10 +121,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	reportRepo := report_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
+	campaignRepo := campaign_repository.NewRepository(db)
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
+	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -154,6 +161,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
+	campaignH := campaign_handler.NewHandler(campaignSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -212,6 +220,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	comment.RegisterPublicRoutes(pub, commentH, mw)
 	comment.RegisterCMSRoutes(api, commentH, mw)
+
+	campaign.RegisterPublicRoutes(pub, campaignH)
+	campaign.RegisterMeRoutes(api, campaignH, mw)
+	campaign.RegisterCMSRoutes(api, campaignH, mw)
 
 	return engine
 }
