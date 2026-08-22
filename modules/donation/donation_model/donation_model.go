@@ -60,3 +60,23 @@ type CreateParams struct {
 	IdempotencyKey  string
 	ExpiredDate     sql.NullTime
 }
+
+// GatewayResultParams menampung hasil CreateQRISTransaction untuk disimpan
+// ke donasi yang sudah dibuat (dipanggil segera setelah repo.Create sukses).
+type GatewayResultParams struct {
+	ExternalTransactionID string
+	QrPayload             string
+	PaymentCode           string
+	PaymentLink           string
+}
+
+// CallbackUpdateParams menampung perubahan status donasi dari callback
+// payment gateway. TotalAmount/AdminFee nil berarti tidak diubah — dipakai
+// saat status akhirnya bukan PAID atau saat AMOUNT_MISMATCH (nilai asli
+// dipertahankan untuk resolusi manual, tidak dipercaya begitu saja dari gateway).
+type CallbackUpdateParams struct {
+	PaymentStatus   string
+	GatewayStatusID int
+	TotalAmount     *float64
+	AdminFee        *float64
+}

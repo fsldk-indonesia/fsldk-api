@@ -56,6 +56,23 @@ func (h *HandlerImpl) Detail(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+// Callback menerima webhook payment dari Bisabiller. Tidak memakai JWT
+// (diamankan via signature/IP allowlist, lihat donation_service.ProcessCallback
+// dan middlewares.IPAllowlist) — respons tetap dalam envelope httphelper
+// standar seperti endpoint lain, cukup HTTP 200 untuk menandakan sukses.
+func (h *HandlerImpl) Callback(c *gin.Context) {
+	var req donation_dto.CallbackRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format callback tidak valid"))
+		return
+	}
+	if err := h.svc.ProcessCallback(c.Request.Context(), req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "OK", nil)
+}
+
 func (h *HandlerImpl) Status(c *gin.Context) {
 	data, err := h.svc.Status(c.Request.Context(), c.Param("publicRef"))
 	if err != nil {

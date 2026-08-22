@@ -52,11 +52,40 @@ type AppConfig struct {
 
 	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
 
-	// Kantong Amal — hanya nilai yang dibutuhkan donation_service sejak Phase
-	// 3 (formula MDR & masa berlaku QRIS); kredensial klien BisaTopup
-	// sungguhan ditambahkan saat pkg/bisatopup dibangun penuh.
-	BisatopupQrisMdrPercentCrowdfunding  float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
-	BisatopupQrisExpiryHoursCrowdfunding int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
+	// Kantong Amal — formula MDR & masa berlaku QRIS (Phase 3), kredensial
+	// dan pengaturan klien BisaTopup/Bisabiller (Phase 4). WIDGET_KEY dan
+	// ADMIN_FEE_PERCENT dari dokumen referensi sengaja tidak ditambahkan di
+	// sini — keduanya terbukti tidak pernah dipakai di ldksyahid-app (FACT,
+	// hanya dideklarasikan di config tanpa call site), menambahkannya di
+	// sini hanya akan jadi dead config.
+	BisatopupQrisMdrPercentCrowdfunding           float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
+	BisatopupQrisExpiryHoursCrowdfunding          int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
+	BisatopupUsernameCrowdfunding                 string  `mapstructure:"BISATOPUP_USERNAME_CROWDFUNDING"`
+	BisatopupPasswordApiCrowdfunding              string  `mapstructure:"BISATOPUP_PASSWORD_API_CROWDFUNDING"`
+	BisatopupEnvCrowdfunding                      string  `mapstructure:"BISATOPUP_ENV_CROWDFUNDING"`
+	BisatopupBaseURLLiveCrowdfunding              string  `mapstructure:"BISATOPUP_BASE_URL_LIVE_CROWDFUNDING"`
+	BisatopupBaseURLDevCrowdfunding               string  `mapstructure:"BISATOPUP_BASE_URL_DEV_CROWDFUNDING"`
+	BisatopupQrisPaymentIDCrowdfunding            int     `mapstructure:"BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING"`
+	BisatopupEnforceCallbackSignatureCrowdfunding bool    `mapstructure:"BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING"`
+	BisatopupAllowedIPsCrowdfunding               string  `mapstructure:"BISATOPUP_ALLOWED_IPS_CROWDFUNDING"`
+}
+
+// AllowedBisatopupIPsCrowdfunding mengembalikan daftar IP yang diizinkan
+// memanggil endpoint callback payment Kantong Amal. Slice kosong berarti
+// allowlist tidak aktif (seluruh IP diizinkan) — sesuai sifat opsional
+// fitur ini.
+func (c AppConfig) AllowedBisatopupIPsCrowdfunding() []string {
+	if strings.TrimSpace(c.BisatopupAllowedIPsCrowdfunding) == "" {
+		return nil
+	}
+	parts := strings.Split(c.BisatopupAllowedIPsCrowdfunding, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // AllowedGoogleDomains mengembalikan daftar domain email yang diizinkan login Google.
@@ -144,4 +173,9 @@ func setDefaults() {
 
 	viper.SetDefault("BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING", 1)
 	viper.SetDefault("BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING", 24)
+	viper.SetDefault("BISATOPUP_ENV_CROWDFUNDING", "dev")
+	viper.SetDefault("BISATOPUP_BASE_URL_LIVE_CROWDFUNDING", "https://api.bisabiller.com")
+	viper.SetDefault("BISATOPUP_BASE_URL_DEV_CROWDFUNDING", "https://api-sandbox.bisabiller.com")
+	viper.SetDefault("BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING", 33)
+	viper.SetDefault("BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING", true)
 }

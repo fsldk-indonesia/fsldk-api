@@ -118,6 +118,26 @@ func DuplicateRequest(message string) *AppError {
 	return New(http.StatusConflict, constants.CodeDuplicateRequest, message)
 }
 
+// PaymentFailed membuat error 422 dengan kode khusus PAYMENT_FAILED —
+// dipicu saat gateway pembayaran merespons sukses secara HTTP namun
+// menolak permintaan (beda dari kegagalan jaringan/5xx, lihat ProviderError).
+func PaymentFailed(message string) *AppError {
+	if message == "" {
+		message = "Gateway pembayaran menolak permintaan ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodePaymentFailed, message)
+}
+
+// ProviderError membuat error 502 dengan kode khusus PROVIDER_ERROR —
+// dipicu saat penyedia pihak ketiga (BisaTopup/Kirimdev) tidak dapat
+// dihubungi atau mengembalikan error 5xx.
+func ProviderError(message string) *AppError {
+	if message == "" {
+		message = "Gagal menghubungi penyedia layanan, silakan coba lagi"
+	}
+	return New(http.StatusBadGateway, constants.CodeProviderError, message)
+}
+
 // TooManyRequests membuat error 429.
 func TooManyRequests(message string) *AppError {
 	if message == "" {

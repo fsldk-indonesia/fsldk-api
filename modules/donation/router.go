@@ -18,6 +18,17 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h donation_handler.Handler, mw *
 	pub.GET("/donations/:publicRef/status", middlewares.RateLimit(60, 10), h.Status)
 }
 
+// RegisterCallbackRoutes mendaftarkan webhook payment provider — bukan di
+// bawah /public (beda audiens: server-to-server, bukan klien publik),
+// mengikuti kontrak API §7.3. Diamankan via IP allowlist opsional +
+// signature (donation_service.ProcessCallback), bukan JWT.
+func RegisterCallbackRoutes(api *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
+	api.POST("/payments/callback",
+		middlewares.IPAllowlist(mw.Cfg.AllowedBisatopupIPsCrowdfunding()),
+		middlewares.RateLimit(120, 20),
+		h.Callback)
+}
+
 // RegisterMeRoutes mendaftarkan endpoint riwayat donasi milik pengguna sendiri.
 func RegisterMeRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
 	rg.GET("/me/donations", mw.Auth(), mw.RequireVerified(), h.MyList)

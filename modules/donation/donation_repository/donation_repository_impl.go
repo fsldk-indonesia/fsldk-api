@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"fsldk-api/constants"
 	"fsldk-api/modules/donation/donation_dto"
@@ -112,4 +113,53 @@ func (r *RepositoryImpl) List(ctx context.Context, f donation_dto.ListFilter) ([
 	var out []donation_model.Donation
 	err := q.Select(donationSelectCols).Order(f.OrderBy).Limit(f.Limit).Offset(f.Offset).Find(&out).Error
 	return out, total, err
+}
+
+func (r *RepositoryImpl) UpdateGatewayResult(ctx context.Context, donationID int64, p donation_model.GatewayResultParams) error {
+	return r.db.WithContext(ctx).Table(constants.TableDonation).Where("donationID = ?", donationID).Updates(map[string]interface{}{
+		"externalTransactionID": p.ExternalTransactionID,
+		"qrPayload":             p.QrPayload,
+		"paymentCode":           p.PaymentCode,
+		"paymentLink":           p.PaymentLink,
+		"updatedDate":           time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) MarkGatewayFailed(ctx context.Context, donationID int64) error {
+	return r.db.WithContext(ctx).Table(constants.TableDonation).Where("donationID = ?", donationID).Updates(map[string]interface{}{
+		"paymentStatus": constants.DonationStatusFailed,
+		"updatedDate":   time.Now(),
+	}).Error
+}
+
+// FindByExternalTransactionIDForUpdate sengaja tidak melakukan JOIN ke
+// ms_campaign (berbeda dari findOne) — callback hanya butuh kolom tr_donation
+// sendiri, dan menghindari JOIN di sini mencegah baris ms_campaign ikut
+// terkunci tanpa perlu (MySQL mengunci baris dari seluruh tabel yang di-JOIN
+// pada SELECT...FOR UPDATE).
+func (r *RepositoryImpl) FindByExternalTransactionIDForUpdate(tx *gorm.DB, externalTransactionID string) (donation_model.Donation, error) {
+	var d donation_model.Donation
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Table(constants.TableDonation).
+		Where("externalTransactionID = ?", externalTransactionID).
+		Take(&d).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return donation_model.Donation{}, ErrNotFound
+	}
+	return d, err
+}
+
+func (r *RepositoryImpl) UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error {
+	values := map[string]interface{}{
+		"paymentStatus":   p.PaymentStatus,
+		"gatewayStatusID": p.GatewayStatusID,
+		"updatedDate":     time.Now(),
+	}
+	if p.TotalAmount != nil {
+		values["totalAmount"] = *p.TotalAmount
+	}
+	if p.AdminFee != nil {
+		values["adminFee"] = *p.AdminFee
+	}
+	return tx.Table(constants.TableDonation).Where("donationID = ?", donationID).Updates(values).Error
 }

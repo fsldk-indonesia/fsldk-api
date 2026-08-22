@@ -18,6 +18,8 @@ const (
 	CodeInvalidStatusTransition = "42-STATUS"
 	CodeInsufficientBalance     = "42-BAL"
 	CodeDuplicateRequest        = "49-DUP-REQ"
+	CodePaymentFailed           = "42-PAYFAIL"
+	CodeProviderError           = "50-PROVIDER"
 )
 
 // Default system roles.
@@ -294,11 +296,15 @@ const (
 	CampaignStatusExpired           = "EXPIRED"
 )
 
-// Status tr_donation.paymentStatus — hanya PENDING dipakai sejak Phase 3
-// (donation dibuat, belum ada integrasi gateway); status lain ditambahkan
-// saat callback payment dibangun.
+// Status tr_donation.paymentStatus.
 const (
-	DonationStatusPending = "PENDING"
+	DonationStatusPending        = "PENDING"
+	DonationStatusPaid           = "PAID"
+	DonationStatusExpired        = "EXPIRED"
+	DonationStatusFailed         = "FAILED"
+	DonationStatusCancelled      = "CANCELLED"
+	DonationStatusRefunded       = "REFUNDED"
+	DonationStatusAmountMismatch = "AMOUNT_MISMATCH"
 )
 
 // Gateway tr_donation.gateway.

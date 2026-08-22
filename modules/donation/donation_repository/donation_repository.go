@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 
+	"gorm.io/gorm"
+
 	"fsldk-api/modules/donation/donation_dto"
 	"fsldk-api/modules/donation/donation_model"
 )
@@ -24,4 +26,19 @@ type Repository interface {
 	FindByPublicRef(ctx context.Context, publicRef string) (donation_model.Donation, error)
 	FindByIdempotencyKey(ctx context.Context, key string) (donation_model.Donation, error)
 	List(ctx context.Context, f donation_dto.ListFilter) ([]donation_model.Donation, int64, error)
+
+	// UpdateGatewayResult menyimpan hasil CreateQRISTransaction (qrPayload/
+	// paymentCode/paymentLink/externalTransactionID) ke donasi yang baru dibuat.
+	UpdateGatewayResult(ctx context.Context, donationID int64, p donation_model.GatewayResultParams) error
+	// MarkGatewayFailed menandai donasi FAILED saat panggilan create-transaction
+	// ke gateway gagal — tidak ada retry otomatis di titik ini (lihat pkg/bisatopup).
+	MarkGatewayFailed(ctx context.Context, donationID int64) error
+
+	// FindByExternalTransactionIDForUpdate mengunci baris donasi (SELECT...FOR
+	// UPDATE) di dalam tx yang diberikan — wajib dipanggil di dalam transaksi
+	// sebelum UpdateCallbackStatus untuk mencegah race antar callback bersamaan.
+	FindByExternalTransactionIDForUpdate(tx *gorm.DB, externalTransactionID string) (donation_model.Donation, error)
+	// UpdateCallbackStatus memperbarui status donasi dari hasil callback
+	// payment gateway di dalam tx yang sama dengan pengunciannya.
+	UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error
 }

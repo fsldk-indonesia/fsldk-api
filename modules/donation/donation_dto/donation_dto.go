@@ -50,6 +50,16 @@ type StatusResponse struct {
 	PaymentStatus string `json:"paymentStatus"`
 }
 
+// CallbackRequest adalah body webhook payment callback dari Bisabiller.
+// TransactionTotal bertipe string karena begitu apa adanya dari payload
+// gateway (dikonversi ke angka di donation_service).
+type CallbackRequest struct {
+	TransactionID    string `json:"transaction_id"`
+	TransactionTotal string `json:"transaction_total"`
+	Signature        string `json:"signature"`
+	StatusID         int    `json:"status_id"`
+}
+
 // ListFilter menampung parameter penyaringan daftar donasi.
 type ListFilter struct {
 	CampaignID  int64

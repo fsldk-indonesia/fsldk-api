@@ -4,12 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
+	"math"
+	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/idgen"
+	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_repository"
 	"fsldk-api/modules/donation/donation_dto"
@@ -25,17 +31,16 @@ var sortColumns = map[string]string{
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo            donation_repository.Repository
-	campaignRepo    campaign_repository.Repository
-	mdrRatePercent  float64
-	qrisExpiryHours int
+	repo         donation_repository.Repository
+	campaignRepo campaign_repository.Repository
+	gateway      bisatopup.Gateway
+	db           *gorm.DB // hanya dipakai ProcessCallback, yang membuka transaksinya sendiri
+	cfg          config.AppConfig
 }
 
-// NewService membuat Service donation. mdrRatePercent dan qrisExpiryHours
-// dibaca dari config.AppConfig (env BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING/
-// BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING).
-func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, mdrRatePercent float64, qrisExpiryHours int) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, mdrRatePercent: mdrRatePercent, qrisExpiryHours: qrisExpiryHours}
+// NewService membuat Service donation.
+func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, gateway: gateway, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error) {
@@ -57,8 +62,9 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	}
 
 	amount := roundRupiah(req.Amount)
-	grossTotal := bisatopup.CalculateGrossTotal(amount, s.mdrRatePercent)
-	adminFee := bisatopup.CalculateAdminFee(grossTotal, s.mdrRatePercent)
+	grossTotal := bisatopup.CalculateGrossTotal(amount, s.cfg.BisatopupQrisMdrPercentCrowdfunding)
+	adminFee := bisatopup.CalculateAdminFee(grossTotal, s.cfg.BisatopupQrisMdrPercentCrowdfunding)
+	expiredAt := now.Add(time.Duration(s.cfg.BisatopupQrisExpiryHoursCrowdfunding) * time.Hour)
 
 	id, err := s.repo.Create(ctx, donation_model.CreateParams{
 		PublicRef:       idgen.NewUUIDv4(),
@@ -77,7 +83,7 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		TotalAmount:     float64(grossTotal),
 		Gateway:         constants.DonationGatewayBisatopup,
 		IdempotencyKey:  idemKey,
-		ExpiredDate:     sql.NullTime{Time: now.Add(time.Duration(s.qrisExpiryHours) * time.Hour), Valid: true},
+		ExpiredDate:     sql.NullTime{Time: expiredAt, Valid: true},
 	})
 	if errors.Is(err, donation_repository.ErrDuplicateIdempotencyKey) {
 		// Idempotent: request dengan key yang sama (double-click/refresh)
@@ -91,7 +97,90 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	if err != nil {
 		return donation_dto.Response{}, apperror.Internal("Gagal membuat donasi")
 	}
+
+	// transactionID adalah identitas donasi ini di sisi Bisabiller (echoed
+	// balik pada callback) — sengaja terpisah dari publicRef (referensi
+	// publik) meski keduanya sama-sama UUID non-enumerable.
+	transactionID := idgen.NewUUIDv4()
+	qris, gerr := s.gateway.CreateQRISTransaction(ctx, bisatopup.CreateQRISTransactionParams{
+		TransactionID:   transactionID,
+		Nominal:         grossTotal,
+		ExpiredDate:     expiredAt,
+		TransactionName: truncateNoEllipsis("Donasi "+camp.Title, 49),
+		TransactionDesc: truncateNoEllipsis(donationDesc(req.Message), 100),
+		CustomerName:    req.DonorName,
+		CustomerEmail:   req.DonorEmail,
+		CustomerNumber:  req.DonorPhone,
+	})
+	if gerr != nil {
+		// Tidak ada retry otomatis di sini (lihat pkg/bisatopup) — retry
+		// create-transaction berisiko membuat transaksi duplikat di sisi
+		// gateway. User diminta mengulang secara eksplisit (donasi baru).
+		_ = s.repo.MarkGatewayFailed(ctx, id)
+		if errors.Is(gerr, bisatopup.ErrGatewayRejected) {
+			return donation_dto.Response{}, apperror.PaymentFailed("")
+		}
+		return donation_dto.Response{}, apperror.ProviderError("")
+	}
+
+	if err := s.repo.UpdateGatewayResult(ctx, id, donation_model.GatewayResultParams{
+		ExternalTransactionID: transactionID,
+		QrPayload:             qris.QrCode,
+		PaymentCode:           qris.PaymentCode,
+		PaymentLink:           qris.PaymentLinks,
+	}); err != nil {
+		return donation_dto.Response{}, apperror.Internal("")
+	}
 	return s.getResponse(ctx, id)
+}
+
+// ProcessCallback menangani webhook payment callback Bisabiller.
+func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.CallbackRequest) error {
+	if isTestCallback(req, s.cfg.BisatopupEnvCrowdfunding) {
+		log.Printf("[BISATOPUP:CALLBACK] test event acknowledged, transactionID=%s", req.TransactionID)
+		return nil
+	}
+
+	if s.cfg.BisatopupEnforceCallbackSignatureCrowdfunding &&
+		!bisatopup.VerifySignature(s.cfg.BisatopupUsernameCrowdfunding, req.TransactionID, req.Signature) {
+		log.Printf("[BISATOPUP:CALLBACK] signature mismatch, transactionID=%s", req.TransactionID)
+		return apperror.Unauthorized("Signature callback tidak valid")
+	}
+
+	actualTotal, err := strconv.ParseFloat(req.TransactionTotal, 64)
+	if err != nil {
+		return apperror.BadRequest("transaction_total tidak valid")
+	}
+	newStatus := mapGatewayStatus(req.StatusID)
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		d, ferr := s.repo.FindByExternalTransactionIDForUpdate(tx, req.TransactionID)
+		if ferr != nil {
+			return apperror.NotFound("Donasi tidak ditemukan")
+		}
+		if isFinalDonationStatus(d.PaymentStatus) {
+			// Idempotent ack — status final tidak pernah ditimpa ulang
+			// (mencegah duplicate/out-of-order callback men-downgrade status).
+			return nil
+		}
+
+		params := donation_model.CallbackUpdateParams{PaymentStatus: newStatus, GatewayStatusID: req.StatusID}
+		if newStatus == constants.DonationStatusPaid {
+			// Selisih pembulatan CEIL ≤ Rp1 direkonsiliasi otomatis memakai
+			// transaction_total dari gateway; selisih lebih besar dianggap
+			// mencurigakan dan tidak dipercaya begitu saja ("amount
+			// mismatch") — perlu resolusi manual, bukan auto-PAID.
+			if diff := math.Abs(actualTotal - d.TotalAmount); diff > 1 {
+				params.PaymentStatus = constants.DonationStatusAmountMismatch
+			} else {
+				total := actualTotal
+				fee := float64(bisatopup.CalculateAdminFee(roundRupiah(actualTotal), s.cfg.BisatopupQrisMdrPercentCrowdfunding))
+				params.TotalAmount = &total
+				params.AdminFee = &fee
+			}
+		}
+		return s.repo.UpdateCallbackStatus(tx, d.DonationID, params)
+	})
 }
 
 func (s *ServiceImpl) GetByPublicRef(ctx context.Context, publicRef string) (donation_dto.Response, error) {
@@ -183,6 +272,65 @@ func toResponse(d donation_model.Donation) donation_dto.Response {
 		resp.ExpiredDate = &t
 	}
 	return resp
+}
+
+// mapGatewayStatus memetakan status_id Bisabiller ke paymentStatus internal
+// — direplikasi persis dari BisaTopup::mapStatus ldksyahid-app: {3,4}=PAID,
+// 5=CANCELLED, 6=REFUND, 14=FAILED, {1,2,13,default}=PENDING.
+func mapGatewayStatus(statusID int) string {
+	switch statusID {
+	case 3, 4:
+		return constants.DonationStatusPaid
+	case 5:
+		return constants.DonationStatusCancelled
+	case 6:
+		return constants.DonationStatusRefunded
+	case 14:
+		return constants.DonationStatusFailed
+	default:
+		return constants.DonationStatusPending
+	}
+}
+
+// isFinalDonationStatus menentukan status yang tidak boleh ditimpa ulang
+// oleh callback berikutnya (idempotency, cegah downgrade out-of-order).
+// EXPIRED sengaja tidak dianggap final di sini — donasi yang di-expire
+// scheduler tapi kemudian mendapat callback PAID (late callback) tetap
+// wajib diproses, uang yang sudah dibayar tidak boleh hilang.
+func isFinalDonationStatus(status string) bool {
+	switch status {
+	case constants.DonationStatusPaid, constants.DonationStatusFailed, constants.DonationStatusCancelled,
+		constants.DonationStatusRefunded, constants.DonationStatusAmountMismatch:
+		return true
+	}
+	return false
+}
+
+// isTestCallback mendeteksi ping tombol "Test" dashboard Bisabiller —
+// pengecualian sempit (env=dev + signature literal "testing") dari
+// signature check normal, bukan bypass umum berdasarkan payload kosong.
+func isTestCallback(req donation_dto.CallbackRequest, env string) bool {
+	return env == "dev" && req.Signature == "testing"
+}
+
+// donationDesc mengembalikan pesan donatur sebagai transaction_desc, atau
+// deskripsi default bila donatur tidak mengisi pesan.
+func donationDesc(message string) string {
+	if strings.TrimSpace(message) == "" {
+		return "Donasi Kantong Amal"
+	}
+	return message
+}
+
+// truncateNoEllipsis memotong s ke maksimal max karakter tanpa suffix "..."
+// — dipakai untuk field transaction_name/transaction_desc Bisabiller yang
+// membatasi panjang string secara ketat.
+func truncateNoEllipsis(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max])
 }
 
 func nullStringFrom(s string) sql.NullString {

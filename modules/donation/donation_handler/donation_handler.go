@@ -8,6 +8,7 @@ type Handler interface {
 	Create(c *gin.Context)
 	Detail(c *gin.Context)
 	Status(c *gin.Context)
+	Callback(c *gin.Context)
 
 	MyList(c *gin.Context)
 

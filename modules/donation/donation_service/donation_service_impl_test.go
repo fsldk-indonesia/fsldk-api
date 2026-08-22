@@ -6,14 +6,55 @@ import (
 	"errors"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"fsldk-api/base/apperror"
+	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
 	"fsldk-api/modules/donation/donation_dto"
 	"fsldk-api/modules/donation/donation_model"
 	"fsldk-api/modules/donation/donation_repository"
+	"fsldk-api/pkg/bisatopup"
 )
+
+// testConfig adalah config.AppConfig minimal yang dibutuhkan donation_service
+// untuk pengujian tanpa DB/gateway sungguhan.
+func testConfig() config.AppConfig {
+	return config.AppConfig{BisatopupQrisMdrPercentCrowdfunding: 1, BisatopupQrisExpiryHoursCrowdfunding: 24}
+}
+
+// fakeGateway adalah implementasi bisatopup.Gateway in-memory untuk menguji
+// donation_service tanpa panggilan HTTP sungguhan.
+type fakeGateway struct {
+	createErr error
+}
+
+func (f *fakeGateway) CreateQRISTransaction(ctx context.Context, p bisatopup.CreateQRISTransactionParams) (bisatopup.Transaction, error) {
+	if f.createErr != nil {
+		return bisatopup.Transaction{}, f.createErr
+	}
+	return bisatopup.Transaction{TransactionID: p.TransactionID, QrCode: "00020101021226670016COM.TEST"}, nil
+}
+func (f *fakeGateway) DetailTransaction(ctx context.Context, bisabillerID int64) (bisatopup.Transaction, error) {
+	return bisatopup.Transaction{}, nil
+}
+func (f *fakeGateway) ListTransactions(ctx context.Context) ([]bisatopup.Transaction, error) {
+	return nil, nil
+}
+func (f *fakeGateway) InquiryBank(ctx context.Context, bankCode, accountNumber string) (bisatopup.InquiryBankResult, error) {
+	return bisatopup.InquiryBankResult{}, nil
+}
+func (f *fakeGateway) Disburse(ctx context.Context, p bisatopup.DisburseParams) (bisatopup.DisburseResult, error) {
+	return bisatopup.DisburseResult{}, nil
+}
+func (f *fakeGateway) WalletBalance(ctx context.Context) (bisatopup.WalletBalanceResult, error) {
+	return bisatopup.WalletBalanceResult{}, nil
+}
+func (f *fakeGateway) BankList(ctx context.Context) ([]bisatopup.BankListItem, error) {
+	return nil, nil
+}
 
 // fakeCampaignRepository adalah implementasi campaign_repository.Repository
 // minimal untuk menguji donation_service — hanya FindBySlug yang berperilaku
@@ -133,6 +174,45 @@ func (f *fakeDonationRepository) List(ctx context.Context, filter donation_dto.L
 	return nil, 0, nil
 }
 
+func (f *fakeDonationRepository) UpdateGatewayResult(ctx context.Context, donationID int64, p donation_model.GatewayResultParams) error {
+	d := f.byID[donationID]
+	d.ExternalTransactionID = sql.NullString{String: p.ExternalTransactionID, Valid: true}
+	d.QrPayload = sql.NullString{String: p.QrPayload, Valid: p.QrPayload != ""}
+	d.PaymentCode = sql.NullString{String: p.PaymentCode, Valid: p.PaymentCode != ""}
+	d.PaymentLink = sql.NullString{String: p.PaymentLink, Valid: p.PaymentLink != ""}
+	f.byID[donationID] = d
+	return nil
+}
+
+func (f *fakeDonationRepository) MarkGatewayFailed(ctx context.Context, donationID int64) error {
+	d := f.byID[donationID]
+	d.PaymentStatus = constants.DonationStatusFailed
+	f.byID[donationID] = d
+	return nil
+}
+
+func (f *fakeDonationRepository) FindByExternalTransactionIDForUpdate(tx *gorm.DB, externalTransactionID string) (donation_model.Donation, error) {
+	for _, d := range f.byID {
+		if d.ExternalTransactionID.Valid && d.ExternalTransactionID.String == externalTransactionID {
+			return d, nil
+		}
+	}
+	return donation_model.Donation{}, donation_repository.ErrNotFound
+}
+
+func (f *fakeDonationRepository) UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error {
+	d := f.byID[donationID]
+	d.PaymentStatus = p.PaymentStatus
+	if p.TotalAmount != nil {
+		d.TotalAmount = *p.TotalAmount
+	}
+	if p.AdminFee != nil {
+		d.AdminFee = *p.AdminFee
+	}
+	f.byID[donationID] = d
+	return nil
+}
+
 func publishedCampaign(id int64, slug string) campaign_model.Campaign {
 	return campaign_model.Campaign{
 		CampaignID:         id,
@@ -146,7 +226,7 @@ func TestCreate_RejectsWhenCampaignNotPublished(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{
 		"draft-campaign": {CampaignID: 1, Slug: "draft-campaign", Status: constants.CampaignStatusDraft},
 	}}
-	svc := NewService(newFakeDonationRepo(), campRepo, 1, 24)
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeGateway{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "draft-campaign", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -161,7 +241,7 @@ func TestCreate_RejectsAnonymousWhenCampaignDisallows(t *testing.T) {
 	camp := publishedCampaign(1, "c1")
 	camp.IsAnonymousAllowed = false
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": camp}}
-	svc := NewService(newFakeDonationRepo(), campRepo, 1, 24)
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeGateway{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812", IsAnonymous: true,
@@ -174,7 +254,7 @@ func TestCreate_RejectsAnonymousWhenCampaignDisallows(t *testing.T) {
 
 func TestCreate_ComputesGoldenFeeFormula(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
-	svc := NewService(newFakeDonationRepo(), campRepo, 1, 24)
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeGateway{}, nil, testConfig())
 
 	resp, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -199,7 +279,7 @@ func TestCreate_ComputesGoldenFeeFormula(t *testing.T) {
 func TestCreate_DuplicateIdempotencyKeyReturnsExistingDonation(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
 	repo := newFakeDonationRepo()
-	svc := NewService(repo, campRepo, 1, 24)
+	svc := NewService(repo, campRepo, &fakeGateway{}, nil, testConfig())
 
 	req := donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -218,5 +298,106 @@ func TestCreate_DuplicateIdempotencyKeyReturnsExistingDonation(t *testing.T) {
 	}
 	if repo.createCalls != 2 {
 		t.Fatalf("expected repo.Create to be attempted twice (second rejected by uniqueness), got %d calls", repo.createCalls)
+	}
+}
+
+func TestCreate_GatewayRejectionMapsToPaymentFailed(t *testing.T) {
+	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
+	repo := newFakeDonationRepo()
+	svc := NewService(repo, campRepo, &fakeGateway{createErr: bisatopup.ErrGatewayRejected}, nil, testConfig())
+
+	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
+		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
+	})
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodePaymentFailed {
+		t.Fatalf("expected PaymentFailed error when gateway rejects the transaction, got %v", err)
+	}
+	if repo.byID[1].PaymentStatus != constants.DonationStatusFailed {
+		t.Fatalf("expected donation to be marked FAILED after gateway rejection, got %v", repo.byID[1].PaymentStatus)
+	}
+}
+
+func TestCreate_GatewayNetworkFailureMapsToProviderError(t *testing.T) {
+	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
+	repo := newFakeDonationRepo()
+	svc := NewService(repo, campRepo, &fakeGateway{createErr: errors.New("connection reset")}, nil, testConfig())
+
+	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
+		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
+	})
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeProviderError {
+		t.Fatalf("expected ProviderError for a generic gateway/network failure, got %v", err)
+	}
+	if repo.byID[1].PaymentStatus != constants.DonationStatusFailed {
+		t.Fatalf("expected donation to be marked FAILED after gateway failure, got %v", repo.byID[1].PaymentStatus)
+	}
+}
+
+func TestCreate_StoresGatewayQrResultOnSuccess(t *testing.T) {
+	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeGateway{}, nil, testConfig())
+
+	resp, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
+		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
+	})
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	if resp.QrPayload == "" {
+		t.Fatal("expected qrPayload to be populated from the gateway response")
+	}
+}
+
+func TestMapGatewayStatus(t *testing.T) {
+	cases := map[int]string{
+		1: constants.DonationStatusPending, 2: constants.DonationStatusPending, 13: constants.DonationStatusPending,
+		3: constants.DonationStatusPaid, 4: constants.DonationStatusPaid,
+		5:  constants.DonationStatusCancelled,
+		6:  constants.DonationStatusRefunded,
+		14: constants.DonationStatusFailed,
+		99: constants.DonationStatusPending, // status_id tak dikenal jatuh ke default PENDING
+	}
+	for statusID, want := range cases {
+		if got := mapGatewayStatus(statusID); got != want {
+			t.Errorf("mapGatewayStatus(%d) = %s, want %s", statusID, got, want)
+		}
+	}
+}
+
+func TestIsFinalDonationStatus(t *testing.T) {
+	final := []string{constants.DonationStatusPaid, constants.DonationStatusFailed, constants.DonationStatusCancelled, constants.DonationStatusRefunded, constants.DonationStatusAmountMismatch}
+	for _, s := range final {
+		if !isFinalDonationStatus(s) {
+			t.Errorf("expected %s to be a final status", s)
+		}
+	}
+	nonFinal := []string{constants.DonationStatusPending, constants.DonationStatusExpired}
+	for _, s := range nonFinal {
+		if isFinalDonationStatus(s) {
+			t.Errorf("expected %s to NOT be final — late callback recovery must still be able to override it", s)
+		}
+	}
+}
+
+func TestIsTestCallback(t *testing.T) {
+	if !isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "dev") {
+		t.Fatal("expected dev + signature=testing to be recognised as a test callback")
+	}
+	if isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "live") {
+		t.Fatal("test callback bypass must never apply in live environment")
+	}
+	if isTestCallback(donation_dto.CallbackRequest{Signature: "abc123"}, "dev") {
+		t.Fatal("a real signature must not be treated as a test callback just because env=dev")
+	}
+}
+
+func TestTruncateNoEllipsis(t *testing.T) {
+	if got := truncateNoEllipsis("Donasi Kampanye Sangat Panjang Sekali Sekali Sekali", 10); got != "Donasi Kam" {
+		t.Fatalf("truncateNoEllipsis = %q, want exactly 10 chars with no suffix", got)
+	}
+	if got := truncateNoEllipsis("short", 10); got != "short" {
+		t.Fatalf("truncateNoEllipsis should not modify strings shorter than max, got %q", got)
 	}
 }

@@ -1,8 +1,3 @@
-// Package bisatopup akan memuat klien BisaTopup/Bisabiller (Login,
-// CreateQRISTransaction, InquiryBank, Disburse, dst — dibangun bertahap
-// di fase integrasi pembayaran/QRIS). File ini hanya berisi formula MDR,
-// ditarik maju ke fase database & core domain karena dependency-free
-// (tidak butuh klien HTTP) dan perlu golden test sejak awal.
 package bisatopup
 
 import "math"

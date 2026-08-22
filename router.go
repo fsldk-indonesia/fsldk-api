@@ -95,6 +95,7 @@ import (
 	"fsldk-api/modules/donation/donation_handler"
 	"fsldk-api/modules/donation/donation_repository"
 	"fsldk-api/modules/donation/donation_service"
+	"fsldk-api/pkg/bisatopup"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -110,6 +111,14 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
 	uploader := uploadpkg.NewUploader("assets/uploads", cfg.AppURL)
 	audit := auditlog.New(db)
+	bisatopupClient := bisatopup.NewClient(bisatopup.Config{
+		Username:      cfg.BisatopupUsernameCrowdfunding,
+		PasswordAPI:   cfg.BisatopupPasswordApiCrowdfunding,
+		Env:           cfg.BisatopupEnvCrowdfunding,
+		BaseURLLive:   cfg.BisatopupBaseURLLiveCrowdfunding,
+		BaseURLDev:    cfg.BisatopupBaseURLDevCrowdfunding,
+		QrisPaymentID: cfg.BisatopupQrisPaymentIDCrowdfunding,
+	})
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)
@@ -133,7 +142,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
 	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
-	donationSvc := donation_service.NewService(donationRepo, campaignRepo, cfg.BisatopupQrisMdrPercentCrowdfunding, cfg.BisatopupQrisExpiryHoursCrowdfunding)
+	donationSvc := donation_service.NewService(donationRepo, campaignRepo, bisatopupClient, db, cfg)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -234,6 +243,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaign.RegisterCMSRoutes(api, campaignH, mw)
 
 	donation.RegisterPublicRoutes(pub, donationH, mw)
+	donation.RegisterCallbackRoutes(api, donationH, mw)
 	donation.RegisterMeRoutes(api, donationH, mw)
 	donation.RegisterCMSRoutes(api, donationH, mw)
 
