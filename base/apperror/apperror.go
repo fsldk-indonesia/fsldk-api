@@ -102,6 +102,22 @@ func InvalidStatusTransition(message string) *AppError {
 	return New(http.StatusUnprocessableEntity, constants.CodeInvalidStatusTransition, message)
 }
 
+// InsufficientBalance membuat error 422 dengan kode khusus INSUFFICIENT_BALANCE.
+func InsufficientBalance(message string) *AppError {
+	if message == "" {
+		message = "Saldo tidak mencukupi untuk melakukan aksi ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeInsufficientBalance, message)
+}
+
+// DuplicateRequest membuat error 409 dengan kode khusus DUPLICATE_REQUEST.
+func DuplicateRequest(message string) *AppError {
+	if message == "" {
+		message = "Permintaan yang sama sudah pernah diproses"
+	}
+	return New(http.StatusConflict, constants.CodeDuplicateRequest, message)
+}
+
 // TooManyRequests membuat error 429.
 func TooManyRequests(message string) *AppError {
 	if message == "" {

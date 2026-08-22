@@ -65,3 +65,9 @@ func (l *Logger) LogUser(ctx context.Context, e Entry) { l.write(ctx, "tr_user_a
 
 // LogExport mencatat aktivitas ekspor data (tr_export_log).
 func (l *Logger) LogExport(ctx context.Context, e Entry) { l.write(ctx, "tr_export_log", e) }
+
+// LogFinance mencatat aksi finansial Kantong Amal — campaign, donation,
+// wallet, withdrawal (tr_finance_audit_log). Sama seperti LogForm/LogUser/
+// LogExport, kegagalan insert tidak pernah menggagalkan aksi bisnis di
+// atasnya (error diserap oleh write()).
+func (l *Logger) LogFinance(ctx context.Context, e Entry) { l.write(ctx, "tr_finance_audit_log", e) }

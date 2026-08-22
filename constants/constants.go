@@ -16,6 +16,8 @@ const (
 	CodeEmailNotVerified        = "43-EMAIL"
 	CodeDuplicateSubmission     = "49-DUP"
 	CodeInvalidStatusTransition = "42-STATUS"
+	CodeInsufficientBalance     = "42-BAL"
+	CodeDuplicateRequest        = "49-DUP-REQ"
 )
 
 // Default system roles.
@@ -232,6 +234,42 @@ const (
 	TableFormAuditLog = "tr_form_audit_log"
 	TableUserAuditLog = "tr_user_audit_log"
 	TableExportLog    = "tr_export_log"
+
+	// Kantong Amal.
+	TableCampaignCategory = "lk_campaign_category"
+	TableCampaign         = "ms_campaign"
+	TableCampaignImage    = "ms_campaign_image"
+	TableCampaignReview   = "tr_campaign_review"
+	TableDonation         = "tr_donation"
+	TableWalletLedger     = "tr_wallet_ledger"
+	TableWithdrawal       = "tr_withdrawal"
+	TableQueueJob         = "tr_queue_job"
+	TableQueueJobLog      = "tr_queue_job_log"
+	TableFinanceAuditLog  = "tr_finance_audit_log"
+)
+
+// Tipe entry tr_wallet_ledger (Kantong Amal).
+const (
+	LedgerEntryDonationCredit    = "DONATION_CREDIT"
+	LedgerEntryWithdrawalReserve = "WITHDRAWAL_RESERVE"
+	LedgerEntryWithdrawalRelease = "WITHDRAWAL_RELEASE"
+	LedgerEntryRefundDebit       = "REFUND_DEBIT"
+	LedgerEntryAdjustmentCredit  = "ADJUSTMENT_CREDIT"
+	LedgerEntryAdjustmentDebit   = "ADJUSTMENT_DEBIT"
+	LedgerEntryFeeDebit          = "FEE_DEBIT"
+)
+
+// Arah entry tr_wallet_ledger.
+const (
+	LedgerDirectionCredit = "CREDIT"
+	LedgerDirectionDebit  = "DEBIT"
+)
+
+// Tipe referensi tr_wallet_ledger.referenceType.
+const (
+	LedgerReferenceDonation   = "DONATION"
+	LedgerReferenceWithdrawal = "WITHDRAWAL"
+	LedgerReferenceAdjustment = "ADJUSTMENT"
 )
 
 // Keys stored on gin.Context by the authentication middleware.
