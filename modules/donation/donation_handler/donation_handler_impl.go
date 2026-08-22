@@ -1,0 +1,87 @@
+package donation_handler
+
+import (
+	"strconv"
+
+	"fsldk-api/base/appctx"
+	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
+	"fsldk-api/base/httphelper"
+	"fsldk-api/base/validation"
+	"fsldk-api/modules/donation/donation_dto"
+	"fsldk-api/modules/donation/donation_service"
+
+	"github.com/gin-gonic/gin"
+)
+
+// HandlerImpl adalah implementasi Handler.
+type HandlerImpl struct{ svc donation_service.Service }
+
+// NewHandler membuat Handler donation.
+func NewHandler(svc donation_service.Service) Handler { return &HandlerImpl{svc: svc} }
+
+// optionalDonorUserID mengembalikan pointer userID bila pemanggil sedang
+// login (lewat middlewares.OptionalAuth), atau nil untuk donasi tamu.
+func optionalDonorUserID(c *gin.Context) *int64 {
+	if uid := appctx.UserID(c); uid > 0 {
+		return &uid
+	}
+	return nil
+}
+
+func (h *HandlerImpl) Create(c *gin.Context) {
+	var req donation_dto.CreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Create(c.Request.Context(), c.Param("slug"), optionalDonorUserID(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Created(c, "Donasi berhasil dibuat", data)
+}
+
+func (h *HandlerImpl) Detail(c *gin.Context) {
+	data, err := h.svc.GetByPublicRef(c.Request.Context(), c.Param("publicRef"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) Status(c *gin.Context) {
+	data, err := h.svc.Status(c.Request.Context(), c.Param("publicRef"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) MyList(c *gin.Context) {
+	q := dto.ParseListQuery(c)
+	data, total, err := h.svc.MyList(c.Request.Context(), appctx.UserID(c), q)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) CMSList(c *gin.Context) {
+	q := dto.ParseListQuery(c)
+	campaignID, _ := strconv.ParseInt(c.Query("campaignID"), 10, 64)
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, campaignID, c.Query("status"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}

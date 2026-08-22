@@ -115,6 +115,8 @@ const (
 	PermCampaignReview   = "kantong_amal.campaign.review"
 	PermCampaignPublish  = "kantong_amal.campaign.publish"
 	PermCampaignModerate = "kantong_amal.campaign.moderate"
+
+	PermDonationView = "kantong_amal.donation.view"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -290,6 +292,18 @@ const (
 	CampaignStatusRejected          = "REJECTED"
 	CampaignStatusArchived          = "ARCHIVED"
 	CampaignStatusExpired           = "EXPIRED"
+)
+
+// Status tr_donation.paymentStatus — hanya PENDING dipakai sejak Phase 3
+// (donation dibuat, belum ada integrasi gateway); status lain ditambahkan
+// saat callback payment dibangun.
+const (
+	DonationStatusPending = "PENDING"
+)
+
+// Gateway tr_donation.gateway.
+const (
+	DonationGatewayBisatopup = "bisatopup"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

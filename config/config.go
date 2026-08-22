@@ -51,6 +51,12 @@ type AppConfig struct {
 	CorsAllowedOrigins string `mapstructure:"CORS_ALLOWED_ORIGINS"`
 
 	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
+
+	// Kantong Amal — hanya nilai yang dibutuhkan donation_service sejak Phase
+	// 3 (formula MDR & masa berlaku QRIS); kredensial klien BisaTopup
+	// sungguhan ditambahkan saat pkg/bisatopup dibangun penuh.
+	BisatopupQrisMdrPercentCrowdfunding  float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
+	BisatopupQrisExpiryHoursCrowdfunding int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
 }
 
 // AllowedGoogleDomains mengembalikan daftar domain email yang diizinkan login Google.
@@ -135,4 +141,7 @@ func setDefaults() {
 	viper.SetDefault("MAIL_FROM_NAME", "FSLDK Indonesia")
 
 	viper.SetDefault("CORS_ALLOWED_ORIGINS", "http://localhost:4200")
+
+	viper.SetDefault("BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING", 1)
+	viper.SetDefault("BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING", 24)
 }

@@ -91,6 +91,11 @@ import (
 	"fsldk-api/modules/campaign/campaign_repository"
 	"fsldk-api/modules/campaign/campaign_service"
 
+	"fsldk-api/modules/donation"
+	"fsldk-api/modules/donation/donation_handler"
+	"fsldk-api/modules/donation/donation_repository"
+	"fsldk-api/modules/donation/donation_service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -122,11 +127,13 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 	campaignRepo := campaign_repository.NewRepository(db)
+	donationRepo := donation_repository.NewRepository(db)
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
 	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
+	donationSvc := donation_service.NewService(donationRepo, campaignRepo, cfg.BisatopupQrisMdrPercentCrowdfunding, cfg.BisatopupQrisExpiryHoursCrowdfunding)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -162,6 +169,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
 	campaignH := campaign_handler.NewHandler(campaignSvc)
+	donationH := donation_handler.NewHandler(donationSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -224,6 +232,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaign.RegisterPublicRoutes(pub, campaignH)
 	campaign.RegisterMeRoutes(api, campaignH, mw)
 	campaign.RegisterCMSRoutes(api, campaignH, mw)
+
+	donation.RegisterPublicRoutes(pub, donationH, mw)
+	donation.RegisterMeRoutes(api, donationH, mw)
+	donation.RegisterCMSRoutes(api, donationH, mw)
 
 	return engine
 }
