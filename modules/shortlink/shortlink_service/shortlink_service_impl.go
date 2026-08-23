@@ -132,6 +132,17 @@ func (s *ServiceImpl) Resolve(ctx context.Context, key string) (string, error) {
 	return sl.DestinationURL, nil
 }
 
+// GenerateUniqueKey membuat kunci acak (8 karakter heksadesimal) yang belum
+// dipakai — exported agar bisa dipakai ulang oleh shortlinkrequest_service.
+func (s *ServiceImpl) GenerateUniqueKey(ctx context.Context) (string, error) {
+	return s.generateUniqueKey(ctx)
+}
+
+// KeyExists mengembalikan true bila shortKey sudah dipakai shortlink manapun.
+func (s *ServiceImpl) KeyExists(ctx context.Context, key string) (bool, error) {
+	return s.repo.ExistsByKey(ctx, key, 0)
+}
+
 // generateUniqueKey membuat kunci acak (8 karakter heksadesimal) dan
 // memastikan belum dipakai, dengan beberapa kali percobaan ulang.
 func (s *ServiceImpl) generateUniqueKey(ctx context.Context) (string, error) {

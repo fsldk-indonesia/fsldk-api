@@ -3,11 +3,13 @@ package main
 import (
 	"net/http"
 	"os"
+	"time"
 
 	"fsldk-api/base/token"
 	"fsldk-api/config"
 	"fsldk-api/middlewares"
 	"fsldk-api/pkg/googleauth"
+	"fsldk-api/pkg/kirimdev"
 	"fsldk-api/pkg/mailer"
 
 	"fsldk-api/modules/auth"
@@ -74,6 +76,19 @@ import (
 	"fsldk-api/modules/shortlink/shortlink_handler"
 	"fsldk-api/modules/shortlink/shortlink_repository"
 	"fsldk-api/modules/shortlink/shortlink_service"
+	"fsldk-api/modules/shortlink/shortlinkrequest_handler"
+	"fsldk-api/modules/shortlink/shortlinkrequest_repository"
+	"fsldk-api/modules/shortlink/shortlinkrequest_service"
+
+	"fsldk-api/modules/setting"
+	"fsldk-api/modules/setting/setting_handler"
+	"fsldk-api/modules/setting/setting_repository"
+	"fsldk-api/modules/setting/setting_service"
+
+	"fsldk-api/modules/jobqueue"
+	"fsldk-api/modules/jobqueue/jobqueue_handler"
+	"fsldk-api/modules/jobqueue/jobqueue_repository"
+	"fsldk-api/modules/jobqueue/jobqueue_service"
 
 	"fsldk-api/modules/upload"
 	"fsldk-api/modules/upload/upload_handler"
@@ -114,6 +129,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
 	reportRepo := report_repository.NewRepository(db)
+	shortlinkReqRepo := shortlinkrequest_repository.NewRepository(db)
+	settingRepo := setting_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 
@@ -127,6 +144,28 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleSvc := role_service.NewService(roleRepo)
 	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
+	settingSvc := setting_service.NewService(settingRepo)
+	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,
+		cfg.KirimdevTemplateLanguage, cfg.KirimdevWebhookSecrets(),
+		time.Duration(cfg.KirimdevReplyWindowMinutes)*time.Minute)
+
+	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
+	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
+	jobqueueRepo := jobqueue_repository.NewRepository(db)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, cfg)
+	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
+	workerCount := cfg.JobQueueWorkerCount
+	if workerCount <= 0 {
+		workerCount = 2
+	}
+	for i := 0; i < workerCount; i++ {
+		go jobqueueSvc.RunWorker(i)
+	}
+	go jobqueueSvc.RunStuckSweeper()
+
+	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
+	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
+	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
 	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
@@ -151,6 +190,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	eventH := event_handler.NewHandler(eventSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
+	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc)
+	settingH := setting_handler.NewHandler(settingSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
@@ -207,6 +248,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
+	shortlink.RegisterRequestPublicRoutes(pub, shortlinkReqH)
+	shortlink.RegisterRequestCMSRoutes(api, shortlinkReqH, mw)
+
+	setting.RegisterCMSRoutes(api, settingH, mw)
+	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)
 
 	upload.RegisterCMSRoutes(api, uploadH, mw)
 
