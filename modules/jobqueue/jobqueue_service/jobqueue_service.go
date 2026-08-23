@@ -23,6 +23,12 @@ type Service interface {
 	// request dengan 200) jadi kelihatan alih-alih hilang diam-diam. Status
 	// selain "failed" diabaikan.
 	HandleDeliveryStatus(ctx context.Context, waMessageID, status, errorDetail string) error
+	// HandleMessageSent memproses event webhook "message.sent" Kirimdev —
+	// respons sinkron SendTemplate cuma punya ID internal Kirimdev, wamid
+	// ASLI baru muncul di event async ini (§1a.5/§1b techspec). Dipakai
+	// memperbarui tr_whatsapp_message_log supaya context.id balasan PIC
+	// (yang selalu wamid asli) bisa dicocokkan.
+	HandleMessageSent(ctx context.Context, kirimdevMessageID, wamid string) error
 
 	CMSList(ctx context.Context, q dto.ListQuery, status, queue string) ([]jobqueue_dto.Response, int, error)
 	CMSGet(ctx context.Context, id int64) (jobqueue_dto.Response, error)

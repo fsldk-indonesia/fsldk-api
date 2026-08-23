@@ -262,3 +262,11 @@ func (r *RepositoryImpl) RecordDeliveryFailure(ctx context.Context, jobID int64,
 	return r.db.WithContext(ctx).Table("tr_job_queue").Where("jobID = ?", jobID).
 		Update("lastError", note).Error
 }
+
+func (r *RepositoryImpl) UpdateWAMessageID(ctx context.Context, oldID, newID string) error {
+	if oldID == "" || newID == "" || oldID == newID {
+		return nil
+	}
+	return r.db.WithContext(ctx).Table("tr_whatsapp_message_log").Where("waMessageID = ?", oldID).
+		Update("waMessageID", newID).Error
+}

@@ -119,6 +119,13 @@ func (s *ServiceImpl) HandleDeliveryStatus(ctx context.Context, waMessageID, sta
 	return s.repo.RecordDeliveryFailure(ctx, jobID, note)
 }
 
+func (s *ServiceImpl) HandleMessageSent(ctx context.Context, kirimdevMessageID, wamid string) error {
+	if kirimdevMessageID == "" || wamid == "" {
+		return nil
+	}
+	return s.repo.UpdateWAMessageID(ctx, kirimdevMessageID, wamid)
+}
+
 func toResponse(j jobqueue_model.Job) jobqueue_dto.Response {
 	lastError, correlationType := "", ""
 	var correlationID int64

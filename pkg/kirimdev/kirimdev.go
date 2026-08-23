@@ -82,14 +82,16 @@ type sendTemplateParameter struct {
 }
 
 // sendTemplateResponse adalah bentuk sukses docs.kirimdev.com/api/operations/phone_number_idmessages/post/.
-// MessageID diambil dari data.message_id (wamid Meta), BUKAN data.id (ID
-// internal Kirimdev) — wamid inilah yang muncul di context.id saat PIC
-// membalas, jadi harus dicatat apa adanya ke tr_whatsapp_message_log.
+// Dikoreksi 2026-08-23 dari observasi respons live: field "message_id" (wamid)
+// yang didokumentasikan TIDAK PERNAH ada di respons sinkron — cuma "id" (ID
+// internal Kirimdev, mis. "msg_...") yang selalu ada. Wamid asli baru
+// tersedia belakangan lewat event webhook "message.sent" (data.message.provider_id,
+// lihat ParseMessageSentWebhook) — Client.SendTemplate makanya mengembalikan
+// "id" ini sebagai SendResult.MessageID, BUKAN wamid.
 type sendTemplateResponse struct {
 	Data struct {
-		ID        string `json:"id"`
-		MessageID string `json:"message_id"`
-		Status    string `json:"status"`
+		ID     string `json:"id"`
+		Status string `json:"status"`
 	} `json:"data"`
 }
 
@@ -165,7 +167,7 @@ func (c *Client) SendTemplate(ctx context.Context, msg TemplateMessage) (*SendRe
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, err
 	}
-	return &SendResult{MessageID: body.Data.MessageID, Status: body.Data.Status}, nil
+	return &SendResult{MessageID: body.Data.ID, Status: body.Data.Status}, nil
 }
 
 // VerifyWebhookSignature memverifikasi header "X-Kirim-Signature" webhook,
@@ -330,4 +332,33 @@ func (c *Client) ParseDeliveryStatusWebhook(body []byte) ([]DeliveryStatus, erro
 		}
 	}
 	return out, nil
+}
+
+// kirimdevEventEnvelope adalah amplop KIRIMDEV-NATIVE (bukan format Meta) —
+// dipakai event selain message.received/message.status, mis. message.sent
+// (docs.kirimdev.com/webhooks/events/).
+type kirimdevEventEnvelope struct {
+	Type string `json:"type"`
+	Data struct {
+		Message struct {
+			ID         string `json:"id"`          // ID internal Kirimdev, "msg_..." — sama dengan SendResult.MessageID
+			ProviderID string `json:"provider_id"` // wamid ASLI Meta, muncul pertama kali di sini
+		} `json:"message"`
+	} `json:"data"`
+}
+
+// ParseMessageSentWebhook mem-parsing event "message.sent" (amplop
+// Kirimdev-native, BUKAN format Meta) — event inilah satu-satunya sumber
+// wamid ASLI untuk pesan yang kita kirim sendiri (respons sinkron
+// SendTemplate cuma punya ID internal Kirimdev, lihat sendTemplateResponse).
+// kirimdevMessageID dipakai mencari baris tr_whatsapp_message_log yang mau
+// diperbarui (WHERE waMessageID = kirimdevMessageID), wamid jadi nilai
+// barunya — supaya context.id balasan PIC (yang selalu wamid asli) nanti
+// bisa dicocokkan (§1a.5 techspec).
+func (c *Client) ParseMessageSentWebhook(body []byte) (kirimdevMessageID, wamid string, err error) {
+	var event kirimdevEventEnvelope
+	if err := json.Unmarshal(body, &event); err != nil {
+		return "", "", err
+	}
+	return event.Data.Message.ID, event.Data.Message.ProviderID, nil
 }

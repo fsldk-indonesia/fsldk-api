@@ -52,4 +52,9 @@ type Repository interface {
 	// cuma menandai lastError supaya kelihatan di CMS Job Queue.
 	FindJobIDByWAMessageID(ctx context.Context, waMessageID string) (int64, bool, error)
 	RecordDeliveryFailure(ctx context.Context, jobID int64, note string) error
+	// UpdateWAMessageID mengganti kunci korelasi tr_whatsapp_message_log dari
+	// ID internal Kirimdev ("msg_...", tercatat saat kirim, §1b) jadi wamid
+	// ASLI Meta begitu event webhook "message.sent" membawanya (§1a.5
+	// techspec) — context.id balasan PIC selalu wamid asli, bukan ID Kirimdev.
+	UpdateWAMessageID(ctx context.Context, oldID, newID string) error
 }

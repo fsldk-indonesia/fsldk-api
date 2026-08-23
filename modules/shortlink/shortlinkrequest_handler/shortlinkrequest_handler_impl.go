@@ -25,6 +25,9 @@ import (
 // jobqueue_service.Service.
 type DeliveryStatusHandler interface {
 	HandleDeliveryStatus(ctx context.Context, waMessageID, status, errorDetail string) error
+	// HandleMessageSent memproses event "message.sent" — backfill wamid asli
+	// begitu Meta menetapkannya (§1a.5 techspec, lihat kirimdev.ParseMessageSentWebhook).
+	HandleMessageSent(ctx context.Context, kirimdevMessageID, wamid string) error
 }
 
 // HandlerImpl adalah implementasi Handler.
@@ -141,10 +144,11 @@ func (h *HandlerImpl) KirimdevWebhook(c *gin.Context) {
 		return
 	}
 
-	// message.status & message.received berbagi endpoint+amplop yang sama,
-	// dibedakan lewat header X-Kirim-Event (§12 techspec) — BUKAN dari isi
-	// body, karena field JSON-nya sama-sama valid untuk diparsing kosong.
-	if c.GetHeader("X-Kirim-Event") == "message.status" {
+	// message.status, message.sent & message.received berbagi endpoint yang
+	// sama, dibedakan lewat header X-Kirim-Event (§12 techspec) — BUKAN dari
+	// isi body, karena amplopnya bisa sama-sama valid diparsing kosong.
+	switch c.GetHeader("X-Kirim-Event") {
+	case "message.status":
 		statuses, err := h.kirimdev.ParseDeliveryStatusWebhook(body)
 		if err != nil {
 			log.Printf("[KIRIMDEV-WEBHOOK] gagal parse status pengiriman: %v — body: %s", err, string(body))
@@ -158,6 +162,18 @@ func (h *HandlerImpl) KirimdevWebhook(c *gin.Context) {
 			if err := h.jobs.HandleDeliveryStatus(c.Request.Context(), st.WAMessageID, st.Status, st.ErrorDetail); err != nil {
 				log.Printf("[KIRIMDEV-WEBHOOK] gagal catat kegagalan pengiriman waMessageID=%s: %v", st.WAMessageID, err)
 			}
+		}
+		httphelper.Success(c, "OK", nil)
+		return
+	case "message.sent":
+		kirimdevMessageID, wamid, err := h.kirimdev.ParseMessageSentWebhook(body)
+		if err != nil {
+			log.Printf("[KIRIMDEV-WEBHOOK] gagal parse message.sent: %v — body: %s", err, string(body))
+			httphelper.Success(c, "OK", nil)
+			return
+		}
+		if err := h.jobs.HandleMessageSent(c.Request.Context(), kirimdevMessageID, wamid); err != nil {
+			log.Printf("[KIRIMDEV-WEBHOOK] gagal backfill wamid (kirimdevMessageID=%s, wamid=%s): %v", kirimdevMessageID, wamid, err)
 		}
 		httphelper.Success(c, "OK", nil)
 		return

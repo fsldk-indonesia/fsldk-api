@@ -17,9 +17,13 @@ type TemplateMessage struct {
 }
 
 // SendResult adalah hasil pengiriman satu pesan template WhatsApp. MessageID
-// adalah wamid Meta (bukan ID internal Kirimdev) — ini yang dicatat ke
-// tr_whatsapp_message_log dan dicocokkan lagi lewat context.id saat PIC
-// membalas (§1a.5/§1b techspec).
+// adalah ID internal Kirimdev ("msg_..."), BUKAN wamid Meta — respons sinkron
+// Kirimdev tidak pernah membawa wamid (dikoreksi 2026-08-23 dari observasi
+// live, lihat kirimdev.go). Ini yang dicatat ke tr_whatsapp_message_log
+// sebagai kunci korelasi awal; wamid ASLI baru menyusul lewat event webhook
+// "message.sent" dan dipakai memperbarui baris yang sama (§1a.5/§1b techspec,
+// lihat jobqueue_service.HandleMessageSent) supaya context.id balasan PIC
+// (yang selalu berisi wamid asli, bukan ID Kirimdev) tetap bisa dicocokkan.
 type SendResult struct {
 	MessageID string
 	Status    string
