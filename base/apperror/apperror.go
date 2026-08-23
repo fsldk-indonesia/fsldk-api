@@ -138,6 +138,15 @@ func ProviderError(message string) *AppError {
 	return New(http.StatusBadGateway, constants.CodeProviderError, message)
 }
 
+// WithdrawalFailed membuat error 422 dengan kode khusus WITHDRAWAL_FAILED —
+// dipicu saat gateway disbursement menolak permintaan transfer secara eksplisit.
+func WithdrawalFailed(message string) *AppError {
+	if message == "" {
+		message = "Gateway pencairan menolak permintaan ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeWithdrawalFailed, message)
+}
+
 // TooManyRequests membuat error 429.
 func TooManyRequests(message string) *AppError {
 	if message == "" {

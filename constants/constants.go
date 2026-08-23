@@ -20,6 +20,7 @@ const (
 	CodeDuplicateRequest        = "49-DUP-REQ"
 	CodePaymentFailed           = "42-PAYFAIL"
 	CodeProviderError           = "50-PROVIDER"
+	CodeWithdrawalFailed        = "42-WDFAIL"
 )
 
 // Default system roles.
@@ -121,6 +122,11 @@ const (
 	PermDonationView = "kantong_amal.donation.view"
 
 	PermWalletView = "kantong_amal.wallet.view"
+
+	PermWithdrawalRequest = "kantong_amal.withdrawal.request"
+	PermWithdrawalApprove = "kantong_amal.withdrawal.approve"
+	PermWithdrawalReject  = "kantong_amal.withdrawal.reject"
+	PermWithdrawalProcess = "kantong_amal.withdrawal.process"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
@@ -312,6 +318,20 @@ const (
 // Gateway tr_donation.gateway.
 const (
 	DonationGatewayBisatopup = "bisatopup"
+)
+
+// Status tr_withdrawal.status.
+const (
+	WithdrawalStatusRequested       = "REQUESTED"
+	WithdrawalStatusSecurityCheck   = "SECURITY_CHECK"
+	WithdrawalStatusPendingApproval = "PENDING_APPROVAL"
+	WithdrawalStatusApproved        = "APPROVED"
+	WithdrawalStatusProcessing      = "PROCESSING"
+	WithdrawalStatusSuccess         = "SUCCESS"
+	WithdrawalStatusFailed          = "FAILED"
+	WithdrawalStatusRejected        = "REJECTED"
+	WithdrawalStatusCancelled       = "CANCELLED"
+	WithdrawalStatusReversed        = "REVERSED"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

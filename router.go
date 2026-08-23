@@ -102,6 +102,11 @@ import (
 	"fsldk-api/modules/wallet/wallet_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 
+	"fsldk-api/modules/withdrawal"
+	"fsldk-api/modules/withdrawal/withdrawal_handler"
+	"fsldk-api/modules/withdrawal/withdrawal_repository"
+	"fsldk-api/modules/withdrawal/withdrawal_service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -143,6 +148,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaignRepo := campaign_repository.NewRepository(db)
 	donationRepo := donation_repository.NewRepository(db)
 	walletRepo := wallet_repository.NewRepository(db)
+	withdrawalRepo := withdrawal_repository.NewRepository(db)
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
@@ -150,6 +156,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
 	walletSvc := wallet_service.NewService(walletRepo, campaignRepo, db)
 	donationSvc := donation_service.NewService(donationRepo, campaignRepo, walletSvc, bisatopupClient, db, cfg)
+	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, walletSvc, bisatopupClient, db, cfg)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -187,6 +194,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaignH := campaign_handler.NewHandler(campaignSvc)
 	donationH := donation_handler.NewHandler(donationSvc)
 	walletH := wallet_handler.NewHandler(walletSvc)
+	withdrawalH := withdrawal_handler.NewHandler(withdrawalSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -257,6 +265,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	wallet.RegisterMeRoutes(api, walletH, mw)
 	wallet.RegisterCMSRoutes(api, walletH, mw)
+
+	withdrawal.RegisterMeRoutes(api, withdrawalH, mw)
+	withdrawal.RegisterCMSRoutes(api, withdrawalH, mw)
+	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
 
 	return engine
 }

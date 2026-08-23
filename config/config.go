@@ -58,16 +58,17 @@ type AppConfig struct {
 	// sini — keduanya terbukti tidak pernah dipakai di ldksyahid-app (FACT,
 	// hanya dideklarasikan di config tanpa call site), menambahkannya di
 	// sini hanya akan jadi dead config.
-	BisatopupQrisMdrPercentCrowdfunding           float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
-	BisatopupQrisExpiryHoursCrowdfunding          int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
-	BisatopupUsernameCrowdfunding                 string  `mapstructure:"BISATOPUP_USERNAME_CROWDFUNDING"`
-	BisatopupPasswordApiCrowdfunding              string  `mapstructure:"BISATOPUP_PASSWORD_API_CROWDFUNDING"`
-	BisatopupEnvCrowdfunding                      string  `mapstructure:"BISATOPUP_ENV_CROWDFUNDING"`
-	BisatopupBaseURLLiveCrowdfunding              string  `mapstructure:"BISATOPUP_BASE_URL_LIVE_CROWDFUNDING"`
-	BisatopupBaseURLDevCrowdfunding               string  `mapstructure:"BISATOPUP_BASE_URL_DEV_CROWDFUNDING"`
-	BisatopupQrisPaymentIDCrowdfunding            int     `mapstructure:"BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING"`
-	BisatopupEnforceCallbackSignatureCrowdfunding bool    `mapstructure:"BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING"`
-	BisatopupAllowedIPsCrowdfunding               string  `mapstructure:"BISATOPUP_ALLOWED_IPS_CROWDFUNDING"`
+	BisatopupQrisMdrPercentCrowdfunding             float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
+	BisatopupQrisExpiryHoursCrowdfunding            int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
+	BisatopupUsernameCrowdfunding                   string  `mapstructure:"BISATOPUP_USERNAME_CROWDFUNDING"`
+	BisatopupPasswordApiCrowdfunding                string  `mapstructure:"BISATOPUP_PASSWORD_API_CROWDFUNDING"`
+	BisatopupEnvCrowdfunding                        string  `mapstructure:"BISATOPUP_ENV_CROWDFUNDING"`
+	BisatopupBaseURLLiveCrowdfunding                string  `mapstructure:"BISATOPUP_BASE_URL_LIVE_CROWDFUNDING"`
+	BisatopupBaseURLDevCrowdfunding                 string  `mapstructure:"BISATOPUP_BASE_URL_DEV_CROWDFUNDING"`
+	BisatopupQrisPaymentIDCrowdfunding              int     `mapstructure:"BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING"`
+	BisatopupEnforceCallbackSignatureCrowdfunding   bool    `mapstructure:"BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING"`
+	BisatopupAllowedIPsCrowdfunding                 string  `mapstructure:"BISATOPUP_ALLOWED_IPS_CROWDFUNDING"`
+	BisatopupCallbackDisbursementSecretCrowdfunding string  `mapstructure:"BISATOPUP_CALLBACK_DISBURSEMENT_SECRET_CROWDFUNDING"`
 }
 
 // AllowedBisatopupIPsCrowdfunding mengembalikan daftar IP yang diizinkan

@@ -6,15 +6,14 @@ import (
 	"errors"
 	"log"
 	"math"
-	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/dbretry"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/idgen"
 	"fsldk-api/config"
@@ -160,42 +159,13 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 	// Beberapa campaign populer bisa menerima banyak donasi PAID nyaris
 	// bersamaan — baris ms_campaign yang sama dikunci FOR UPDATE oleh
 	// wallet_service untuk tiap donasi (lihat 10-balance-ledger.md §10.9).
-	// InnoDB bisa memilih salah satu transaksi sebagai "deadlock victim"
-	// (error 1213) di bawah kontensi tinggi meski tidak ada bug logika —
-	// ini normal untuk row lock yang sama diperebutkan banyak transaksi
-	// pendek, bukan indikasi lost update (transaksi yang jadi victim
-	// otomatis di-rollback utuh oleh InnoDB). Retry singkat di sini
-	// memastikan callback tetap sukses tanpa mengharuskan Bisabiller
-	// mengirim ulang webhook-nya sendiri.
-	var err2 error
-	for attempt := 0; attempt < maxDeadlockRetries; attempt++ {
-		err2 = s.processCallbackTx(ctx, req, newStatus, actualTotal)
-		if err2 == nil || !isRetryableDBError(err2) {
-			return err2
-		}
-		// Exponential backoff + jitter: dasar 20ms digandakan tiap attempt,
-		// dibatasi 300ms, ditambah jitter acak agar transaksi yang tadi
-		// bertabrakan tidak langsung bertabrakan lagi secara serempak.
-		backoff := 20 * time.Millisecond * time.Duration(1<<attempt)
-		if backoff > 300*time.Millisecond {
-			backoff = 300 * time.Millisecond
-		}
-		time.Sleep(backoff + time.Duration(rand.Intn(20))*time.Millisecond)
-	}
-	return err2
-}
-
-const maxDeadlockRetries = 8
-
-// isRetryableDBError mengenali error MySQL yang aman untuk di-retry utuh
-// (seluruh transaksi di-rollback InnoDB, tidak ada efek samping parsial):
-// 1213 deadlock, 1205 lock wait timeout.
-func isRetryableDBError(err error) bool {
-	var mysqlErr *mysql.MySQLError
-	if errors.As(err, &mysqlErr) {
-		return mysqlErr.Number == 1213 || mysqlErr.Number == 1205
-	}
-	return false
+	// dbretry.Do menyerap deadlock InnoDB (error 1213/1205) yang normal
+	// terjadi di bawah kontensi tinggi pada baris yang sama, memastikan
+	// callback tetap sukses tanpa mengharuskan Bisabiller mengirim ulang
+	// webhook-nya sendiri.
+	return dbretry.Do(func() error {
+		return s.processCallbackTx(ctx, req, newStatus, actualTotal)
+	})
 }
 
 func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.CallbackRequest, newStatus string, actualTotal float64) error {
