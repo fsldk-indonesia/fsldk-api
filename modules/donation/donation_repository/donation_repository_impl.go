@@ -163,3 +163,10 @@ func (r *RepositoryImpl) UpdateCallbackStatus(tx *gorm.DB, donationID int64, p d
 	}
 	return tx.Table(constants.TableDonation).Where("donationID = ?", donationID).Updates(values).Error
 }
+
+func (r *RepositoryImpl) ExpireStalePending(ctx context.Context) (int64, error) {
+	res := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Where("paymentStatus = ? AND expiredDate < ?", constants.DonationStatusPending, time.Now()).
+		Updates(map[string]interface{}{"paymentStatus": constants.DonationStatusExpired, "updatedDate": time.Now()})
+	return res.RowsAffected, res.Error
+}

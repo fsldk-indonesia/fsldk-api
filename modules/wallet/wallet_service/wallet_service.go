@@ -38,9 +38,20 @@ type Service interface {
 	// atomically bersamanya). reason wajib tidak kosong (OQ-20).
 	AdjustBalance(ctx context.Context, campaignID int64, amount float64, direction string, actorUserID int64, reason string) error
 
-	// GetBalance mengembalikan ringkasan saldo campaign.
+	// GetBalance mengembalikan ringkasan saldo campaign — dipakai CMS
+	// (otorisasi lewat permission, bukan kepemilikan).
 	GetBalance(ctx context.Context, campaignID int64) (wallet_dto.BalanceResponse, error)
 
-	// ListLedger mengembalikan riwayat ledger campaign, terpaginasi.
+	// ListLedger mengembalikan riwayat ledger campaign, terpaginasi — dipakai CMS.
 	ListLedger(ctx context.Context, campaignID int64, filter wallet_dto.LedgerListFilter) ([]wallet_dto.LedgerListItem, int64, error)
+
+	// GetBalanceForOwner mengembalikan saldo campaign untuk endpoint
+	// /me — 404 (bukan 403) bila campaign bukan milik ownerUserID, agar
+	// tidak membocorkan keberadaan campaign milik user lain (IDOR-safe,
+	// pola sama seperti campaign_service.Update).
+	GetBalanceForOwner(ctx context.Context, campaignID, ownerUserID int64) (wallet_dto.BalanceResponse, error)
+
+	// ListLedgerForOwner adalah varian ListLedger dengan validasi kepemilikan
+	// yang sama seperti GetBalanceForOwner.
+	ListLedgerForOwner(ctx context.Context, campaignID, ownerUserID int64, filter wallet_dto.LedgerListFilter) ([]wallet_dto.LedgerListItem, int64, error)
 }

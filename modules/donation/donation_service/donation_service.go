@@ -23,6 +23,12 @@ type Service interface {
 	// ProcessCallback menangani webhook payment callback Bisabiller: verifikasi
 	// signature, idempotency (status final tidak pernah ditimpa ulang kecuali
 	// EXPIRED yang di-override PAID oleh late callback), row lock, dan validasi
-	// amount sebelum status donasi diperbarui.
+	// amount sebelum status donasi diperbarui dan (bila PAID) saldo campaign
+	// dikreditkan lewat wallet_service dalam transaksi yang sama.
 	ProcessCallback(ctx context.Context, req donation_dto.CallbackRequest) error
+
+	// ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
+	// expiredDate. Belum disambungkan ke scheduler apa pun di fase ini —
+	// disiapkan sebagai fungsi siap-pakai untuk job terjadwal (Phase 8).
+	ExpireStale(ctx context.Context) (int64, error)
 }

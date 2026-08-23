@@ -119,6 +119,8 @@ const (
 	PermCampaignModerate = "kantong_amal.campaign.moderate"
 
 	PermDonationView = "kantong_amal.donation.view"
+
+	PermWalletView = "kantong_amal.wallet.view"
 )
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).

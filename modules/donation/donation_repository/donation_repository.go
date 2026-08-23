@@ -41,4 +41,8 @@ type Repository interface {
 	// UpdateCallbackStatus memperbarui status donasi dari hasil callback
 	// payment gateway di dalam tx yang sama dengan pengunciannya.
 	UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error
+
+	// ExpireStalePending menandai EXPIRED seluruh donasi PENDING yang sudah
+	// melewati expiredDate. Mengembalikan jumlah baris yang di-expire.
+	ExpireStalePending(ctx context.Context) (int64, error)
 }

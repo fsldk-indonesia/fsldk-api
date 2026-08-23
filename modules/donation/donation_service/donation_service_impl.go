@@ -6,10 +6,12 @@ import (
 	"errors"
 	"log"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 
 	"fsldk-api/base/apperror"
@@ -21,6 +23,7 @@ import (
 	"fsldk-api/modules/donation/donation_dto"
 	"fsldk-api/modules/donation/donation_model"
 	"fsldk-api/modules/donation/donation_repository"
+	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/pkg/bisatopup"
 )
 
@@ -33,14 +36,15 @@ var sortColumns = map[string]string{
 type ServiceImpl struct {
 	repo         donation_repository.Repository
 	campaignRepo campaign_repository.Repository
+	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
 	db           *gorm.DB // hanya dipakai ProcessCallback, yang membuka transaksinya sendiri
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service donation.
-func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, gateway: gateway, db: db, cfg: cfg}
+func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, walletSvc: walletSvc, gateway: gateway, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error) {
@@ -153,6 +157,48 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 	}
 	newStatus := mapGatewayStatus(req.StatusID)
 
+	// Beberapa campaign populer bisa menerima banyak donasi PAID nyaris
+	// bersamaan — baris ms_campaign yang sama dikunci FOR UPDATE oleh
+	// wallet_service untuk tiap donasi (lihat 10-balance-ledger.md §10.9).
+	// InnoDB bisa memilih salah satu transaksi sebagai "deadlock victim"
+	// (error 1213) di bawah kontensi tinggi meski tidak ada bug logika —
+	// ini normal untuk row lock yang sama diperebutkan banyak transaksi
+	// pendek, bukan indikasi lost update (transaksi yang jadi victim
+	// otomatis di-rollback utuh oleh InnoDB). Retry singkat di sini
+	// memastikan callback tetap sukses tanpa mengharuskan Bisabiller
+	// mengirim ulang webhook-nya sendiri.
+	var err2 error
+	for attempt := 0; attempt < maxDeadlockRetries; attempt++ {
+		err2 = s.processCallbackTx(ctx, req, newStatus, actualTotal)
+		if err2 == nil || !isRetryableDBError(err2) {
+			return err2
+		}
+		// Exponential backoff + jitter: dasar 20ms digandakan tiap attempt,
+		// dibatasi 300ms, ditambah jitter acak agar transaksi yang tadi
+		// bertabrakan tidak langsung bertabrakan lagi secara serempak.
+		backoff := 20 * time.Millisecond * time.Duration(1<<attempt)
+		if backoff > 300*time.Millisecond {
+			backoff = 300 * time.Millisecond
+		}
+		time.Sleep(backoff + time.Duration(rand.Intn(20))*time.Millisecond)
+	}
+	return err2
+}
+
+const maxDeadlockRetries = 8
+
+// isRetryableDBError mengenali error MySQL yang aman untuk di-retry utuh
+// (seluruh transaksi di-rollback InnoDB, tidak ada efek samping parsial):
+// 1213 deadlock, 1205 lock wait timeout.
+func isRetryableDBError(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		return mysqlErr.Number == 1213 || mysqlErr.Number == 1205
+	}
+	return false
+}
+
+func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.CallbackRequest, newStatus string, actualTotal float64) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		d, ferr := s.repo.FindByExternalTransactionIDForUpdate(tx, req.TransactionID)
 		if ferr != nil {
@@ -165,11 +211,13 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 		}
 
 		params := donation_model.CallbackUpdateParams{PaymentStatus: newStatus, GatewayStatusID: req.StatusID}
+		credit := false
 		if newStatus == constants.DonationStatusPaid {
 			// Selisih pembulatan CEIL ≤ Rp1 direkonsiliasi otomatis memakai
 			// transaction_total dari gateway; selisih lebih besar dianggap
 			// mencurigakan dan tidak dipercaya begitu saja ("amount
-			// mismatch") — perlu resolusi manual, bukan auto-PAID.
+			// mismatch") — perlu resolusi manual, bukan auto-PAID, dan tidak
+			// dikreditkan ke saldo campaign.
 			if diff := math.Abs(actualTotal - d.TotalAmount); diff > 1 {
 				params.PaymentStatus = constants.DonationStatusAmountMismatch
 			} else {
@@ -177,10 +225,30 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 				fee := float64(bisatopup.CalculateAdminFee(roundRupiah(actualTotal), s.cfg.BisatopupQrisMdrPercentCrowdfunding))
 				params.TotalAmount = &total
 				params.AdminFee = &fee
+				credit = true
 			}
 		}
-		return s.repo.UpdateCallbackStatus(tx, d.DonationID, params)
+		if err := s.repo.UpdateCallbackStatus(tx, d.DonationID, params); err != nil {
+			return err
+		}
+		if credit {
+			// d.Amount adalah nominal donasi murni (net setelah MDR) —
+			// itulah yang benar-benar masuk wallet Bisabiller, bukan
+			// totalAmount (gross yang dibayar donor termasuk fee).
+			return s.walletSvc.CreditDonation(tx, d.CampaignID, d.DonationID, d.Amount, "")
+		}
+		return nil
 	})
+}
+
+// ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
+// expiredDate. Tidak ada ledger entry yang dibuat (belum pernah PAID).
+func (s *ServiceImpl) ExpireStale(ctx context.Context) (int64, error) {
+	n, err := s.repo.ExpireStalePending(ctx)
+	if err != nil {
+		return 0, apperror.Internal("")
+	}
+	return n, nil
 }
 
 func (s *ServiceImpl) GetByPublicRef(ctx context.Context, publicRef string) (donation_dto.Response, error) {
