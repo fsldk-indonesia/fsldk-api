@@ -21,6 +21,8 @@ type Withdrawal struct {
 	BeneficiaryAccountNumber string         `gorm:"column:beneficiaryAccountNumber"`
 	BeneficiaryAccountHolder string         `gorm:"column:beneficiaryAccountHolder"`
 	Status                   string         `gorm:"column:status"`
+	SecurityVerifiedDate     sql.NullTime   `gorm:"column:securityVerifiedDate"`
+	SecurityVerifiedMethod   sql.NullString `gorm:"column:securityVerifiedMethod"`
 	ApprovedByUserID         sql.NullInt64  `gorm:"column:approvedByUserID"`
 	ApprovedDate             sql.NullTime   `gorm:"column:approvedDate"`
 	RejectionReason          sql.NullString `gorm:"column:rejectionReason"`
@@ -54,10 +56,34 @@ type CreateParams struct {
 // seluruh transisi (approve/reject/process/callback/cancel) alih-alih
 // method sempit per transisi.
 type StatusUpdateParams struct {
-	ApprovedByUserID    *int64
-	RejectionReason     *string
-	GatewayStatusID     *int
-	GatewayResponseJSON *string
-	SetExecutedNow      bool
-	SetCompletedNow     bool
+	ApprovedByUserID       *int64
+	RejectionReason        *string
+	GatewayStatusID        *int
+	GatewayResponseJSON    *string
+	SecurityVerifiedMethod *string
+	SetExecutedNow         bool
+	SetCompletedNow        bool
+	SetSecurityVerifiedNow bool
+}
+
+// OtpChallenge merepresentasikan satu baris tr_otp_challenge.
+type OtpChallenge struct {
+	ChallengeID  int64        `gorm:"column:challengeID;primaryKey"`
+	WithdrawalID int64        `gorm:"column:withdrawalID"`
+	UserID       int64        `gorm:"column:userID"`
+	CodeHash     string       `gorm:"column:codeHash"`
+	Channel      string       `gorm:"column:channel"`
+	AttemptCount int          `gorm:"column:attemptCount"`
+	ExpiredDate  time.Time    `gorm:"column:expiredDate"`
+	VerifiedDate sql.NullTime `gorm:"column:verifiedDate"`
+	CreatedDate  time.Time    `gorm:"column:createdDate"`
+}
+
+// OtpChallengeParams menampung data untuk membuat OTP challenge baru.
+type OtpChallengeParams struct {
+	WithdrawalID int64
+	UserID       int64
+	CodeHash     string
+	Channel      string
+	ExpiredDate  time.Time
 }

@@ -27,7 +27,8 @@ var nonFinalStatuses = []string{
 
 const withdrawalSelectCols = "w.withdrawalID, w.withdrawalRef, w.campaignID, c.title AS campaignTitle, " +
 	"w.requestedByUserID, w.amount, w.fee, w.netAmount, w.beneficiaryBankCode, w.beneficiaryAccountNumber, " +
-	"w.beneficiaryAccountHolder, w.status, w.approvedByUserID, w.approvedDate, w.rejectionReason, " +
+	"w.beneficiaryAccountHolder, w.status, w.securityVerifiedDate, w.securityVerifiedMethod, " +
+	"w.approvedByUserID, w.approvedDate, w.rejectionReason, " +
 	"w.idempotencyKey, w.gatewayStatusID, w.gatewayResponseJSON, w.executedDate, w.completedDate, " +
 	"w.createdDate, w.updatedDate"
 
@@ -149,11 +150,17 @@ func (r *RepositoryImpl) UpdateStatus(tx *gorm.DB, id int64, status string, p wi
 	if p.GatewayResponseJSON != nil {
 		values["gatewayResponseJSON"] = *p.GatewayResponseJSON
 	}
+	if p.SecurityVerifiedMethod != nil {
+		values["securityVerifiedMethod"] = *p.SecurityVerifiedMethod
+	}
 	if p.SetExecutedNow {
 		values["executedDate"] = time.Now()
 	}
 	if p.SetCompletedNow {
 		values["completedDate"] = time.Now()
+	}
+	if p.SetSecurityVerifiedNow {
+		values["securityVerifiedDate"] = time.Now()
 	}
 	return tx.Table(constants.TableWithdrawal).Where("withdrawalID = ?", id).Updates(values).Error
 }
@@ -177,4 +184,57 @@ func (r *RepositoryImpl) FindStaleProcessing(ctx context.Context, olderThan time
 		Order("w.executedDate ASC").
 		Find(&out).Error
 	return out, err
+}
+
+func (r *RepositoryImpl) CountSuccessByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table(constants.TableWithdrawal).
+		Where("campaignID = ? AND status = ?", campaignID, constants.WithdrawalStatusSuccess).
+		Count(&count).Error
+	return count, err
+}
+
+const otpChallengeTable = "tr_otp_challenge"
+
+func (r *RepositoryImpl) CreateOtpChallenge(ctx context.Context, p withdrawal_model.OtpChallengeParams) (int64, error) {
+	values := map[string]interface{}{
+		"withdrawalID": p.WithdrawalID,
+		"userID":       p.UserID,
+		"codeHash":     p.CodeHash,
+		"channel":      p.Channel,
+		"expiredDate":  p.ExpiredDate,
+		"createdDate":  time.Now(),
+	}
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table(otpChallengeTable).Create(values).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
+}
+
+func (r *RepositoryImpl) FindActiveOtpChallenge(ctx context.Context, withdrawalID int64) (withdrawal_model.OtpChallenge, error) {
+	var c withdrawal_model.OtpChallenge
+	err := r.db.WithContext(ctx).Table(otpChallengeTable).
+		Where("withdrawalID = ? AND verifiedDate IS NULL AND expiredDate > ?", withdrawalID, time.Now()).
+		Order("challengeID DESC").
+		Take(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return withdrawal_model.OtpChallenge{}, ErrNotFound
+	}
+	return c, err
+}
+
+func (r *RepositoryImpl) IncrementOtpAttempt(ctx context.Context, challengeID int64) error {
+	return r.db.WithContext(ctx).Table(otpChallengeTable).
+		Where("challengeID = ?", challengeID).
+		UpdateColumn("attemptCount", gorm.Expr("attemptCount + 1")).Error
+}
+
+func (r *RepositoryImpl) MarkOtpVerified(ctx context.Context, challengeID int64) error {
+	return r.db.WithContext(ctx).Table(otpChallengeTable).
+		Where("challengeID = ?", challengeID).
+		Update("verifiedDate", time.Now()).Error
 }

@@ -12,6 +12,7 @@ type Handler interface {
 	MyList(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
+	UpdateBeneficiary(c *gin.Context)
 	Submit(c *gin.Context)
 
 	CMSList(c *gin.Context)

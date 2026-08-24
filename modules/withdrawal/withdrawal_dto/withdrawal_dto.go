@@ -67,6 +67,15 @@ type ListFilter struct {
 	OrderBy           string
 }
 
+// SecurityVerifyRequest adalah body submit verifikasi keamanan withdrawal.
+// OtpCode hanya wajib diisi bila withdrawal terkena trigger risk-based
+// (lihat withdrawal_service.VerifySecurity) — untuk withdrawal rutin,
+// Password saja sudah cukup (Option B).
+type SecurityVerifyRequest struct {
+	Password string `json:"password" validate:"required"`
+	OtpCode  string `json:"otpCode" validate:"omitempty,len=6"`
+}
+
 // DisbursementCallbackRequest adalah body webhook disbursement dari
 // Bisabiller — tidak punya field signature (proteksi via URL path secret,
 // lihat withdrawal_service.ProcessCallback).

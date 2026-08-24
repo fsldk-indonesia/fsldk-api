@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/constants"
@@ -57,6 +58,16 @@ func (f *fakeCampaignRepository) Create(ctx context.Context, p campaign_model.Cr
 }
 
 func (f *fakeCampaignRepository) Update(ctx context.Context, id int64, p campaign_model.UpdateParams) error {
+	return nil
+}
+func (f *fakeCampaignRepository) UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error {
+	c := f.campaigns[id]
+	c.BeneficiaryName = p.BeneficiaryName
+	c.BeneficiaryBankCode = p.BeneficiaryBankCode
+	c.BeneficiaryAccountNumber = p.BeneficiaryAccountNumber
+	c.BeneficiaryAccountHolder = p.BeneficiaryAccountHolder
+	c.BeneficiaryLockedUntil = sql.NullTime{Time: p.LockedUntil, Valid: true}
+	f.campaigns[id] = c
 	return nil
 }
 
@@ -216,4 +227,37 @@ type categoryRejectingRepo struct {
 
 func (r *categoryRejectingRepo) CategoryExists(ctx context.Context, categoryID int64) (bool, error) {
 	return false, nil
+}
+
+func TestUpdateBeneficiary_RejectsNonOwnerAsNotFound(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true})
+
+	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 99}, campaign_dto.UpdateBeneficiaryRequest{
+		BeneficiaryName: "A", BeneficiaryBankCode: "bca", BeneficiaryAccountNumber: "999", BeneficiaryAccountHolder: "A",
+	})
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeNotFound {
+		t.Fatalf("expected NotFound (IDOR-safe) for non-owner beneficiary change, got %v", err)
+	}
+}
+
+func TestUpdateBeneficiary_OwnerSucceedsAndLocksForCoolingPeriod(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true})
+
+	before := time.Now()
+	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateBeneficiaryRequest{
+		BeneficiaryName: "Rekening Baru", BeneficiaryBankCode: "bni", BeneficiaryAccountNumber: "999888777", BeneficiaryAccountHolder: "Rekening Baru",
+	})
+	if err != nil {
+		t.Fatalf("expected owner to change beneficiary successfully, got error: %v", err)
+	}
+	updated := repo.campaigns[1]
+	if updated.BeneficiaryBankCode != "bni" || updated.BeneficiaryAccountNumber != "999888777" {
+		t.Fatalf("beneficiary fields not updated: %+v", updated)
+	}
+	if !updated.BeneficiaryLockedUntil.Valid || !updated.BeneficiaryLockedUntil.Time.After(before.Add(23*time.Hour)) {
+		t.Fatalf("expected beneficiaryLockedUntil to be set ~24h in the future, got %+v", updated.BeneficiaryLockedUntil)
+	}
 }

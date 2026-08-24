@@ -47,4 +47,18 @@ type Repository interface {
 	// FindStaleProcessing mengembalikan withdrawal berstatus PROCESSING yang
 	// sudah melewati threshold waktu — kandidat rekonsiliasi manual.
 	FindStaleProcessing(ctx context.Context, olderThan time.Time) ([]withdrawal_model.Withdrawal, error)
+	// CountSuccessByCampaign menghitung withdrawal SUCCESS milik campaign —
+	// dipakai trigger risk-based "withdrawal pertama campaign tsb" (§12.1).
+	CountSuccessByCampaign(ctx context.Context, campaignID int64) (int64, error)
+
+	// CreateOtpChallenge menyisipkan OTP challenge baru.
+	CreateOtpChallenge(ctx context.Context, p withdrawal_model.OtpChallengeParams) (int64, error)
+	// FindActiveOtpChallenge mengembalikan challenge terbaru milik withdrawal
+	// yang belum diverifikasi dan belum kedaluwarsa.
+	FindActiveOtpChallenge(ctx context.Context, withdrawalID int64) (withdrawal_model.OtpChallenge, error)
+	// IncrementOtpAttempt menaikkan attemptCount — dipanggil setiap percobaan
+	// verifikasi (benar maupun salah), penjamin rate limit §12.9.
+	IncrementOtpAttempt(ctx context.Context, challengeID int64) error
+	// MarkOtpVerified menandai challenge terverifikasi (sekali pakai).
+	MarkOtpVerified(ctx context.Context, challengeID int64) error
 }

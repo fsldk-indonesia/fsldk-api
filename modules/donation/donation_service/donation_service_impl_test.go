@@ -137,6 +137,9 @@ func (f *fakeCampaignRepository) Create(ctx context.Context, p campaign_model.Cr
 func (f *fakeCampaignRepository) Update(ctx context.Context, id int64, p campaign_model.UpdateParams) error {
 	return nil
 }
+func (f *fakeCampaignRepository) UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error {
+	return nil
+}
 func (f *fakeCampaignRepository) UpdateStatus(ctx context.Context, id int64, status string, note sql.NullString, updatedBy int64) error {
 	return nil
 }

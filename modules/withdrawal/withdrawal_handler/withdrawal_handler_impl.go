@@ -74,6 +74,42 @@ func (h *HandlerImpl) Cancel(c *gin.Context) {
 	httphelper.Success(c, "Permintaan penarikan dibatalkan", nil)
 }
 
+func (h *HandlerImpl) RequestSecurityOtp(c *gin.Context) {
+	id, err := idParam(c)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.RequestSecurityOtp(c.Request.Context(), id, appctx.UserID(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kode OTP telah dikirim", nil)
+}
+
+func (h *HandlerImpl) VerifySecurity(c *gin.Context) {
+	id, err := idParam(c)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	var req withdrawal_dto.SecurityVerifyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.VerifySecurity(c.Request.Context(), id, appctx.UserID(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Verifikasi keamanan berhasil", data)
+}
+
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("status"))

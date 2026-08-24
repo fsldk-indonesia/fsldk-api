@@ -19,6 +19,17 @@ type Service interface {
 	// Cancel dibatalkan pengaju sendiri — hanya saat status REQUESTED,
 	// SECURITY_CHECK, atau PENDING_APPROVAL.
 	Cancel(ctx context.Context, withdrawalID, requesterUserID int64) error
+
+	// RequestSecurityOtp membuat OTP challenge baru untuk withdrawal yang
+	// sedang SECURITY_CHECK — kode "dikirim" dengan dicatat ke log (dev-mode,
+	// pengiriman WhatsApp sungguhan menunggu queue Phase 8, lihat komentar
+	// implementasi).
+	RequestSecurityOtp(ctx context.Context, withdrawalID, requesterUserID int64) error
+	// VerifySecurity menyelesaikan step SECURITY_CHECK → PENDING_APPROVAL.
+	// Withdrawal rutin (nominal wajar, bukan withdrawal pertama campaign)
+	// cukup Password (Option B); trigger risk-based (nominal >Rp10 juta atau
+	// withdrawal pertama campaign) mewajibkan OtpCode juga (Option D).
+	VerifySecurity(ctx context.Context, withdrawalID, requesterUserID int64, req withdrawal_dto.SecurityVerifyRequest) (withdrawal_dto.Response, error)
 	// Approve mensyaratkan approverUserID berbeda dari requestedByUserID
 	// (maker-checker, ADR-006/OQ-04).
 	Approve(ctx context.Context, withdrawalID, approverUserID int64) (withdrawal_dto.Response, error)

@@ -23,6 +23,9 @@ type Repository interface {
 	Categories(ctx context.Context) ([]campaign_model.Category, error)
 	Create(ctx context.Context, p campaign_model.CreateParams) (int64, error)
 	Update(ctx context.Context, id int64, p campaign_model.UpdateParams) error
+	// UpdateBeneficiary mengganti rekening penerima campaign yang sudah
+	// PUBLISHED dan mengunci sampai LockedUntil (cooling period, §12.1/§11.3).
+	UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error
 	// UpdateStatus mengubah status campaign, opsional menyertakan moderationNote
 	// (dipakai transisi review; kosong pada transisi lain seperti publish/pause).
 	UpdateStatus(ctx context.Context, id int64, status string, note sql.NullString, updatedBy int64) error

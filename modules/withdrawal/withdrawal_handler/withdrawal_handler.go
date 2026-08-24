@@ -8,6 +8,8 @@ type Handler interface {
 	Request(c *gin.Context)
 	MyList(c *gin.Context)
 	Cancel(c *gin.Context)
+	RequestSecurityOtp(c *gin.Context)
+	VerifySecurity(c *gin.Context)
 
 	CMSList(c *gin.Context)
 	Approve(c *gin.Context)

@@ -110,6 +110,17 @@ type UpdateParams struct {
 	UpdatedBy                int64
 }
 
+// UpdateBeneficiaryParams menampung data mengganti rekening penerima
+// campaign yang sudah PUBLISHED — memicu cooling period (beneficiaryLockedUntil),
+// terpisah dari Update() biasa yang hanya berlaku saat DRAFT/REVISION_REQUESTED.
+type UpdateBeneficiaryParams struct {
+	BeneficiaryName          string
+	BeneficiaryBankCode      string
+	BeneficiaryAccountNumber string
+	BeneficiaryAccountHolder string
+	LockedUntil              time.Time
+}
+
 // ReviewParams menampung data untuk mencatat satu baris tr_campaign_review.
 type ReviewParams struct {
 	CampaignID     int64

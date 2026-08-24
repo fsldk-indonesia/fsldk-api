@@ -44,6 +44,18 @@ type UpdateRequest struct {
 	IsAnonymousAllowed       *bool    `json:"isAnonymousAllowed"`
 }
 
+// UpdateBeneficiaryRequest adalah body mengganti rekening penerima campaign
+// yang sudah PUBLISHED — berbeda dari UpdateRequest (hanya berlaku saat
+// DRAFT/REVISION_REQUESTED), endpoint ini memicu cooling period 24 jam
+// (beneficiaryLockedUntil, §12.1/§11.3) sebelum rekening baru bisa dipakai
+// untuk withdrawal.
+type UpdateBeneficiaryRequest struct {
+	BeneficiaryName          string `json:"beneficiaryName" validate:"required,max=150"`
+	BeneficiaryBankCode      string `json:"beneficiaryBankCode" validate:"required,max=20"`
+	BeneficiaryAccountNumber string `json:"beneficiaryAccountNumber" validate:"required,max=30"`
+	BeneficiaryAccountHolder string `json:"beneficiaryAccountHolder" validate:"required,max=150"`
+}
+
 // ReviewRequest adalah body moderasi campaign oleh reviewer CMS.
 type ReviewRequest struct {
 	Decision string `json:"decision" validate:"required,oneof=APPROVED REVISION_REQUESTED REJECTED"`

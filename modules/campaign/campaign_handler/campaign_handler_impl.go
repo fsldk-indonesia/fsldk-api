@@ -137,6 +137,28 @@ func (h *HandlerImpl) Update(c *gin.Context) {
 	httphelper.Success(c, "Campaign berhasil diperbarui", data)
 }
 
+func (h *HandlerImpl) UpdateBeneficiary(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	var req campaign_dto.UpdateBeneficiaryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.UpdateBeneficiary(c.Request.Context(), id, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Rekening penerima berhasil diperbarui — berlaku setelah masa jeda keamanan 24 jam", data)
+}
+
 func (h *HandlerImpl) Submit(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

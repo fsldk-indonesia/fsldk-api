@@ -208,6 +208,33 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 
 // ---------- CMS ----------
 
+// beneficiaryCoolingPeriod adalah masa jeda wajib sebelum rekening
+// penerima baru bisa dipakai withdrawal — keputusan final OQ-19/§12.1.
+const beneficiaryCoolingPeriod = 24 * time.Hour
+
+func (s *ServiceImpl) UpdateBeneficiary(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateBeneficiaryRequest) (campaign_dto.DetailResponse, error) {
+	camp, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+	}
+	// IDOR: caller di luar pemilik campaign mendapat 404, bukan 403 — pola
+	// sama dengan Update()/Submit().
+	if camp.OwnerUserID != caller.UserID {
+		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+	}
+
+	if err := s.repo.UpdateBeneficiary(ctx, id, campaign_model.UpdateBeneficiaryParams{
+		BeneficiaryName:          req.BeneficiaryName,
+		BeneficiaryBankCode:      req.BeneficiaryBankCode,
+		BeneficiaryAccountNumber: req.BeneficiaryAccountNumber,
+		BeneficiaryAccountHolder: req.BeneficiaryAccountHolder,
+		LockedUntil:              time.Now().Add(beneficiaryCoolingPeriod),
+	}); err != nil {
+		return campaign_dto.DetailResponse{}, apperror.Internal("")
+	}
+	return s.getDetail(ctx, id)
+}
+
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error) {
 	return s.list(ctx, campaign_dto.ListFilter{
 		Status:     status,

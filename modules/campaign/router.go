@@ -24,6 +24,7 @@ func RegisterMeRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *middl
 		g.GET("", h.MyList)
 		g.POST("", h.Create)
 		g.PUT("/:id", h.Update)
+		g.PUT("/:id/beneficiary", h.UpdateBeneficiary)
 		g.POST("/:id/submit", h.Submit)
 	}
 }

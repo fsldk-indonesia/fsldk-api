@@ -21,6 +21,7 @@ const (
 	CodePaymentFailed           = "42-PAYFAIL"
 	CodeProviderError           = "50-PROVIDER"
 	CodeWithdrawalFailed        = "42-WDFAIL"
+	CodeSecurityVerificationRequired = "42-SECREQ"
 )
 
 // Default system roles.
@@ -332,6 +333,19 @@ const (
 	WithdrawalStatusRejected        = "REJECTED"
 	WithdrawalStatusCancelled       = "CANCELLED"
 	WithdrawalStatusReversed        = "REVERSED"
+)
+
+// tr_withdrawal.securityVerifiedMethod — NULL berarti step-up password saja
+// (Option B, withdrawal rutin non-risiko), non-NULL berarti OTP/TOTP juga
+// diverifikasi (Option D, dipicu risk-based). Hanya OTP_WA yang dipakai versi
+// awal — TOTP/OTP_EMAIL opt-in ditunda (lihat phase-07-summary.md).
+const (
+	WithdrawalSecurityMethodOtpWa = "OTP_WA"
+)
+
+// Channel tr_otp_challenge.channel.
+const (
+	OtpChannelWhatsapp = "OTP_WA"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

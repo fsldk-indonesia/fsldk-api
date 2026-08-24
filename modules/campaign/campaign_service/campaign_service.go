@@ -35,6 +35,10 @@ type Service interface {
 	Create(ctx context.Context, caller CallerScope, req campaign_dto.CreateRequest) (campaign_dto.DetailResponse, error)
 	Update(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateRequest) (campaign_dto.DetailResponse, error)
 	Submit(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
+	// UpdateBeneficiary mengganti rekening penerima campaign yang sudah
+	// PUBLISHED — beda dari Update() yang hanya berlaku pra-publish. Memicu
+	// cooling period 24 jam sebelum rekening baru bisa dipakai withdrawal.
+	UpdateBeneficiary(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateBeneficiaryRequest) (campaign_dto.DetailResponse, error)
 
 	CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (campaign_dto.DetailResponse, error)

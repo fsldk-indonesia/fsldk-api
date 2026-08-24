@@ -150,6 +150,17 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, p campaign_model.
 	}).Error
 }
 
+func (r *RepositoryImpl) UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error {
+	return r.db.WithContext(ctx).Table(constants.TableCampaign).Where("campaignID = ?", id).Updates(map[string]interface{}{
+		"beneficiaryName":          p.BeneficiaryName,
+		"beneficiaryBankCode":      p.BeneficiaryBankCode,
+		"beneficiaryAccountNumber": p.BeneficiaryAccountNumber,
+		"beneficiaryAccountHolder": p.BeneficiaryAccountHolder,
+		"beneficiaryLockedUntil":   p.LockedUntil,
+		"updatedDate":              time.Now(),
+	}).Error
+}
+
 func (r *RepositoryImpl) UpdateStatus(ctx context.Context, id int64, status string, note sql.NullString, updatedBy int64) error {
 	values := map[string]interface{}{
 		"status":      status,

@@ -16,9 +16,11 @@ import (
 	"fsldk-api/base/dbretry"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/idgen"
+	"fsldk-api/base/security"
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_repository"
+	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/modules/withdrawal/withdrawal_dto"
 	"fsldk-api/modules/withdrawal/withdrawal_model"
@@ -31,12 +33,25 @@ import (
 // langsung dianggap gagal, hanya "belum pasti").
 const staleProcessingThreshold = 10 * time.Minute
 
+// riskAmountThreshold adalah ambang nominal yang memicu step-up OTP
+// tambahan (Option D) di atas password (Option B) — keputusan final OQ-01/
+// §12.1: >Rp10.000.000.
+const riskAmountThreshold = 10_000_000
+
+// otpValidityDuration adalah masa berlaku satu OTP challenge.
+const otpValidityDuration = 5 * time.Minute
+
+// maxOtpAttempts adalah batas percobaan verifikasi per challenge — reuse
+// pola ldksyahid-app: 5 percobaan (§12.9).
+const maxOtpAttempts = 5
+
 var sortColumns = map[string]string{"createdDate": "w.createdDate", "amount": "w.amount"}
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
 	repo         withdrawal_repository.Repository
 	campaignRepo campaign_repository.Repository
+	userRepo     user_repository.Repository
 	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
 	db           *gorm.DB
@@ -44,14 +59,21 @@ type ServiceImpl struct {
 }
 
 // NewService membuat Service withdrawal.
-func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, walletSvc: walletSvc, gateway: gateway, db: db, cfg: cfg}
+func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID int64, req withdrawal_dto.CreateRequest) (withdrawal_dto.Response, error) {
 	camp, err := s.campaignRepo.FindByID(ctx, campaignID)
 	if err != nil || camp.OwnerUserID != requesterUserID {
 		return withdrawal_dto.Response{}, apperror.NotFound("Campaign tidak ditemukan")
+	}
+
+	// Cooling period (Option F, §12.1/§12.10) — rekening beneficiary yang
+	// baru saja diubah tidak bisa dipakai untuk withdrawal sampai masa jeda
+	// selesai, independen dari trigger risk-based mana pun. Selalu aktif.
+	if camp.BeneficiaryLockedUntil.Valid && time.Now().Before(camp.BeneficiaryLockedUntil.Time) {
+		return withdrawal_dto.Response{}, apperror.Unprocessable("Rekening penerima baru saja diubah — tunggu masa jeda keamanan selesai sebelum mengajukan penarikan")
 	}
 
 	// Fail-fast pre-check di luar transaksi — menghindari panggilan inquiry
@@ -158,6 +180,121 @@ func (s *ServiceImpl) Cancel(ctx context.Context, withdrawalID, requesterUserID 
 			return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
 		})
 	})
+}
+
+// isRiskyWithdrawal menentukan apakah withdrawal ini memicu step-up OTP
+// tambahan (Option D) di atas password (Option B) — keputusan final OQ-01/
+// §12.1. Diimplementasikan: nominal >Rp10 juta ATAU withdrawal pertama yang
+// pernah SUCCESS untuk campaign ini. "Rekening baru" tidak diulang di sini
+// karena sudah di-hard-block penuh oleh cooling period (Request tidak akan
+// pernah sampai sini bila beneficiary masih terkunci); "banyak percobaan
+// gagal sebelumnya" tidak diimplementasikan di fase ini karena techspec
+// tidak memberi angka ambang konkret (beda dari Rp10 juta yang eksplisit) —
+// dicatat sebagai gap di phase-07-summary.md, bukan diputuskan diam-diam.
+func (s *ServiceImpl) isRiskyWithdrawal(ctx context.Context, w withdrawal_model.Withdrawal) (bool, error) {
+	if w.Amount > riskAmountThreshold {
+		return true, nil
+	}
+	successCount, err := s.repo.CountSuccessByCampaign(ctx, w.CampaignID)
+	if err != nil {
+		return false, err
+	}
+	return successCount == 0, nil
+}
+
+func (s *ServiceImpl) RequestSecurityOtp(ctx context.Context, withdrawalID, requesterUserID int64) error {
+	w, err := s.repo.FindByID(ctx, withdrawalID)
+	if err != nil || w.RequestedByUserID != requesterUserID {
+		return apperror.NotFound("Penarikan tidak ditemukan")
+	}
+	if w.Status != constants.WithdrawalStatusSecurityCheck {
+		return apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu verifikasi keamanan")
+	}
+
+	code, err := generateOtpCode()
+	if err != nil {
+		return apperror.Internal("")
+	}
+	if _, err := s.repo.CreateOtpChallenge(ctx, withdrawal_model.OtpChallengeParams{
+		WithdrawalID: withdrawalID,
+		UserID:       requesterUserID,
+		CodeHash:     hashOtpCode(code),
+		Channel:      constants.OtpChannelWhatsapp,
+		ExpiredDate:  time.Now().Add(otpValidityDuration),
+	}); err != nil {
+		return apperror.Internal("")
+	}
+
+	// Pengiriman WhatsApp sungguhan menunggu infrastruktur queue (Phase 8,
+	// lihat 14-whatsapp.md §14.4 — tidak ada call site yang boleh memanggil
+	// Kirimdev langsung/sinkron). Untuk sekarang, kode dicatat ke log
+	// (dev-mode), mengikuti pola fallback pkg/mailer saat SMTP belum
+	// dikonfigurasi — BUKAN cara pengiriman produksi, ditutup Phase 8.
+	log.Printf("[OTP:DEV] withdrawalID=%d userID=%d code=%s (berlaku %s)", withdrawalID, requesterUserID, code, otpValidityDuration)
+	return nil
+}
+
+func (s *ServiceImpl) VerifySecurity(ctx context.Context, withdrawalID, requesterUserID int64, req withdrawal_dto.SecurityVerifyRequest) (withdrawal_dto.Response, error) {
+	w, err := s.repo.FindByID(ctx, withdrawalID)
+	if err != nil || w.RequestedByUserID != requesterUserID {
+		return withdrawal_dto.Response{}, apperror.NotFound("Penarikan tidak ditemukan")
+	}
+	if w.Status != constants.WithdrawalStatusSecurityCheck {
+		return withdrawal_dto.Response{}, apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu verifikasi keamanan")
+	}
+
+	user, err := s.userRepo.FindByID(ctx, requesterUserID)
+	if err != nil {
+		return withdrawal_dto.Response{}, apperror.Internal("")
+	}
+	// Akun tanpa password (login Google murni) tidak punya faktor Option B
+	// untuk diverifikasi — diperlakukan selalu berisiko (wajib OTP) alih-alih
+	// meloloskan tanpa verifikasi apa pun.
+	riskySkipPassword := !user.Password.Valid
+	if !riskySkipPassword && !security.CheckPassword(user.Password.String, req.Password) {
+		return withdrawal_dto.Response{}, apperror.Unauthorized("Password tidak sesuai")
+	}
+
+	risky, err := s.isRiskyWithdrawal(ctx, w)
+	if err != nil {
+		return withdrawal_dto.Response{}, apperror.Internal("")
+	}
+	risky = risky || riskySkipPassword
+
+	params := withdrawal_model.StatusUpdateParams{SetSecurityVerifiedNow: true}
+	if risky {
+		if strings.TrimSpace(req.OtpCode) == "" {
+			return withdrawal_dto.Response{}, apperror.SecurityVerificationRequired("Kode OTP wajib diisi untuk penarikan ini")
+		}
+		challenge, cerr := s.repo.FindActiveOtpChallenge(ctx, withdrawalID)
+		if cerr != nil {
+			return withdrawal_dto.Response{}, apperror.BadRequest("OTP belum diminta atau sudah kedaluwarsa, silakan minta ulang")
+		}
+		if challenge.AttemptCount >= maxOtpAttempts {
+			return withdrawal_dto.Response{}, apperror.TooManyRequests("Terlalu banyak percobaan OTP salah, silakan minta kode baru")
+		}
+		if err := s.repo.IncrementOtpAttempt(ctx, challenge.ChallengeID); err != nil {
+			return withdrawal_dto.Response{}, apperror.Internal("")
+		}
+		if hashOtpCode(req.OtpCode) != challenge.CodeHash {
+			return withdrawal_dto.Response{}, apperror.BadRequest("Kode OTP tidak sesuai")
+		}
+		if err := s.repo.MarkOtpVerified(ctx, challenge.ChallengeID); err != nil {
+			return withdrawal_dto.Response{}, apperror.Internal("")
+		}
+		method := constants.WithdrawalSecurityMethodOtpWa
+		params.SecurityVerifiedMethod = &method
+	}
+
+	// Tidak perlu dbretry di sini — transisi ini hanya mengunci baris
+	// withdrawal sendiri, tidak menyentuh ms_campaign (beda dari Request/
+	// Cancel/Reject yang lewat wallet_service dan bisa kontensi lintas-flow).
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusPendingApproval, params)
+	}); err != nil {
+		return withdrawal_dto.Response{}, apperror.Internal("")
+	}
+	return s.getResponse(ctx, withdrawalID)
 }
 
 func (s *ServiceImpl) Approve(ctx context.Context, withdrawalID, approverUserID int64) (withdrawal_dto.Response, error) {

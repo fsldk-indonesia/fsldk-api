@@ -147,6 +147,16 @@ func WithdrawalFailed(message string) *AppError {
 	return New(http.StatusUnprocessableEntity, constants.CodeWithdrawalFailed, message)
 }
 
+// SecurityVerificationRequired membuat error 422 dengan kode khusus
+// SECURITY_VERIFICATION_REQUIRED — dipicu saat aksi withdrawal dicoba
+// sebelum step security-verify selesai.
+func SecurityVerificationRequired(message string) *AppError {
+	if message == "" {
+		message = "Verifikasi keamanan penarikan belum selesai"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeSecurityVerificationRequired, message)
+}
+
 // TooManyRequests membuat error 429.
 func TooManyRequests(message string) *AppError {
 	if message == "" {

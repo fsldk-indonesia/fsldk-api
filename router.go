@@ -156,7 +156,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
 	walletSvc := wallet_service.NewService(walletRepo, campaignRepo, db)
 	donationSvc := donation_service.NewService(donationRepo, campaignRepo, walletSvc, bisatopupClient, db, cfg)
-	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, walletSvc, bisatopupClient, db, cfg)
+	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, db, cfg)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)

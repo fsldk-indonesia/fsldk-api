@@ -14,6 +14,11 @@ func RegisterMeRoutes(rg *gin.RouterGroup, h withdrawal_handler.Handler, mw *mid
 	rg.POST("/me/campaigns/:id/withdrawals", mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermWithdrawalRequest), h.Request)
 	rg.GET("/me/withdrawals", mw.Auth(), mw.RequireVerified(), h.MyList)
 	rg.POST("/me/withdrawals/:id/cancel", mw.Auth(), mw.RequireVerified(), h.Cancel)
+	// Rate limit 5/5menit (§12.9) — reuse pola ldksyahid-app untuk percobaan
+	// security verification. Penjamin sesungguhnya tetap attemptCount di
+	// tr_otp_challenge (per-user); ini lapisan tambahan per-IP.
+	rg.POST("/me/withdrawals/:id/security-verify/otp", mw.Auth(), mw.RequireVerified(), middlewares.RateLimit(1, 5), h.RequestSecurityOtp)
+	rg.POST("/me/withdrawals/:id/security-verify", mw.Auth(), mw.RequireVerified(), middlewares.RateLimit(1, 5), h.VerifySecurity)
 
 	rg.GET("/transfer/banks", mw.Auth(), mw.RequireVerified(), h.ListBanks)
 	rg.POST("/transfer/inquiry", mw.Auth(), mw.RequireVerified(), h.Inquiry)
