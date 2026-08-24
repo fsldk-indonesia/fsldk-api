@@ -3,7 +3,9 @@ package database
 
 import (
 	"fmt"
+	"log"
 	"net/url"
+	"os"
 	"time"
 
 	"fsldk-api/config"
@@ -33,7 +35,12 @@ func New(cfg config.AppConfig) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logLevel),
+		Logger: logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  logLevel,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		}),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuka koneksi database: %w", err)

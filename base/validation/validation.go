@@ -25,6 +25,12 @@ var shortlinkKeyPattern = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 // tag kustom `codeidentifier` untuk kode form/section/field (mis. LEVELISASI_LDK).
 var codeIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
+// phoneNumberCharsetPattern membatasi karakter yang diizinkan pada input
+// nomor telepon bebas-format (angka, spasi, +, -, kurung) — dipakai tag
+// kustom `phonenumber`. Cek digit minimal dilakukan terpisah di bawah supaya
+// string seperti "--------" (8 karakter valid tapi 0 digit) tetap ditolak.
+var phoneNumberCharsetPattern = regexp.MustCompile(`^[0-9+\-\s()]+$`)
+
 func init() {
 	validate = validator.New()
 	// Gunakan tag `json` sebagai nama field pada pesan error.
@@ -40,6 +46,23 @@ func init() {
 	})
 	_ = validate.RegisterValidation("codeidentifier", func(fl validator.FieldLevel) bool {
 		return codeIdentifierPattern.MatchString(fl.Field().String())
+	})
+	// phonenumber: mencegah input non-angka (mis. "abcdefgh") lolos validasi
+	// lalu jadi string kosong setelah normalisasi (base/security tidak
+	// menyentuh ini — normalizePhone ada di shortlinkrequest_service),
+	// dikirim sebagai ToPhone kosong ke Kirimdev.
+	_ = validate.RegisterValidation("phonenumber", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		if !phoneNumberCharsetPattern.MatchString(val) {
+			return false
+		}
+		digits := 0
+		for _, r := range val {
+			if r >= '0' && r <= '9' {
+				digits++
+			}
+		}
+		return digits >= 8
 	})
 }
 
@@ -98,6 +121,8 @@ func humanMessage(fe validator.FieldError) string {
 		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan tanda hubung (-)", field)
 	case "codeidentifier":
 		return fmt.Sprintf("%s hanya boleh berisi huruf, angka, dan garis bawah (_)", field)
+	case "phonenumber":
+		return fmt.Sprintf("%s harus berupa nomor telepon yang valid (minimal 8 digit)", field)
 	default:
 		return fmt.Sprintf("%s tidak valid", field)
 	}

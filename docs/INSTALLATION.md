@@ -80,6 +80,22 @@ MAIL_FROM_NAME=FSLDK Indonesia
 
 ---
 
+## 5a. (Opsional) Konfigurasi Kirimdev (WhatsApp)
+
+Diperlukan agar notifikasi WhatsApp fitur Permintaan Shortlink (PIC saat ada permintaan baru; requester saat approve/reject) benar-benar terkirim.
+
+```env
+KIRIMDEV_API_KEY=kdv_live_xxxxxxxxxxxxxxxxxxxxxxxx
+KIRIMDEV_PHONE_NUMBER_ID=1152989091241508
+KIRIMDEV_BASE_URL=https://api.kirimdev.com/v1
+KIRIMDEV_TEMPLATE_LANGUAGE=id
+KIRIMDEV_WEBHOOK_SECRETS=whsec_xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+`KIRIMDEV_WEBHOOK_SECRETS` mendukung banyak nilai (comma-separated) untuk rotasi tanpa downtime — simpan secret lama & baru sekaligus selama masa transisi. Bila `KIRIMDEV_API_KEY` dibiarkan kosong, pengiriman WhatsApp akan gagal secara *best-effort* (dicatat ke log, tidak menggagalkan aksi submit/approve/reject) — lihat [Arsitektur §12](./ARCHITECTURE.md#12-permintaan-shortlink-satu-transaksi-atomik-notifikasi-best-effort). Setelah kredensial diisi, nomor & nama PIC penerima notifikasi diatur lewat halaman **App Settings** di CMS (`/cms/settings`, permission `setting.view`/`setting.update`, khusus Super Admin) — bukan dari `app.env`.
+
+---
+
 ## 6. Jalankan Server
 
 ```bash
