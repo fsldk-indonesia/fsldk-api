@@ -22,9 +22,20 @@ import (
 	"fsldk-api/modules/donation/donation_dto"
 	"fsldk-api/modules/donation/donation_model"
 	"fsldk-api/modules/donation/donation_repository"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/jobqueue/jobqueue_model"
+	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/pkg/bisatopup"
+	"fsldk-api/pkg/kirimdev"
 )
+
+// JobEnqueuer adalah irisan sempit jobqueue_service.Service yang dibutuhkan
+// modul ini — dipenuhi otomatis oleh jobqueue_service.Service (pola sama
+// shortlinkrequest_service.JobEnqueuer).
+type JobEnqueuer interface {
+	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+}
 
 var sortColumns = map[string]string{
 	"createdDate": "d.createdDate",
@@ -35,15 +46,17 @@ var sortColumns = map[string]string{
 type ServiceImpl struct {
 	repo         donation_repository.Repository
 	campaignRepo campaign_repository.Repository
+	userRepo     user_repository.Repository
 	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
+	jobs         JobEnqueuer
 	db           *gorm.DB // hanya dipakai ProcessCallback, yang membuka transaksinya sendiri
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service donation.
-func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, walletSvc: walletSvc, gateway: gateway, db: db, cfg: cfg}
+func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error) {
@@ -134,7 +147,50 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	}); err != nil {
 		return donation_dto.Response{}, apperror.Internal("")
 	}
+
+	s.notify(ctx, req.DonorPhone, "invoice_donasi_kantong_amal",
+		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, qris.PaymentLinks},
+		id)
+
 	return s.getResponse(ctx, id)
+}
+
+// notify mengirim satu notifikasi WhatsApp lewat job queue (async, tidak
+// pernah sinkron — §14.4 techspec). Kegagalan enqueue di-log, tidak pernah
+// menggagalkan alur utama (donasi/callback tetap sukses meski notifikasi
+// gagal terkirim) — konsisten prinsip "notification is best-effort".
+func (s *ServiceImpl) notify(ctx context.Context, toPhone, templateName string, params []string, donationID int64) {
+	if strings.TrimSpace(toPhone) == "" {
+		return
+	}
+	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
+		Queue: jobqueue_model.QueueWhatsApp, JobType: jobqueue_model.JobTypeWhatsAppTemplate,
+		Payload:         kirimdev.TemplateMessage{ToPhone: toPhone, TemplateName: templateName, Params: params},
+		CorrelationType: jobqueue_model.CorrelationTypeDonation, CorrelationID: donationID,
+	}); err != nil {
+		log.Printf("[DONATION] gagal enqueue notifikasi WA (%s) untuk donationID=%d: %v", templateName, donationID, err)
+	}
+}
+
+// formatRupiah memformat nominal Rupiah dengan pemisah ribuan titik untuk
+// parameter template WhatsApp (mis. "20.000"), bukan angka mentah.
+func formatRupiah(amount float64) string {
+	s := strconv.FormatInt(int64(amount), 10)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var out []byte
+	for i, r := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, '.')
+		}
+		out = append(out, r)
+	}
+	if neg {
+		return "-" + string(out)
+	}
+	return string(out)
 }
 
 // ProcessCallback menangani webhook payment callback Bisabiller.
@@ -169,7 +225,10 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 }
 
 func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.CallbackRequest, newStatus string, actualTotal float64) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var notifyDonation donation_model.Donation
+	shouldNotifyPaid := false
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		d, ferr := s.repo.FindByExternalTransactionIDForUpdate(tx, req.TransactionID)
 		if ferr != nil {
 			return apperror.NotFound("Donasi tidak ditemukan")
@@ -205,10 +264,48 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.Ca
 			// d.Amount adalah nominal donasi murni (net setelah MDR) —
 			// itulah yang benar-benar masuk wallet Bisabiller, bukan
 			// totalAmount (gross yang dibayar donor termasuk fee).
-			return s.walletSvc.CreditDonation(tx, d.CampaignID, d.DonationID, d.Amount, "")
+			if err := s.walletSvc.CreditDonation(tx, d.CampaignID, d.DonationID, d.Amount, ""); err != nil {
+				return err
+			}
+			notifyDonation, shouldNotifyPaid = d, true
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Notifikasi dikirim SETELAH transaksi commit sungguhan — bukan di
+	// dalam closure di atas (yang bisa di-retry dbretry.Do saat deadlock),
+	// mencegah notifikasi ganda/phantom untuk transaksi yang di-rollback.
+	if shouldNotifyPaid {
+		s.notifyDonationPaid(ctx, notifyDonation)
+	}
+	return nil
+}
+
+// notifyDonationPaid mengirim notifikasi WA ke donor dan (bila tidak
+// anonim/PIC tetap perlu tahu) ke pemilik campaign — §14.3/§14.9 techspec.
+func (s *ServiceImpl) notifyDonationPaid(ctx context.Context, d donation_model.Donation) {
+	amountStr := formatRupiah(d.Amount)
+	if d.DonorPhone != "" {
+		s.notify(ctx, d.DonorPhone, "donasi_berhasil_kantong_amal", []string{d.DonorName, amountStr, d.CampaignTitle}, d.DonationID)
+	}
+
+	camp, err := s.campaignRepo.FindByID(ctx, d.CampaignID)
+	if err != nil {
+		log.Printf("[DONATION] gagal ambil campaign %d untuk notifikasi PIC: %v", d.CampaignID, err)
+		return
+	}
+	owner, err := s.userRepo.FindByID(ctx, camp.OwnerUserID)
+	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
+		return
+	}
+	donorLabel := d.DonorName
+	if d.IsAnonymous {
+		donorLabel = "Donatur (anonim)"
+	}
+	s.notify(ctx, owner.PhoneNumber.String, "notifikasi_pic_donasi_kantong_amal", []string{amountStr, donorLabel, camp.Title}, d.DonationID)
 }
 
 // ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
@@ -219,6 +316,30 @@ func (s *ServiceImpl) ExpireStale(ctx context.Context) (int64, error) {
 		return 0, apperror.Internal("")
 	}
 	return n, nil
+}
+
+// donationExpireCheckInterval — job terjadwal internal `donation.expire_check`
+// (§9.6/§13.4 techspec, analog `ExpireStaleQrisDonations` ldksyahid-app yang
+// jadwalnya `everyTenMinutes()`). Tidak lewat job queue (§13.4: goroutine
+// time.Ticker langsung, bukan event-driven).
+const donationExpireCheckInterval = 10 * time.Minute
+
+// RunExpireScheduler menjalankan ExpireStale tiap donationExpireCheckInterval
+// sampai proses berhenti — dipanggil sebagai goroutine terpisah dari
+// router.go, pola sama jobqueue_service.RunStuckSweeper.
+func (s *ServiceImpl) RunExpireScheduler() {
+	ticker := time.NewTicker(donationExpireCheckInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		n, err := s.ExpireStale(context.Background())
+		if err != nil {
+			log.Printf("[DONATION] expire_check: gagal expire donasi stale: %v", err)
+			continue
+		}
+		if n > 0 {
+			log.Printf("[DONATION] expire_check: %d donasi PENDING di-expire otomatis", n)
+		}
+	}
 }
 
 func (s *ServiceImpl) GetByPublicRef(ctx context.Context, publicRef string) (donation_dto.Response, error) {

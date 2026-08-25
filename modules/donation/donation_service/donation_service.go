@@ -28,7 +28,13 @@ type Service interface {
 	ProcessCallback(ctx context.Context, req donation_dto.CallbackRequest) error
 
 	// ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
-	// expiredDate. Belum disambungkan ke scheduler apa pun di fase ini —
-	// disiapkan sebagai fungsi siap-pakai untuk job terjadwal (Phase 8).
+	// expiredDate. Dipanggil langsung oleh RunExpireScheduler tiap interval
+	// tetap (§9.6/§13.4 techspec — job terjadwal `donation.expire_check`).
 	ExpireStale(ctx context.Context) (int64, error)
+
+	// RunExpireScheduler menjalankan ExpireStale secara periodik (goroutine
+	// time.Ticker, bukan lewat job queue — §13.4 techspec) sampai proses
+	// berhenti. Dipanggil sekali sebagai `go donationSvc.RunExpireScheduler()`
+	// dari router.go.
+	RunExpireScheduler()
 }

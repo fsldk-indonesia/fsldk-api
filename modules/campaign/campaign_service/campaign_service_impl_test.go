@@ -11,6 +11,9 @@ import (
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/user/user_dto"
+	"fsldk-api/modules/user/user_model"
 )
 
 // fakeCampaignRepository adalah implementasi campaign_repository.Repository
@@ -100,11 +103,77 @@ func (f fakeOrgAccess) IsAccessible(ctx context.Context, callerOrganizationID *i
 	return f.allow, nil
 }
 
+// fakeUserRepository adalah implementasi user_repository.Repository no-op —
+// tidak ada skenario uji di file ini yang menegaskan isi notifikasi WA,
+// jadi FindByID selalu "not found" cukup (notifyOwner no-op diam-diam).
+type fakeUserRepository struct{}
+
+func (f *fakeUserRepository) FindByID(ctx context.Context, id int64) (user_model.User, error) {
+	return user_model.User{}, errors.New("not found")
+}
+func (f *fakeUserRepository) FindByEmail(ctx context.Context, email string) (user_model.User, error) {
+	return user_model.User{}, errors.New("not found")
+}
+func (f *fakeUserRepository) FindByGoogleID(ctx context.Context, googleID string) (user_model.User, error) {
+	return user_model.User{}, errors.New("not found")
+}
+func (f *fakeUserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return false, nil
+}
+func (f *fakeUserRepository) ExistsByEmailExcept(ctx context.Context, email string, exceptID int64) (bool, error) {
+	return false, nil
+}
+func (f *fakeUserRepository) Create(ctx context.Context, p user_model.CreateParams) (int64, error) {
+	return 0, nil
+}
+func (f *fakeUserRepository) List(ctx context.Context, filt user_dto.ListFilter) ([]user_model.User, int64, error) {
+	return nil, 0, nil
+}
+func (f *fakeUserRepository) SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error) {
+	return nil, nil
+}
+func (f *fakeUserRepository) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error {
+	return nil
+}
+func (f *fakeUserRepository) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
+	return nil
+}
+func (f *fakeUserRepository) SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error {
+	return nil
+}
+func (f *fakeUserRepository) SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error {
+	return nil
+}
+func (f *fakeUserRepository) LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error {
+	return nil
+}
+func (f *fakeUserRepository) UpdatePhoto(ctx context.Context, id int64, photoURL string) error {
+	return nil
+}
+func (f *fakeUserRepository) UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error {
+	return nil
+}
+func (f *fakeUserRepository) MarkEmailVerified(ctx context.Context, id int64) error { return nil }
+func (f *fakeUserRepository) SoftDelete(ctx context.Context, id int64, updatedBy int64) error {
+	return nil
+}
+func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua, status string) error {
+	return nil
+}
+
+// fakeJobEnqueuer adalah implementasi JobEnqueuer no-op — notifikasi WA
+// tidak relevan diverifikasi di unit test business-logic ini.
+type fakeJobEnqueuer struct{}
+
+func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error) {
+	return 0, nil
+}
+
 const validStory = "cerita panjang minimal lima puluh karakter untuk lolos validasi story campaign ini"
 
 func TestUpdate_RejectsNonOwnerAsNotFound(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 99}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
 	appErr, ok := err.(*apperror.AppError)
@@ -115,7 +184,7 @@ func TestUpdate_RejectsNonOwnerAsNotFound(t *testing.T) {
 
 func TestUpdate_RejectsWhenStatusNotEditable(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
 	appErr, ok := err.(*apperror.AppError)
@@ -126,7 +195,7 @@ func TestUpdate_RejectsWhenStatusNotEditable(t *testing.T) {
 
 func TestUpdate_AllowsOwnerDuringRevisionRequested(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusRevisionRequested})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
 	if err != nil {
@@ -136,7 +205,7 @@ func TestUpdate_AllowsOwnerDuringRevisionRequested(t *testing.T) {
 
 func TestSubmit_RejectsNonOwnerAsNotFound(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 99})
 	appErr, ok := err.(*apperror.AppError)
@@ -147,7 +216,7 @@ func TestSubmit_RejectsNonOwnerAsNotFound(t *testing.T) {
 
 func TestSubmit_SucceedsFromDraft(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	resp, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 10})
 	if err != nil {
@@ -160,7 +229,7 @@ func TestSubmit_SucceedsFromDraft(t *testing.T) {
 
 func TestSubmit_RejectsFromPublished(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 10})
 	appErr, ok := err.(*apperror.AppError)
@@ -171,7 +240,7 @@ func TestSubmit_RejectsFromPublished(t *testing.T) {
 
 func TestReview_RejectsInvalidDecision(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusSubmitted})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: "MAYBE"})
 	appErr, ok := err.(*apperror.AppError)
@@ -182,7 +251,7 @@ func TestReview_RejectsInvalidDecision(t *testing.T) {
 
 func TestReview_RejectsWhenNotInReviewableStatus(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: constants.ReviewDecisionApproved})
 	appErr, ok := err.(*apperror.AppError)
@@ -193,7 +262,7 @@ func TestReview_RejectsWhenNotInReviewableStatus(t *testing.T) {
 
 func TestReview_ApprovedMovesToApprovedStatus(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusSubmitted})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	resp, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: constants.ReviewDecisionApproved})
 	if err != nil {
@@ -207,7 +276,7 @@ func TestReview_ApprovedMovesToApprovedStatus(t *testing.T) {
 func TestCreate_RejectsUnknownCategory(t *testing.T) {
 	repo := &fakeCampaignRepository{campaigns: map[int64]campaign_model.Campaign{}}
 	catRejecting := &categoryRejectingRepo{fakeCampaignRepository: repo}
-	svc := NewService(catRejecting, fakeOrgAccess{allow: true})
+	svc := NewService(catRejecting, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.Create(context.Background(), CallerScope{UserID: 1}, campaign_dto.CreateRequest{
 		Title: "Judul Campaign Baru", CategoryID: 999, Story: validStory, CoverImageUrl: "/uploads/cover.jpg",
@@ -231,7 +300,7 @@ func (r *categoryRejectingRepo) CategoryExists(ctx context.Context, categoryID i
 
 func TestUpdateBeneficiary_RejectsNonOwnerAsNotFound(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 99}, campaign_dto.UpdateBeneficiaryRequest{
 		BeneficiaryName: "A", BeneficiaryBankCode: "bca", BeneficiaryAccountNumber: "999", BeneficiaryAccountHolder: "A",
@@ -244,7 +313,7 @@ func TestUpdateBeneficiary_RejectsNonOwnerAsNotFound(t *testing.T) {
 
 func TestUpdateBeneficiary_OwnerSucceedsAndLocksForCoolingPeriod(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, fakeOrgAccess{allow: true})
+	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{})
 
 	before := time.Now()
 	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateBeneficiaryRequest{

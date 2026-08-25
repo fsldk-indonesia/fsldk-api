@@ -21,9 +21,8 @@ type Service interface {
 	Cancel(ctx context.Context, withdrawalID, requesterUserID int64) error
 
 	// RequestSecurityOtp membuat OTP challenge baru untuk withdrawal yang
-	// sedang SECURITY_CHECK — kode "dikirim" dengan dicatat ke log (dev-mode,
-	// pengiriman WhatsApp sungguhan menunggu queue Phase 8, lihat komentar
-	// implementasi).
+	// sedang SECURITY_CHECK dan mengirim kodenya via WhatsApp lewat job queue
+	// (§14.4 techspec — tidak pernah sinkron/langsung ke Kirimdev).
 	RequestSecurityOtp(ctx context.Context, withdrawalID, requesterUserID int64) error
 	// VerifySecurity menyelesaikan step SECURITY_CHECK → PENDING_APPROVAL.
 	// Withdrawal rutin (nominal wajar, bukan withdrawal pertama campaign)
@@ -47,6 +46,15 @@ type Service interface {
 
 	// ReconcileStaleProcessing mengembalikan withdrawal PROCESSING yang
 	// sudah melewati threshold waktu wajar — kandidat tinjauan manual admin.
-	// Belum disambungkan ke scheduler apa pun (Phase 8).
+	// Tidak ada auto-fix (§11.7 — status final hanya lewat callback gateway
+	// atau tindakan admin eksplisit); dipanggil periodik oleh
+	// RunReconcileScheduler untuk mencatatnya ke log operasional.
 	ReconcileStaleProcessing(ctx context.Context) ([]withdrawal_dto.Response, error)
+
+	// RunReconcileScheduler menjalankan ReconcileStaleProcessing secara
+	// periodik (goroutine time.Ticker, bukan lewat job queue — §13.4
+	// techspec, job `withdrawal.reconcile_check`) sampai proses berhenti.
+	// Dipanggil sekali sebagai `go withdrawalSvc.RunReconcileScheduler()`
+	// dari router.go.
+	RunReconcileScheduler()
 }

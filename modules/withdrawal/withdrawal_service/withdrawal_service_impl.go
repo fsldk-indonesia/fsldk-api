@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -20,13 +21,28 @@ import (
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_repository"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/jobqueue/jobqueue_model"
 	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/modules/withdrawal/withdrawal_dto"
 	"fsldk-api/modules/withdrawal/withdrawal_model"
 	"fsldk-api/modules/withdrawal/withdrawal_repository"
 	"fsldk-api/pkg/bisatopup"
+	"fsldk-api/pkg/kirimdev"
 )
+
+// JobEnqueuer adalah irisan sempit jobqueue_service.Service yang dibutuhkan
+// modul ini — pola sama donation_service/campaign_service.JobEnqueuer.
+type JobEnqueuer interface {
+	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+}
+
+// processingEtaText adalah estimasi waktu pencairan yang ditampilkan di
+// notifikasi "withdrawal_diproses" — techspec §14.3 mensyaratkan parameter
+// ini tapi tidak memberi angka pasti; nilai reuse dari konvensi umum proses
+// disbursement bank di Indonesia (1-3 hari kerja), dicatat sebagai asumsi.
+const processingEtaText = "1-3 hari kerja"
 
 // staleProcessingThreshold adalah ambang waktu withdrawal PROCESSING
 // dianggap butuh tinjauan manual admin (§11.7 — timeout tidak boleh
@@ -54,13 +70,65 @@ type ServiceImpl struct {
 	userRepo     user_repository.Repository
 	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
+	jobs         JobEnqueuer
 	db           *gorm.DB
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service withdrawal.
-func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, db: db, cfg: cfg}
+func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, db: db, cfg: cfg}
+}
+
+// notify mengirim satu notifikasi WhatsApp lewat job queue (async, tidak
+// pernah sinkron — §14.4 techspec). Kegagalan enqueue di-log, tidak pernah
+// menggagalkan alur utama — konsisten prinsip "notification is best-effort"
+// (pola sama donation_service.notify/campaign_service.notify).
+func (s *ServiceImpl) notify(ctx context.Context, toPhone, templateName string, params []string, withdrawalID int64) {
+	if strings.TrimSpace(toPhone) == "" {
+		return
+	}
+	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
+		Queue: jobqueue_model.QueueWhatsApp, JobType: jobqueue_model.JobTypeWhatsAppTemplate,
+		Payload:         kirimdev.TemplateMessage{ToPhone: toPhone, TemplateName: templateName, Params: params},
+		CorrelationType: jobqueue_model.CorrelationTypeWithdrawal, CorrelationID: withdrawalID,
+	}); err != nil {
+		log.Printf("[WITHDRAWAL] gagal enqueue notifikasi WA (%s) untuk withdrawalID=%d: %v", templateName, withdrawalID, err)
+	}
+}
+
+// notifyOwner mengirim notifikasi ke pengaju withdrawal — selalu owner
+// campaign (Request menolak requester yang bukan camp.OwnerUserID), jadi
+// cukup lookup langsung by userID tanpa perlu re-fetch campaign.
+func (s *ServiceImpl) notifyOwner(ctx context.Context, ownerUserID, withdrawalID int64, templateName string, params []string) {
+	owner, err := s.userRepo.FindByID(ctx, ownerUserID)
+	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
+		return
+	}
+	s.notify(ctx, owner.PhoneNumber.String, templateName, params, withdrawalID)
+}
+
+// formatRupiah memformat nominal Rupiah dengan pemisah ribuan titik untuk
+// parameter template WhatsApp (mis. "20.000") — duplikat kecil dari
+// donation_service.formatRupiah (tidak diekspor lintas modul by design,
+// _service tidak saling impor).
+func formatRupiah(amount float64) string {
+	s := strconv.FormatInt(int64(amount), 10)
+	neg := strings.HasPrefix(s, "-")
+	if neg {
+		s = s[1:]
+	}
+	var out []byte
+	for i, r := range []byte(s) {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out = append(out, '.')
+		}
+		out = append(out, r)
+	}
+	if neg {
+		return "-" + string(out)
+	}
+	return string(out)
 }
 
 func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID int64, req withdrawal_dto.CreateRequest) (withdrawal_dto.Response, error) {
@@ -161,6 +229,7 @@ func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID i
 	if err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("Gagal membuat permintaan penarikan")
 	}
+	s.notifyOwner(ctx, requesterUserID, id, "withdrawal_diajukan", []string{formatRupiah(float64(amount)), camp.Title})
 	return s.getResponse(ctx, id)
 }
 
@@ -225,12 +294,11 @@ func (s *ServiceImpl) RequestSecurityOtp(ctx context.Context, withdrawalID, requ
 		return apperror.Internal("")
 	}
 
-	// Pengiriman WhatsApp sungguhan menunggu infrastruktur queue (Phase 8,
-	// lihat 14-whatsapp.md §14.4 — tidak ada call site yang boleh memanggil
-	// Kirimdev langsung/sinkron). Untuk sekarang, kode dicatat ke log
-	// (dev-mode), mengikuti pola fallback pkg/mailer saat SMTP belum
-	// dikonfigurasi — BUKAN cara pengiriman produksi, ditutup Phase 8.
-	log.Printf("[OTP:DEV] withdrawalID=%d userID=%d code=%s (berlaku %s)", withdrawalID, requesterUserID, code, otpValidityDuration)
+	// Retrofit Phase 8: sebelumnya hanya log.Printf dev-mode (menunggu
+	// infrastruktur queue). Sekarang mengikuti 14-whatsapp.md §14.4 — tidak
+	// pernah memanggil Kirimdev langsung/sinkron, selalu lewat job queue.
+	s.notifyOwner(ctx, requesterUserID, withdrawalID, "kode_otp_kantong_amal",
+		[]string{code, fmt.Sprintf("%.0f menit", otpValidityDuration.Minutes())})
 	return nil
 }
 
@@ -316,6 +384,7 @@ func (s *ServiceImpl) Approve(ctx context.Context, withdrawalID, approverUserID 
 	if err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("")
 	}
+	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_disetujui", []string{formatRupiah(w.Amount)})
 	return s.getResponse(ctx, withdrawalID)
 }
 
@@ -332,7 +401,7 @@ func (s *ServiceImpl) Reject(ctx context.Context, withdrawalID, approverUserID i
 		return apperror.BadRequest("Alasan penolakan wajib diisi")
 	}
 
-	return dbretry.Do(func() error {
+	err = dbretry.Do(func() error {
 		return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			if err := s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusRejected, withdrawal_model.StatusUpdateParams{RejectionReason: &reason}); err != nil {
 				return err
@@ -340,6 +409,11 @@ func (s *ServiceImpl) Reject(ctx context.Context, withdrawalID, approverUserID i
 			return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
 		})
 	})
+	if err != nil {
+		return err
+	}
+	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_gagal", []string{formatRupiah(w.Amount), reason})
+	return nil
 }
 
 func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int64) (withdrawal_dto.Response, error) {
@@ -370,6 +444,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 				return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
 			})
 		})
+		s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_gagal", []string{formatRupiah(w.Amount), "Ditolak oleh gateway pencairan"})
 		return withdrawal_dto.Response{}, apperror.WithdrawalFailed("")
 	}
 
@@ -392,6 +467,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 	}); err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("")
 	}
+	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_diproses", []string{formatRupiah(w.Amount), processingEtaText})
 	if gerr != nil {
 		return withdrawal_dto.Response{}, apperror.ProviderError("Gateway tidak merespons, status penarikan menunggu rekonsiliasi")
 	}
@@ -418,7 +494,10 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req withdrawal_dto.Di
 }
 
 func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, statusID int, newStatus string) error {
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var notifyWithdrawal withdrawal_model.Withdrawal
+	shouldNotify := false
+
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		w, err := s.repo.FindByRefForUpdate(tx, reffID)
 		if err != nil {
 			return apperror.NotFound("Penarikan tidak ditemukan")
@@ -434,12 +513,34 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, stat
 			return err
 		}
 		if newStatus == constants.WithdrawalStatusFailed {
-			return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, w.WithdrawalID, w.Amount, "")
+			if err := s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, w.WithdrawalID, w.Amount, ""); err != nil {
+				return err
+			}
 		}
+		notifyWithdrawal, shouldNotify = w, true
 		// SUCCESS tidak butuh ledger entry baru — saldo sudah didebit sejak
 		// WITHDRAWAL_RESERVE di awal (§10.4).
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// Notifikasi dikirim SETELAH transaksi commit sungguhan — bukan di dalam
+	// closure di atas (yang bisa di-retry dbretry.Do saat deadlock), mencegah
+	// notifikasi ganda/phantom untuk transaksi yang di-rollback (pola sama
+	// donation_service.processCallbackTx).
+	if shouldNotify {
+		w := notifyWithdrawal
+		if newStatus == constants.WithdrawalStatusSuccess {
+			s.notifyOwner(ctx, w.RequestedByUserID, w.WithdrawalID, "withdrawal_berhasil",
+				[]string{formatRupiah(w.Amount), w.BeneficiaryBankCode + " " + w.BeneficiaryAccountNumber})
+		} else if newStatus == constants.WithdrawalStatusFailed {
+			s.notifyOwner(ctx, w.RequestedByUserID, w.WithdrawalID, "withdrawal_gagal",
+				[]string{formatRupiah(w.Amount), "Gagal diproses oleh bank/gateway pencairan"})
+		}
+	}
+	return nil
 }
 
 func (s *ServiceImpl) Inquiry(ctx context.Context, req withdrawal_dto.InquiryRequest) (withdrawal_dto.InquiryResponse, error) {
@@ -476,6 +577,35 @@ func (s *ServiceImpl) ReconcileStaleProcessing(ctx context.Context) ([]withdrawa
 		out = append(out, toResponse(w))
 	}
 	return out, nil
+}
+
+// reconcileCheckInterval — job terjadwal internal `withdrawal.reconcile_check`
+// (§13.4 techspec: goroutine time.Ticker langsung, bukan event-driven).
+// Interval disamakan dengan staleProcessingThreshold: tidak ada gunanya
+// mengecek lebih sering dari ambang waktu withdrawal baru dianggap stale.
+const reconcileCheckInterval = staleProcessingThreshold
+
+// RunReconcileScheduler menjalankan ReconcileStaleProcessing tiap
+// reconcileCheckInterval sampai proses berhenti — hanya mencatat kandidat
+// ke log (tidak ada auto-fix, lihat §11.7), pola sama
+// jobqueue_service.RunStuckSweeper.
+func (s *ServiceImpl) RunReconcileScheduler() {
+	ticker := time.NewTicker(reconcileCheckInterval)
+	defer ticker.Stop()
+	for range ticker.C {
+		rows, err := s.ReconcileStaleProcessing(context.Background())
+		if err != nil {
+			log.Printf("[WITHDRAWAL] reconcile_check: gagal ambil withdrawal stale: %v", err)
+			continue
+		}
+		if len(rows) > 0 {
+			ids := make([]int64, 0, len(rows))
+			for _, w := range rows {
+				ids = append(ids, w.WithdrawalID)
+			}
+			log.Printf("[WITHDRAWAL] reconcile_check: %d withdrawal PROCESSING melewati threshold, butuh tinjauan manual admin: %v", len(rows), ids)
+		}
+	}
 }
 
 func (s *ServiceImpl) MyList(ctx context.Context, requesterUserID int64, q dto.ListQuery) ([]withdrawal_dto.Response, int, error) {

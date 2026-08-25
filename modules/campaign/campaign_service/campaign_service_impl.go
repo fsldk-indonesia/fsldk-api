@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -15,7 +16,17 @@ import (
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
 	"fsldk-api/modules/campaign/campaign_repository"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/jobqueue/jobqueue_model"
+	"fsldk-api/modules/user/user_repository"
+	"fsldk-api/pkg/kirimdev"
 )
+
+// JobEnqueuer adalah irisan sempit jobqueue_service.Service yang dibutuhkan
+// modul ini (pola sama shortlinkrequest_service.JobEnqueuer).
+type JobEnqueuer interface {
+	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+}
 
 var sortColumns = map[string]string{
 	"createdDate":          "c.createdDate",
@@ -27,12 +38,39 @@ var sortColumns = map[string]string{
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
 	repo      campaign_repository.Repository
+	userRepo  user_repository.Repository
 	orgAccess OrgAccessChecker
+	jobs      JobEnqueuer
 }
 
 // NewService membuat Service campaign.
-func NewService(repo campaign_repository.Repository, orgAccess OrgAccessChecker) Service {
-	return &ServiceImpl{repo: repo, orgAccess: orgAccess}
+func NewService(repo campaign_repository.Repository, userRepo user_repository.Repository, orgAccess OrgAccessChecker, jobs JobEnqueuer) Service {
+	return &ServiceImpl{repo: repo, userRepo: userRepo, orgAccess: orgAccess, jobs: jobs}
+}
+
+// notify mengirim satu notifikasi WhatsApp lewat job queue (async, best-effort
+// — kegagalan enqueue di-log, tidak pernah menggagalkan alur utama).
+func (s *ServiceImpl) notify(ctx context.Context, toPhone, templateName string, params []string, campaignID int64) {
+	if strings.TrimSpace(toPhone) == "" {
+		return
+	}
+	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
+		Queue: jobqueue_model.QueueWhatsApp, JobType: jobqueue_model.JobTypeWhatsAppTemplate,
+		Payload:         kirimdev.TemplateMessage{ToPhone: toPhone, TemplateName: templateName, Params: params},
+		CorrelationType: jobqueue_model.CorrelationTypeCampaign, CorrelationID: campaignID,
+	}); err != nil {
+		log.Printf("[CAMPAIGN] gagal enqueue notifikasi WA (%s) untuk campaignID=%d: %v", templateName, campaignID, err)
+	}
+}
+
+// notifyOwner mengirim notifikasi ke pemilik campaign, mengambil nomor
+// WhatsApp-nya dari ms_user — no-op diam-diam bila owner belum punya nomor.
+func (s *ServiceImpl) notifyOwner(ctx context.Context, camp campaign_model.Campaign, templateName string, params []string) {
+	owner, err := s.userRepo.FindByID(ctx, camp.OwnerUserID)
+	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
+		return
+	}
+	s.notify(ctx, owner.PhoneNumber.String, templateName, params, camp.CampaignID)
 }
 
 // ---------- Public ----------
@@ -232,7 +270,23 @@ func (s *ServiceImpl) UpdateBeneficiary(ctx context.Context, id int64, caller Ca
 	}); err != nil {
 		return campaign_dto.DetailResponse{}, apperror.Internal("")
 	}
+
+	// Security alert — pemilik selalu diberi tahu setiap kali rekening
+	// diganti, terlepas siapa yang melakukannya (deteksi dini bila akun
+	// diambil alih & rekening diganti tanpa sepengetahuan pemilik asli).
+	masked := maskAccountNumber(req.BeneficiaryAccountNumber)
+	s.notifyOwner(ctx, camp, "rekening_diubah", []string{masked, time.Now().Format("02 Jan 2006 15:04")})
+
 	return s.getDetail(ctx, id)
+}
+
+// maskAccountNumber menyisakan 4 digit terakhir untuk notifikasi keamanan
+// (mis. "****7890") — nomor rekening penuh tidak perlu dikirim ulang lewat WA.
+func maskAccountNumber(accountNumber string) string {
+	if len(accountNumber) <= 4 {
+		return accountNumber
+	}
+	return "****" + accountNumber[len(accountNumber)-4:]
 }
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error) {
@@ -303,6 +357,16 @@ func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, 
 	if err := s.repo.UpdateStatus(ctx, id, toStatus, nullStringFrom(req.Note), caller.UserID); err != nil {
 		return campaign_dto.DetailResponse{}, apperror.Internal("")
 	}
+
+	switch req.Decision {
+	case constants.ReviewDecisionApproved:
+		s.notifyOwner(ctx, camp, "campaign_disetujui", []string{camp.Title})
+	case constants.ReviewDecisionRevisionRequested:
+		s.notifyOwner(ctx, camp, "campaign_revisi", []string{camp.Title, req.Note})
+	case constants.ReviewDecisionRejected:
+		s.notifyOwner(ctx, camp, "campaign_ditolak", []string{camp.Title, req.Note})
+	}
+
 	return s.getDetail(ctx, id)
 }
 

@@ -15,6 +15,7 @@ import (
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/modules/wallet/wallet_dto"
@@ -323,6 +324,15 @@ func successfulInquiry() bisatopup.InquiryBankResult {
 	return bisatopup.InquiryBankResult{Status: "SUCCESS", AccountHolder: "Budi", Fee: "3000"}
 }
 
+// fakeJobEnqueuer adalah implementasi JobEnqueuer no-op — notifikasi WA
+// tidak relevan diverifikasi di unit test business-logic ini (dicek terpisah
+// lewat integration smoke test), cukup memastikan pemanggilnya tidak panic.
+type fakeJobEnqueuer struct{}
+
+func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error) {
+	return 0, nil
+}
+
 func testConfig() config.AppConfig { return config.AppConfig{} }
 
 // -- Request() tests: only branches that return before opening a real DB
@@ -332,7 +342,7 @@ func testConfig() config.AppConfig { return config.AppConfig{} }
 
 func TestRequest_RejectsNonOwner(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{1: ownedCampaign(1, 10)}}
-	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Request(context.Background(), 1, 99, withdrawal_dto.CreateRequest{Amount: 100000})
 	appErr, ok := err.(*apperror.AppError)
@@ -345,7 +355,7 @@ func TestRequest_RejectsWhenActiveWithdrawalExists(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{1: ownedCampaign(1, 10)}}
 	repo := newFakeWithdrawalRepo()
 	repo.activeCount = 1
-	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Request(context.Background(), 1, 10, withdrawal_dto.CreateRequest{Amount: 100000})
 	appErr, ok := err.(*apperror.AppError)
@@ -356,7 +366,7 @@ func TestRequest_RejectsWhenActiveWithdrawalExists(t *testing.T) {
 
 func TestRequest_RejectsInvalidBeneficiary(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{1: ownedCampaign(1, 10)}}
-	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{inquiryErr: bisatopup.ErrGatewayRejected}, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{inquiryErr: bisatopup.ErrGatewayRejected}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Request(context.Background(), 1, 10, withdrawal_dto.CreateRequest{Amount: 100000})
 	appErr, ok := err.(*apperror.AppError)
@@ -368,7 +378,7 @@ func TestRequest_RejectsInvalidBeneficiary(t *testing.T) {
 func TestRequest_RejectsWhenNetAmountNotPositive(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{1: ownedCampaign(1, 10)}}
 	gw := &fakeGateway{inquiryResult: bisatopup.InquiryBankResult{Status: "SUCCESS", Fee: "999999"}}
-	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, gw, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, gw, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Request(context.Background(), 1, 10, withdrawal_dto.CreateRequest{Amount: 50000})
 	appErr, ok := err.(*apperror.AppError)
@@ -382,7 +392,7 @@ func TestRequest_RejectsWhenNetAmountNotPositive(t *testing.T) {
 func TestApprove_RejectsWrongStatus(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, Status: constants.WithdrawalStatusSecurityCheck, RequestedByUserID: 10}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Approve(context.Background(), 1, 20)
 	appErr, ok := err.(*apperror.AppError)
@@ -394,7 +404,7 @@ func TestApprove_RejectsWrongStatus(t *testing.T) {
 func TestApprove_RejectsSameActorAsRequester(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, Status: constants.WithdrawalStatusPendingApproval, RequestedByUserID: 10}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Approve(context.Background(), 1, 10)
 	appErr, ok := err.(*apperror.AppError)
@@ -408,7 +418,7 @@ func TestApprove_RejectsSameActorAsRequester(t *testing.T) {
 func TestReject_RequiresReason(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, Status: constants.WithdrawalStatusPendingApproval}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.Reject(context.Background(), 1, 20, "   ")
 	appErr, ok := err.(*apperror.AppError)
@@ -420,7 +430,7 @@ func TestReject_RequiresReason(t *testing.T) {
 func TestReject_RejectsWrongStatus(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, Status: constants.WithdrawalStatusApproved}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.Reject(context.Background(), 1, 20, "alasan valid")
 	appErr, ok := err.(*apperror.AppError)
@@ -434,7 +444,7 @@ func TestReject_RejectsWrongStatus(t *testing.T) {
 func TestCancel_RejectsNonRequester(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusSecurityCheck}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.Cancel(context.Background(), 1, 99)
 	appErr, ok := err.(*apperror.AppError)
@@ -446,7 +456,7 @@ func TestCancel_RejectsNonRequester(t *testing.T) {
 func TestCancel_RejectsWrongStatus(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusProcessing}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.Cancel(context.Background(), 1, 10)
 	appErr, ok := err.(*apperror.AppError)
@@ -460,7 +470,7 @@ func TestCancel_RejectsWrongStatus(t *testing.T) {
 func TestProcess_RejectsWrongStatus(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, Status: constants.WithdrawalStatusPendingApproval}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Process(context.Background(), 1, 20)
 	appErr, ok := err.(*apperror.AppError)
@@ -473,7 +483,7 @@ func TestProcess_RejectsWrongStatus(t *testing.T) {
 
 func TestInquiry_ReturnsAccountHolderAndFee(t *testing.T) {
 	gw := &fakeGateway{inquiryResult: successfulInquiry()}
-	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, &fakeJobEnqueuer{}, nil, testConfig())
 
 	resp, err := svc.Inquiry(context.Background(), withdrawal_dto.InquiryRequest{BankCode: "bca", AccountNumber: "12345"})
 	if err != nil {
@@ -486,7 +496,7 @@ func TestInquiry_ReturnsAccountHolderAndFee(t *testing.T) {
 
 func TestInquiry_GatewayRejectionMapsToUnprocessable(t *testing.T) {
 	gw := &fakeGateway{inquiryErr: bisatopup.ErrGatewayRejected}
-	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Inquiry(context.Background(), withdrawal_dto.InquiryRequest{BankCode: "bca", AccountNumber: "12345"})
 	appErr, ok := err.(*apperror.AppError)
@@ -497,7 +507,7 @@ func TestInquiry_GatewayRejectionMapsToUnprocessable(t *testing.T) {
 
 func TestListBanks_ReturnsMappedItems(t *testing.T) {
 	gw := &fakeGateway{bankList: []bisatopup.BankListItem{{BankCode: "bca", Name: "BCA", Fee: 3000, Status: "OPERATIONAL"}}}
-	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, gw, &fakeJobEnqueuer{}, nil, testConfig())
 
 	banks, err := svc.ListBanks(context.Background())
 	if err != nil {
@@ -513,7 +523,7 @@ func TestListBanks_ReturnsMappedItems(t *testing.T) {
 func TestReconcileStaleProcessing_ReturnsStaleRows(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.staleRows = []withdrawal_model.Withdrawal{{WithdrawalID: 1, Status: constants.WithdrawalStatusProcessing}}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	rows, err := svc.ReconcileStaleProcessing(context.Background())
 	if err != nil || len(rows) != 1 {
@@ -624,7 +634,7 @@ func TestHashOtpCode_DeterministicAndDistinct(t *testing.T) {
 func TestRequestSecurityOtp_RejectsNonRequester(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusSecurityCheck}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.RequestSecurityOtp(context.Background(), 1, 99)
 	appErr, ok := err.(*apperror.AppError)
@@ -636,7 +646,7 @@ func TestRequestSecurityOtp_RejectsNonRequester(t *testing.T) {
 func TestRequestSecurityOtp_RejectsWrongStatus(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusPendingApproval}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	err := svc.RequestSecurityOtp(context.Background(), 1, 10)
 	appErr, ok := err.(*apperror.AppError)
@@ -648,7 +658,7 @@ func TestRequestSecurityOtp_RejectsWrongStatus(t *testing.T) {
 func TestRequestSecurityOtp_CreatesChallenge(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusSecurityCheck}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	if err := svc.RequestSecurityOtp(context.Background(), 1, 10); err != nil {
 		t.Fatalf("expected success, got error: %v", err)
@@ -672,7 +682,7 @@ func hashedPassword(t *testing.T, plain string) string {
 func TestVerifySecurity_RejectsNonRequester(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusSecurityCheck}
-	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 99, withdrawal_dto.SecurityVerifyRequest{Password: "x"})
 	appErr, ok := err.(*apperror.AppError)
@@ -685,7 +695,7 @@ func TestVerifySecurity_RejectsWrongPassword(t *testing.T) {
 	repo := newFakeWithdrawalRepo()
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, CampaignID: 1, Amount: 100000, Status: constants.WithdrawalStatusSecurityCheck}
 	userRepo := &fakeUserRepository{byID: map[int64]user_model.User{10: {UserID: 10, Password: sql.NullString{String: hashedPassword(t, "correct-password"), Valid: true}}}}
-	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 10, withdrawal_dto.SecurityVerifyRequest{Password: "wrong-password"})
 	appErr, ok := err.(*apperror.AppError)
@@ -699,7 +709,7 @@ func TestVerifySecurity_RiskyWithoutOtpCodeRequiresOtp(t *testing.T) {
 	// Amount di atas ambang risiko (Rp10 juta) — memicu wajib OTP.
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, CampaignID: 1, Amount: 15_000_000, Status: constants.WithdrawalStatusSecurityCheck}
 	userRepo := &fakeUserRepository{byID: map[int64]user_model.User{10: {UserID: 10, Password: sql.NullString{String: hashedPassword(t, "correct-password"), Valid: true}}}}
-	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 10, withdrawal_dto.SecurityVerifyRequest{Password: "correct-password"})
 	appErr, ok := err.(*apperror.AppError)
@@ -714,7 +724,7 @@ func TestVerifySecurity_RiskyWithWrongOtpCodeIncrementsAttempt(t *testing.T) {
 	repo.otpChallenges[1] = withdrawal_model.OtpChallenge{ChallengeID: 1, WithdrawalID: 1, CodeHash: hashOtpCode("111111"), ExpiredDate: time.Now().Add(5 * time.Minute)}
 	repo.otpNextID = 1
 	userRepo := &fakeUserRepository{byID: map[int64]user_model.User{10: {UserID: 10, Password: sql.NullString{String: hashedPassword(t, "correct-password"), Valid: true}}}}
-	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 10, withdrawal_dto.SecurityVerifyRequest{Password: "correct-password", OtpCode: "999999"})
 	appErr, ok := err.(*apperror.AppError)
@@ -732,7 +742,7 @@ func TestVerifySecurity_RejectsAfterMaxOtpAttempts(t *testing.T) {
 	repo.otpChallenges[1] = withdrawal_model.OtpChallenge{ChallengeID: 1, WithdrawalID: 1, CodeHash: hashOtpCode("111111"), ExpiredDate: time.Now().Add(5 * time.Minute), AttemptCount: maxOtpAttempts}
 	repo.otpNextID = 1
 	userRepo := &fakeUserRepository{byID: map[int64]user_model.User{10: {UserID: 10, Password: sql.NullString{String: hashedPassword(t, "correct-password"), Valid: true}}}}
-	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 10, withdrawal_dto.SecurityVerifyRequest{Password: "correct-password", OtpCode: "111111"})
 	appErr, ok := err.(*apperror.AppError)
@@ -748,7 +758,7 @@ func TestVerifySecurity_NoPasswordAccountTreatedAsRisky(t *testing.T) {
 	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, CampaignID: 1, Amount: 100000, Status: constants.WithdrawalStatusSecurityCheck}
 	repo.successCount = 1
 	userRepo := &fakeUserRepository{byID: map[int64]user_model.User{10: {UserID: 10}}} // Password.Valid = false
-	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(repo, &fakeCampaignRepository{}, userRepo, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.VerifySecurity(context.Background(), 1, 10, withdrawal_dto.SecurityVerifyRequest{Password: "anything"})
 	appErr, ok := err.(*apperror.AppError)
@@ -798,7 +808,7 @@ func TestRequest_RejectsWhenBeneficiaryStillLocked(t *testing.T) {
 	camp := ownedCampaign(1, 10)
 	camp.BeneficiaryLockedUntil = sql.NullTime{Time: time.Now().Add(1 * time.Hour), Valid: true}
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{1: camp}}
-	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, nil, testConfig())
+	svc := NewService(newFakeWithdrawalRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
 
 	_, err := svc.Request(context.Background(), 1, 10, withdrawal_dto.CreateRequest{Amount: 100000})
 	appErr, ok := err.(*apperror.AppError)

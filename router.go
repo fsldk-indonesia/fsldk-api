@@ -170,10 +170,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
-	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc)
 	walletSvc := wallet_service.NewService(walletRepo, campaignRepo, db)
-	donationSvc := donation_service.NewService(donationRepo, campaignRepo, walletSvc, bisatopupClient, db, cfg)
-	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, db, cfg)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -199,6 +196,19 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 		go jobqueueSvc.RunWorker(i)
 	}
 	go jobqueueSvc.RunStuckSweeper()
+
+	// campaignSvc/donationSvc/withdrawalSvc di-inject jobqueueSvc sebagai
+	// JobEnqueuer untuk notifikasi WhatsApp async (Phase 8, §14 techspec) —
+	// makanya baru dibuat di sini, setelah jobqueueSvc siap, bukan lagi di
+	// blok service awal.
+	campaignSvc := campaign_service.NewService(campaignRepo, userRepo, orgSvc, jobqueueSvc)
+	donationSvc := donation_service.NewService(donationRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, db, cfg)
+	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, db, cfg)
+	// Job terjadwal internal (§13.4 techspec) — goroutine time.Ticker
+	// langsung, bukan lewat job queue: donation.expire_check,
+	// withdrawal.reconcile_check.
+	go donationSvc.RunExpireScheduler()
+	go withdrawalSvc.RunReconcileScheduler()
 
 	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
