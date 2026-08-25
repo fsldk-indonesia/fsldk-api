@@ -14,6 +14,7 @@ import (
 // (donorUserID), tanpa mewajibkan login (donasi tamu tetap didukung).
 func RegisterPublicRoutes(pub *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
 	pub.POST("/campaigns/:slug/donate", mw.OptionalAuth(), middlewares.RateLimit(30, 5), h.Create)
+	pub.GET("/campaigns/:slug/donations", h.PublicRecentDonations)
 	pub.GET("/donations/:publicRef", h.Detail)
 	pub.GET("/donations/:publicRef/status", middlewares.RateLimit(60, 10), h.Status)
 }

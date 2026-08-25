@@ -415,6 +415,34 @@ func (s *ServiceImpl) Status(ctx context.Context, publicRef string) (donation_dt
 	return donation_dto.StatusResponse{PaymentStatus: d.PaymentStatus}, nil
 }
 
+func (s *ServiceImpl) PublicRecentDonations(ctx context.Context, slug string, limit int) ([]donation_dto.PublicDonationItem, error) {
+	camp, err := s.campaignRepo.FindBySlug(ctx, slug)
+	if err != nil || camp.Status != constants.CampaignStatusPublished {
+		return nil, apperror.NotFound("Campaign tidak ditemukan")
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	rows, _, err := s.repo.List(ctx, donation_dto.ListFilter{
+		CampaignID: camp.CampaignID, Status: constants.DonationStatusPaid,
+		Limit: limit, OrderBy: "d.createdDate DESC",
+	})
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	out := make([]donation_dto.PublicDonationItem, 0, len(rows))
+	for _, d := range rows {
+		name := d.DonorName
+		if d.IsAnonymous {
+			name = "Donatur (anonim)"
+		}
+		out = append(out, donation_dto.PublicDonationItem{
+			DonorName: name, IsAnonymous: d.IsAnonymous, Amount: d.Amount, Message: d.Message.String, CreatedDate: d.CreatedDate,
+		})
+	}
+	return out, nil
+}
+
 func (s *ServiceImpl) MyList(ctx context.Context, donorUserID int64, q dto.ListQuery) ([]donation_dto.Response, int, error) {
 	uid := donorUserID
 	return s.list(ctx, donation_dto.ListFilter{

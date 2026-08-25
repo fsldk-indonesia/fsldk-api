@@ -82,6 +82,16 @@ func (h *HandlerImpl) Status(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+func (h *HandlerImpl) PublicRecentDonations(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	data, err := h.svc.PublicRecentDonations(c.Request.Context(), c.Param("slug"), limit)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) MyList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	data, total, err := h.svc.MyList(c.Request.Context(), appctx.UserID(c), q)

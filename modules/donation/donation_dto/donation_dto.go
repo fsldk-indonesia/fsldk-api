@@ -69,3 +69,14 @@ type ListFilter struct {
 	Offset      int
 	OrderBy     string
 }
+
+// PublicDonationItem adalah satu baris "donatur terbaru" pada halaman
+// campaign detail publik — hanya field yang aman ditampilkan ke pengunjung
+// (donorName sudah dimasking bila isAnonymous, tanpa email/telepon/fee).
+type PublicDonationItem struct {
+	DonorName   string    `json:"donorName"`
+	IsAnonymous bool      `json:"isAnonymous"`
+	Amount      float64   `json:"amount"`
+	Message     string    `json:"message,omitempty"`
+	CreatedDate time.Time `json:"createdDate"`
+}

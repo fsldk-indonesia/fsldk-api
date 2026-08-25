@@ -17,6 +17,10 @@ type Service interface {
 	Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error)
 	GetByPublicRef(ctx context.Context, publicRef string) (donation_dto.Response, error)
 	Status(ctx context.Context, publicRef string) (donation_dto.StatusResponse, error)
+	// PublicRecentDonations mengembalikan donasi PAID terbaru untuk campaign
+	// PUBLISHED (identifikasi via slug) — dipakai daftar "donatur terbaru" di
+	// halaman detail campaign publik, nama donor sudah dimasking bila anonim.
+	PublicRecentDonations(ctx context.Context, slug string, limit int) ([]donation_dto.PublicDonationItem, error)
 	MyList(ctx context.Context, donorUserID int64, q dto.ListQuery) ([]donation_dto.Response, int, error)
 	CMSList(ctx context.Context, q dto.ListQuery, campaignID int64, status string) ([]donation_dto.Response, int, error)
 
