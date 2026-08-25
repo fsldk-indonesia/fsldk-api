@@ -20,8 +20,15 @@ import (
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/modules/wallet/wallet_dto"
+	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/bisatopup"
 )
+
+// fakeFinanceAuditor adalah implementasi FinanceAuditor no-op — isi audit
+// trail tidak relevan diverifikasi di unit test business-logic ini.
+type fakeFinanceAuditor struct{}
+
+func (f *fakeFinanceAuditor) LogFinance(ctx context.Context, e auditlog.Entry) {}
 
 // fakeUserRepository adalah implementasi user_repository.Repository no-op —
 // tidak ada skenario uji di file ini yang menegaskan isi notifikasi WA ke
@@ -319,16 +326,18 @@ func (f *fakeDonationRepository) FindByExternalTransactionIDForUpdate(tx *gorm.D
 	return donation_model.Donation{}, donation_repository.ErrNotFound
 }
 
-func (f *fakeDonationRepository) ExpireStalePending(ctx context.Context) (int64, error) {
+func (f *fakeDonationRepository) ExpireStalePending(ctx context.Context) (int64, []int64, error) {
 	var n int64
+	var ids []int64
 	for id, d := range f.byID {
 		if d.PaymentStatus == constants.DonationStatusPending {
 			d.PaymentStatus = constants.DonationStatusExpired
 			f.byID[id] = d
 			n++
+			ids = append(ids, id)
 		}
 	}
-	return n, nil
+	return n, ids, nil
 }
 
 func (f *fakeDonationRepository) UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error {
@@ -357,7 +366,7 @@ func TestCreate_RejectsWhenCampaignNotPublished(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{
 		"draft-campaign": {CampaignID: 1, Slug: "draft-campaign", Status: constants.CampaignStatusDraft},
 	}}
-	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "draft-campaign", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -372,7 +381,7 @@ func TestCreate_RejectsAnonymousWhenCampaignDisallows(t *testing.T) {
 	camp := publishedCampaign(1, "c1")
 	camp.IsAnonymousAllowed = false
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": camp}}
-	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812", IsAnonymous: true,
@@ -385,7 +394,7 @@ func TestCreate_RejectsAnonymousWhenCampaignDisallows(t *testing.T) {
 
 func TestCreate_ComputesGoldenFeeFormula(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
-	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	resp, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -410,7 +419,7 @@ func TestCreate_ComputesGoldenFeeFormula(t *testing.T) {
 func TestCreate_DuplicateIdempotencyKeyReturnsExistingDonation(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
 	repo := newFakeDonationRepo()
-	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	req := donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -435,7 +444,7 @@ func TestCreate_DuplicateIdempotencyKeyReturnsExistingDonation(t *testing.T) {
 func TestCreate_GatewayRejectionMapsToPaymentFailed(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
 	repo := newFakeDonationRepo()
-	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{createErr: bisatopup.ErrGatewayRejected}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{createErr: bisatopup.ErrGatewayRejected}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -452,7 +461,7 @@ func TestCreate_GatewayRejectionMapsToPaymentFailed(t *testing.T) {
 func TestCreate_GatewayNetworkFailureMapsToProviderError(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
 	repo := newFakeDonationRepo()
-	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{createErr: errors.New("connection reset")}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{createErr: errors.New("connection reset")}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	_, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -468,7 +477,7 @@ func TestCreate_GatewayNetworkFailureMapsToProviderError(t *testing.T) {
 
 func TestCreate_StoresGatewayQrResultOnSuccess(t *testing.T) {
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{"c1": publishedCampaign(1, "c1")}}
-	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(newFakeDonationRepo(), campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	resp, err := svc.Create(context.Background(), "c1", nil, donation_dto.CreateRequest{
 		Amount: 20000, DonorName: "Budi", DonorEmail: "budi@example.com", DonorPhone: "0812",
@@ -540,7 +549,7 @@ func TestExpireStale_OnlyExpiresPendingDonations(t *testing.T) {
 	repo.byID[3] = donation_model.Donation{DonationID: 3, PaymentStatus: constants.DonationStatusPaid}
 
 	campRepo := &fakeCampaignRepository{bySlug: map[string]campaign_model.Campaign{}}
-	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, nil, testConfig())
+	svc := NewService(repo, campRepo, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
 
 	n, err := svc.ExpireStale(context.Background())
 	if err != nil {

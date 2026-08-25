@@ -71,6 +71,11 @@ type AppConfig struct {
 	BisatopupEnforceCallbackSignatureCrowdfunding   bool    `mapstructure:"BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING"`
 	BisatopupAllowedIPsCrowdfunding                 string  `mapstructure:"BISATOPUP_ALLOWED_IPS_CROWDFUNDING"`
 	BisatopupCallbackDisbursementSecretCrowdfunding string  `mapstructure:"BISATOPUP_CALLBACK_DISBURSEMENT_SECRET_CROWDFUNDING"`
+	// BisatopupSettlementMinutesCrowdfunding menjelaskan gap wajar antara
+	// ledger dan wallet gateway untuk donasi yang baru saja PAID (belum
+	// settle penuh) saat rekonsiliasi §15.1/§15.5 — reuse atribusi
+	// "Settling..." ldksyahid-app.
+	BisatopupSettlementMinutesCrowdfunding int `mapstructure:"BISATOPUP_SETTLEMENT_MINUTES_CROWDFUNDING"`
 
 	KirimdevAPIKey             string `mapstructure:"KIRIMDEV_API_KEY"`
 	KirimdevPhoneNumberID      string `mapstructure:"KIRIMDEV_PHONE_NUMBER_ID"`
@@ -228,6 +233,7 @@ func setDefaults() {
 	viper.SetDefault("BISATOPUP_BASE_URL_DEV_CROWDFUNDING", "https://api-sandbox.bisabiller.com")
 	viper.SetDefault("BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING", 33)
 	viper.SetDefault("BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING", true)
+	viper.SetDefault("BISATOPUP_SETTLEMENT_MINUTES_CROWDFUNDING", 15)
 
 	viper.SetDefault("KIRIMDEV_BASE_URL", "https://api.kirimdev.com/v1")
 	viper.SetDefault("KIRIMDEV_TEMPLATE_LANGUAGE", "id")

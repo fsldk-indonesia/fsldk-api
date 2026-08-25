@@ -26,6 +26,7 @@ import (
 	"fsldk-api/modules/jobqueue/jobqueue_model"
 	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
+	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/bisatopup"
 	"fsldk-api/pkg/kirimdev"
 )
@@ -35,6 +36,13 @@ import (
 // shortlinkrequest_service.JobEnqueuer).
 type JobEnqueuer interface {
 	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+}
+
+// FinanceAuditor adalah irisan sempit auditlog.Logger yang dibutuhkan modul
+// ini — pola sama JobEnqueuer, memenuhi kontrak dengan *auditlog.Logger
+// sungguhan sekaligus memudahkan fake di unit test tanpa perlu *gorm.DB.
+type FinanceAuditor interface {
+	LogFinance(ctx context.Context, e auditlog.Entry)
 }
 
 var sortColumns = map[string]string{
@@ -50,13 +58,14 @@ type ServiceImpl struct {
 	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
 	jobs         JobEnqueuer
+	audit        FinanceAuditor
 	db           *gorm.DB // hanya dipakai ProcessCallback, yang membuka transaksinya sendiri
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service donation.
-func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, db: db, cfg: cfg}
+func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, audit FinanceAuditor, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, audit: audit, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error) {
@@ -151,6 +160,14 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	s.notify(ctx, req.DonorPhone, "invoice_donasi_kantong_amal",
 		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, qris.PaymentLinks},
 		id)
+	var actorID int64
+	if donorUserID != nil {
+		actorID = *donorUserID
+	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: actorID, Action: "donation.created", Entity: "donation", EntityID: id,
+		After: map[string]interface{}{"campaignID": camp.CampaignID, "amount": float64(amount), "isAnonymous": req.IsAnonymous},
+	})
 
 	return s.getResponse(ctx, id)
 }
@@ -203,6 +220,10 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 	if s.cfg.BisatopupEnforceCallbackSignatureCrowdfunding &&
 		!bisatopup.VerifySignature(s.cfg.BisatopupUsernameCrowdfunding, req.TransactionID, req.Signature) {
 		log.Printf("[BISATOPUP:CALLBACK] signature mismatch, transactionID=%s", req.TransactionID)
+		s.audit.LogFinance(ctx, auditlog.Entry{
+			Action: "donation.callback.signature_invalid", Entity: "donation",
+			Metadata: map[string]string{"transactionID": req.TransactionID},
+		})
 		return apperror.Unauthorized("Signature callback tidak valid")
 	}
 
@@ -227,15 +248,20 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.Call
 func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.CallbackRequest, newStatus string, actualTotal float64) error {
 	var notifyDonation donation_model.Donation
 	shouldNotifyPaid := false
+	var auditAction string
+	var auditDonationID int64
+	var auditBefore, auditAfter string
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		d, ferr := s.repo.FindByExternalTransactionIDForUpdate(tx, req.TransactionID)
 		if ferr != nil {
 			return apperror.NotFound("Donasi tidak ditemukan")
 		}
+		auditDonationID, auditBefore = d.DonationID, d.PaymentStatus
 		if isFinalDonationStatus(d.PaymentStatus) {
 			// Idempotent ack — status final tidak pernah ditimpa ulang
 			// (mencegah duplicate/out-of-order callback men-downgrade status).
+			auditAction, auditAfter = "donation.callback.duplicate", d.PaymentStatus
 			return nil
 		}
 
@@ -249,14 +275,27 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.Ca
 			// dikreditkan ke saldo campaign.
 			if diff := math.Abs(actualTotal - d.TotalAmount); diff > 1 {
 				params.PaymentStatus = constants.DonationStatusAmountMismatch
+				auditAction = "donation.callback.amount_mismatch"
 			} else {
 				total := actualTotal
 				fee := float64(bisatopup.CalculateAdminFee(roundRupiah(actualTotal), s.cfg.BisatopupQrisMdrPercentCrowdfunding))
 				params.TotalAmount = &total
 				params.AdminFee = &fee
 				credit = true
+				// donation.late_callback_recovered: donasi sudah sempat
+				// di-EXPIRE scheduler tapi callback PAID terlambat masuk dan
+				// tetap diproses (isFinalDonationStatus() sengaja tidak
+				// menganggap EXPIRED final — lihat komentarnya di bawah).
+				if d.PaymentStatus == constants.DonationStatusExpired {
+					auditAction = "donation.late_callback_recovered"
+				} else {
+					auditAction = "donation.callback.processed"
+				}
 			}
+		} else {
+			auditAction = "donation.callback.processed"
 		}
+		auditAfter = params.PaymentStatus
 		if err := s.repo.UpdateCallbackStatus(tx, d.DonationID, params); err != nil {
 			return err
 		}
@@ -273,6 +312,18 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.Ca
 	})
 	if err != nil {
 		return err
+	}
+
+	// Audit ditulis SETELAH transaksi commit sungguhan — pkg/auditlog tidak
+	// ikut serta dalam transaksi SQL (LogFinance pakai koneksinya sendiri),
+	// jadi pola sama notifikasi di atas: tulis di sini, bukan di dalam
+	// closure yang bisa di-retry dbretry.Do, mencegah entri audit phantom
+	// untuk transaksi yang di-rollback.
+	if auditAction != "" {
+		s.audit.LogFinance(ctx, auditlog.Entry{
+			Action: auditAction, Entity: "donation", EntityID: auditDonationID,
+			Before: map[string]string{"paymentStatus": auditBefore}, After: map[string]string{"paymentStatus": auditAfter},
+		})
 	}
 
 	// Notifikasi dikirim SETELAH transaksi commit sungguhan — bukan di
@@ -311,9 +362,15 @@ func (s *ServiceImpl) notifyDonationPaid(ctx context.Context, d donation_model.D
 // ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
 // expiredDate. Tidak ada ledger entry yang dibuat (belum pernah PAID).
 func (s *ServiceImpl) ExpireStale(ctx context.Context) (int64, error) {
-	n, err := s.repo.ExpireStalePending(ctx)
+	n, sampleIDs, err := s.repo.ExpireStalePending(ctx)
 	if err != nil {
 		return 0, apperror.Internal("")
+	}
+	if n > 0 {
+		s.audit.LogFinance(ctx, auditlog.Entry{
+			Action: "donation.auto_expired", Entity: "donation",
+			Metadata: map[string]interface{}{"count": n, "sampleDonationIDs": sampleIDs},
+		})
 	}
 	return n, nil
 }

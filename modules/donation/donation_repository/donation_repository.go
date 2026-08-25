@@ -43,6 +43,8 @@ type Repository interface {
 	UpdateCallbackStatus(tx *gorm.DB, donationID int64, p donation_model.CallbackUpdateParams) error
 
 	// ExpireStalePending menandai EXPIRED seluruh donasi PENDING yang sudah
-	// melewati expiredDate. Mengembalikan jumlah baris yang di-expire.
-	ExpireStalePending(ctx context.Context) (int64, error)
+	// melewati expiredDate. Mengembalikan jumlah baris yang di-expire beserta
+	// hingga 10 ID pertama (untuk audit donation.auto_expired, §16.1 techspec
+	// — reuse pola FACT auto_expire_qris ldksyahid-app).
+	ExpireStalePending(ctx context.Context) (count int64, sampleIDs []int64, err error)
 }

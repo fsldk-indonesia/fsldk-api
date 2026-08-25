@@ -70,7 +70,7 @@ func TestGetBalanceForOwner_RejectsNonOwnerWithNotFound(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{
 		1: {CampaignID: 1, OwnerUserID: 10},
 	}}
-	svc := NewService(&fakeRepository{balance: 50000}, campRepo, nil)
+	svc := NewService(&fakeRepository{balance: 50000}, campRepo, nil, nil)
 
 	_, err := svc.GetBalanceForOwner(context.Background(), 1, 99)
 	appErr, ok := err.(*apperror.AppError)
@@ -83,7 +83,7 @@ func TestGetBalanceForOwner_AllowsActualOwner(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{
 		1: {CampaignID: 1, OwnerUserID: 10},
 	}}
-	svc := NewService(&fakeRepository{balance: 50000}, campRepo, nil)
+	svc := NewService(&fakeRepository{balance: 50000}, campRepo, nil, nil)
 
 	resp, err := svc.GetBalanceForOwner(context.Background(), 1, 10)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestGetBalanceForOwner_AllowsActualOwner(t *testing.T) {
 
 func TestGetBalanceForOwner_UnknownCampaignReturnsNotFound(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{}}
-	svc := NewService(&fakeRepository{}, campRepo, nil)
+	svc := NewService(&fakeRepository{}, campRepo, nil, nil)
 
 	_, err := svc.GetBalanceForOwner(context.Background(), 999, 10)
 	appErr, ok := err.(*apperror.AppError)
@@ -109,7 +109,7 @@ func TestListLedgerForOwner_RejectsNonOwner(t *testing.T) {
 	campRepo := &fakeCampaignRepository{byID: map[int64]campaign_model.Campaign{
 		1: {CampaignID: 1, OwnerUserID: 10},
 	}}
-	svc := NewService(&fakeRepository{}, campRepo, nil)
+	svc := NewService(&fakeRepository{}, campRepo, nil, nil)
 
 	_, _, err := svc.ListLedgerForOwner(context.Background(), 1, 99, wallet_dto.LedgerListFilter{})
 	appErr, ok := err.(*apperror.AppError)

@@ -19,6 +19,7 @@ import (
 	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_model"
 	"fsldk-api/modules/user/user_repository"
+	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/kirimdev"
 )
 
@@ -26,6 +27,13 @@ import (
 // modul ini (pola sama shortlinkrequest_service.JobEnqueuer).
 type JobEnqueuer interface {
 	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+}
+
+// FinanceAuditor adalah irisan sempit auditlog.Logger yang dibutuhkan modul
+// ini — pola sama JobEnqueuer, memenuhi kontrak dengan *auditlog.Logger
+// sungguhan sekaligus memudahkan fake di unit test tanpa perlu *gorm.DB.
+type FinanceAuditor interface {
+	LogFinance(ctx context.Context, e auditlog.Entry)
 }
 
 var sortColumns = map[string]string{
@@ -41,11 +49,12 @@ type ServiceImpl struct {
 	userRepo  user_repository.Repository
 	orgAccess OrgAccessChecker
 	jobs      JobEnqueuer
+	audit     FinanceAuditor
 }
 
 // NewService membuat Service campaign.
-func NewService(repo campaign_repository.Repository, userRepo user_repository.Repository, orgAccess OrgAccessChecker, jobs JobEnqueuer) Service {
-	return &ServiceImpl{repo: repo, userRepo: userRepo, orgAccess: orgAccess, jobs: jobs}
+func NewService(repo campaign_repository.Repository, userRepo user_repository.Repository, orgAccess OrgAccessChecker, jobs JobEnqueuer, audit FinanceAuditor) Service {
+	return &ServiceImpl{repo: repo, userRepo: userRepo, orgAccess: orgAccess, jobs: jobs, audit: audit}
 }
 
 // notify mengirim satu notifikasi WhatsApp lewat job queue (async, best-effort
@@ -167,6 +176,10 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req campai
 			return campaign_dto.DetailResponse{}, apperror.Internal("")
 		}
 	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, Action: "campaign.created", Entity: "campaign", EntityID: id,
+		After: map[string]interface{}{"title": req.Title, "targetAmount": req.TargetAmount},
+	})
 	return s.getDetail(ctx, id)
 }
 
@@ -229,6 +242,11 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, caller CallerScope, 
 			return campaign_dto.DetailResponse{}, apperror.Internal("")
 		}
 	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, Action: "campaign.updated", Entity: "campaign", EntityID: id,
+		Before: map[string]interface{}{"title": camp.Title, "targetAmount": camp.TargetAmount},
+		After:  map[string]interface{}{"title": req.Title, "targetAmount": req.TargetAmount},
+	})
 	return s.getDetail(ctx, id)
 }
 
@@ -240,7 +258,7 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 	if camp.OwnerUserID != caller.UserID {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusSubmitted, sql.NullString{},
+	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusSubmitted, "campaign.submitted", sql.NullString{},
 		"Campaign hanya dapat diajukan saat berstatus draft atau revisi")
 }
 
@@ -276,6 +294,11 @@ func (s *ServiceImpl) UpdateBeneficiary(ctx context.Context, id int64, caller Ca
 	// diambil alih & rekening diganti tanpa sepengetahuan pemilik asli).
 	masked := maskAccountNumber(req.BeneficiaryAccountNumber)
 	s.notifyOwner(ctx, camp, "rekening_diubah", []string{masked, time.Now().Format("02 Jan 2006 15:04")})
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, Action: "beneficiary.changed", Entity: "campaign", EntityID: id,
+		Before: map[string]string{"beneficiaryAccountNumber": maskAccountNumber(camp.BeneficiaryAccountNumber), "beneficiaryBankCode": camp.BeneficiaryBankCode},
+		After:  map[string]string{"beneficiaryAccountNumber": masked, "beneficiaryBankCode": req.BeneficiaryBankCode},
+	})
 
 	return s.getDetail(ctx, id)
 }
@@ -366,6 +389,11 @@ func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, 
 	case constants.ReviewDecisionRejected:
 		s.notifyOwner(ctx, camp, "campaign_ditolak", []string{camp.Title, req.Note})
 	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: caller.UserID, Action: "campaign.reviewed", Entity: "campaign", EntityID: id,
+		Before: map[string]string{"status": camp.Status}, After: map[string]string{"status": toStatus},
+		Metadata: map[string]string{"decision": req.Decision, "note": req.Note},
+	})
 
 	return s.getDetail(ctx, id)
 }
@@ -375,7 +403,7 @@ func (s *ServiceImpl) Publish(ctx context.Context, id int64, caller CallerScope)
 	if err != nil {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPublished, sql.NullString{},
+	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPublished, "campaign.published", sql.NullString{},
 		"Campaign hanya dapat dipublish saat berstatus approved")
 }
 
@@ -384,7 +412,7 @@ func (s *ServiceImpl) Pause(ctx context.Context, id int64, caller CallerScope) (
 	if err != nil {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPaused, sql.NullString{},
+	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPaused, "campaign.paused", sql.NullString{},
 		"Campaign hanya dapat dijeda saat sedang tayang")
 }
 
@@ -393,7 +421,10 @@ func (s *ServiceImpl) Resume(ctx context.Context, id int64, caller CallerScope) 
 	if err != nil {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPublished, sql.NullString{},
+	// Belum ada action spesifik "campaign.resumed" di techspec §16.1 (hanya
+	// .published disebut) — dibedakan dari Publish() supaya audit trail
+	// tidak menyamarkan resume sebagai publish pertama kali.
+	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPublished, "campaign.resumed", sql.NullString{},
 		"Campaign hanya dapat dilanjutkan saat sedang dijeda")
 }
 
@@ -402,19 +433,23 @@ func (s *ServiceImpl) Archive(ctx context.Context, id int64, caller CallerScope)
 	if err != nil {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusArchived, sql.NullString{},
+	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusArchived, "campaign.archived", sql.NullString{},
 		"Campaign hanya dapat diarsipkan saat sudah selesai")
 }
 
 // ---------- helpers ----------
 
-func (s *ServiceImpl) transition(ctx context.Context, camp campaign_model.Campaign, actorUserID int64, toStatus string, note sql.NullString, invalidMsg string) (campaign_dto.DetailResponse, error) {
+func (s *ServiceImpl) transition(ctx context.Context, camp campaign_model.Campaign, actorUserID int64, toStatus, action string, note sql.NullString, invalidMsg string) (campaign_dto.DetailResponse, error) {
 	if !isValidTransition(camp.Status, toStatus) {
 		return campaign_dto.DetailResponse{}, apperror.InvalidStatusTransition(invalidMsg)
 	}
 	if err := s.repo.UpdateStatus(ctx, camp.CampaignID, toStatus, note, actorUserID); err != nil {
 		return campaign_dto.DetailResponse{}, apperror.Internal("")
 	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: actorUserID, Action: action, Entity: "campaign", EntityID: camp.CampaignID,
+		Before: map[string]string{"status": camp.Status}, After: map[string]string{"status": toStatus},
+	})
 	return s.getDetail(ctx, camp.CampaignID)
 }
 

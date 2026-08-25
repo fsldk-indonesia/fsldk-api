@@ -14,16 +14,18 @@ import (
 	"fsldk-api/modules/wallet/wallet_dto"
 	"fsldk-api/modules/wallet/wallet_model"
 	"fsldk-api/modules/wallet/wallet_repository"
+	"fsldk-api/pkg/auditlog"
 )
 
 type ServiceImpl struct {
 	repo         wallet_repository.Repository
 	campaignRepo campaign_repository.Repository
+	audit        *auditlog.Logger
 	db           *gorm.DB // hanya dipakai AdjustBalance, yang membuka transaksinya sendiri
 }
 
-func NewService(repo wallet_repository.Repository, campaignRepo campaign_repository.Repository, db *gorm.DB) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, db: db}
+func NewService(repo wallet_repository.Repository, campaignRepo campaign_repository.Repository, audit *auditlog.Logger, db *gorm.DB) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, audit: audit, db: db}
 }
 
 func (s *ServiceImpl) CreditDonation(tx *gorm.DB, campaignID, donationID int64, amount float64, note string) error {
@@ -116,7 +118,7 @@ func (s *ServiceImpl) AdjustBalance(ctx context.Context, campaignID int64, amoun
 		entryType = constants.LedgerEntryAdjustmentDebit
 	}
 
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if direction == constants.LedgerDirectionDebit {
 			available, err := s.repo.LatestBalanceForUpdate(tx, campaignID)
 			if err != nil {
@@ -148,6 +150,14 @@ func (s *ServiceImpl) AdjustBalance(ctx context.Context, campaignID int64, amoun
 		})
 		return err
 	})
+	if err != nil {
+		return err
+	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		ActorUserID: actorUserID, Action: "balance.adjusted", Entity: "campaign", EntityID: campaignID,
+		Metadata: map[string]interface{}{"amount": amount, "direction": direction, "reason": reason},
+	})
+	return nil
 }
 
 func (s *ServiceImpl) GetBalance(ctx context.Context, campaignID int64) (wallet_dto.BalanceResponse, error) {

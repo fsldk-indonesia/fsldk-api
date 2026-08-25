@@ -170,7 +170,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
-	walletSvc := wallet_service.NewService(walletRepo, campaignRepo, db)
+	walletSvc := wallet_service.NewService(walletRepo, campaignRepo, audit, db)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -186,7 +186,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
 	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
 	jobqueueRepo := jobqueue_repository.NewRepository(db)
-	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, cfg)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg)
 	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
 	workerCount := cfg.JobQueueWorkerCount
 	if workerCount <= 0 {
@@ -201,9 +201,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// JobEnqueuer untuk notifikasi WhatsApp async (Phase 8, §14 techspec) —
 	// makanya baru dibuat di sini, setelah jobqueueSvc siap, bukan lagi di
 	// blok service awal.
-	campaignSvc := campaign_service.NewService(campaignRepo, userRepo, orgSvc, jobqueueSvc)
-	donationSvc := donation_service.NewService(donationRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, db, cfg)
-	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, db, cfg)
+	campaignSvc := campaign_service.NewService(campaignRepo, userRepo, orgSvc, jobqueueSvc, audit)
+	donationSvc := donation_service.NewService(donationRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, audit, db, cfg)
+	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, audit, db, cfg)
 	// Job terjadwal internal (§13.4 techspec) — goroutine time.Ticker
 	// langsung, bukan lewat job queue: donation.expire_check,
 	// withdrawal.reconcile_check.
@@ -214,7 +214,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
-	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
+	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
+	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
+	go reportSvc.RunReconciliationScheduler()
 	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
 	// sebagai CommentCleaner untuk membersihkan komentar saat konten induknya
 	// dihapus (ms_comment tidak punya FK ke ms_article/ms_news/ms_event, lihat

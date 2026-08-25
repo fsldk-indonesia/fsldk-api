@@ -130,6 +130,10 @@ const (
 	PermWithdrawalReject  = "kantong_amal.withdrawal.reject"
 	PermWithdrawalProcess = "kantong_amal.withdrawal.process"
 
+	PermFinanceReportView   = "kantong_amal.report.view"
+	PermFinanceReportExport = "kantong_amal.report.export"
+	PermFinanceAuditView    = "kantong_amal.audit.view"
+
 	PermSettingView   = "setting.view"
 	PermSettingUpdate = "setting.update"
 
@@ -278,6 +282,8 @@ const (
 	TableQueueJob         = "tr_queue_job"
 	TableQueueJobLog      = "tr_queue_job_log"
 	TableFinanceAuditLog  = "tr_finance_audit_log"
+
+	TableFinanceReconciliationSnapshot = "tr_finance_reconciliation_snapshot"
 )
 
 // Tipe entry tr_wallet_ledger (Kantong Amal).
