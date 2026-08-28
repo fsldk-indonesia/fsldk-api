@@ -52,6 +52,12 @@ const (
 	PermArticleDelete  = "article.delete"
 	PermArticlePublish = "article.publish"
 
+	PermCatalogBookView    = "catalogbook.view"
+	PermCatalogBookCreate  = "catalogbook.create"
+	PermCatalogBookUpdate  = "catalogbook.update"
+	PermCatalogBookDelete  = "catalogbook.delete"
+	PermCatalogBookPublish = "catalogbook.publish"
+
 	PermUserView   = "user.view"
 	PermUserCreate = "user.create"
 	PermUserUpdate = "user.update"

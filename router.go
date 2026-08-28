@@ -57,6 +57,11 @@ import (
 	"fsldk-api/modules/article/article_repository"
 	"fsldk-api/modules/article/article_service"
 
+	"fsldk-api/modules/catalogbook"
+	"fsldk-api/modules/catalogbook/catalogbook_handler"
+	"fsldk-api/modules/catalogbook/catalogbook_repository"
+	"fsldk-api/modules/catalogbook/catalogbook_service"
+
 	"fsldk-api/modules/event"
 	"fsldk-api/modules/event/event_handler"
 	"fsldk-api/modules/event/event_repository"
@@ -125,6 +130,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	subRepo := submission_repository.NewRepository(db)
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
+	catalogbookRepo := catalogbook_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
@@ -168,13 +174,14 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
-	// commentSvc dibuat sebelum newsSvc/articleSvc/eventSvc: ketiganya menerimanya
-	// sebagai CommentCleaner untuk membersihkan komentar saat konten induknya
-	// dihapus (ms_comment tidak punya FK ke ms_article/ms_news/ms_event, lihat
-	// comment techspec §3.1a).
+	// commentSvc dibuat sebelum newsSvc/articleSvc/catalogbookSvc/eventSvc:
+	// keempatnya menerimanya sebagai CommentCleaner untuk membersihkan
+	// komentar saat konten induknya dihapus (ms_comment tidak punya FK ke
+	// ms_article/ms_news/ms_catalog_book/ms_event, lihat comment techspec §3.1a).
 	commentSvc := comment_service.NewService(commentRepo, uploader, cfg.GiphyAPIKey)
 	newsSvc := news_service.NewService(newsRepo, commentSvc)
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
+	catalogbookSvc := catalogbook_service.NewService(catalogbookRepo, uploader, commentSvc)
 	eventSvc := event_service.NewService(eventRepo, commentSvc)
 
 	// Handler (presentasi HTTP)
@@ -187,6 +194,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	subH := submission_handler.NewHandler(subSvc)
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
+	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
 	eventH := event_handler.NewHandler(eventSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
@@ -243,6 +251,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	news.RegisterCMSRoutes(api, newsH, mw)
 	article.RegisterPublicRoutes(pub, articleH)
 	article.RegisterCMSRoutes(api, articleH, mw)
+	catalogbook.RegisterPublicRoutes(pub, catalogbookH)
+	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
 	event.RegisterPublicRoutes(pub, eventH)
 	event.RegisterCMSRoutes(api, eventH, mw)
 
