@@ -22,6 +22,7 @@ func RegisterMeRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *middl
 	g.Use(mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermCampaignCreate))
 	{
 		g.GET("", h.MyList)
+		g.GET("/:id", h.MyGet)
 		g.POST("", h.Create)
 		g.PUT("/:id", h.Update)
 		g.PUT("/:id/beneficiary", h.UpdateBeneficiary)

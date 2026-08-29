@@ -81,6 +81,19 @@ func (h *HandlerImpl) MyList(c *gin.Context) {
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
 }
 
+func (h *HandlerImpl) MyGet(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	data, err := h.svc.MyGet(c.Request.Context(), id, callerScope(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) bindCreate(c *gin.Context) (campaign_dto.CreateRequest, bool) {
 	var req campaign_dto.CreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

@@ -183,6 +183,14 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req campai
 	return s.getDetail(ctx, id)
 }
 
+func (s *ServiceImpl) MyGet(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error) {
+	camp, err := s.repo.FindByID(ctx, id)
+	if err != nil || camp.OwnerUserID != caller.UserID {
+		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+	}
+	return s.toDetail(ctx, camp)
+}
+
 func (s *ServiceImpl) Update(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateRequest) (campaign_dto.DetailResponse, error) {
 	camp, err := s.repo.FindByID(ctx, id)
 	if err != nil {

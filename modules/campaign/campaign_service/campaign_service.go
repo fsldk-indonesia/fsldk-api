@@ -32,6 +32,9 @@ type Service interface {
 	Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error)
 
 	MyList(ctx context.Context, caller CallerScope, q dto.ListQuery) ([]campaign_dto.Response, int, error)
+	// MyGet mengembalikan detail satu campaign milik caller (dipakai halaman
+	// edit) — IDOR-safe, 404 bila campaign bukan milik caller (pola sama Update).
+	MyGet(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
 	Create(ctx context.Context, caller CallerScope, req campaign_dto.CreateRequest) (campaign_dto.DetailResponse, error)
 	Update(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateRequest) (campaign_dto.DetailResponse, error)
 	Submit(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)

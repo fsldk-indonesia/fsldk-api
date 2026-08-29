@@ -10,6 +10,7 @@ type Handler interface {
 	Categories(c *gin.Context)
 
 	MyList(c *gin.Context)
+	MyGet(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	UpdateBeneficiary(c *gin.Context)
