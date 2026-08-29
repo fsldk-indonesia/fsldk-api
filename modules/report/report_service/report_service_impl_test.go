@@ -77,6 +77,9 @@ func (f *fakeReportRepository) CreateReconciliationSnapshot(ctx context.Context,
 func (f *fakeReportRepository) ListReconciliationSnapshots(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int64, error) {
 	return nil, 0, nil
 }
+func (f *fakeReportRepository) ListFinanceAuditLog(ctx context.Context, filt report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error) {
+	return nil, 0, nil
+}
 
 // fakeGateway adalah implementasi bisatopup.Gateway minimal — hanya
 // WalletBalance yang berperilaku bermakna (dipakai RunReconciliation).

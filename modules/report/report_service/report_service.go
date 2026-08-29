@@ -54,6 +54,8 @@ type Service interface {
 	// (RunReconciliationScheduler) maupun manual trigger admin bila perlu.
 	RunReconciliation(ctx context.Context) (report_dto.ReconciliationSnapshotResponse, error)
 	ListReconciliationHistory(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int, error)
+	// ListFinanceAuditLog mengembalikan histori audit trail finance §16.1.
+	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error)
 	// RunReconciliationScheduler menjalankan RunReconciliation harian
 	// (goroutine time.Ticker, bukan lewat job queue — §13.4 techspec, job
 	// `finance.daily_reconciliation`) sampai proses berhenti.

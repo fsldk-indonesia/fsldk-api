@@ -163,3 +163,25 @@ type ReconciliationSnapshotParams struct {
 	HasAnomaly                 bool
 	GatewayError               string
 }
+
+// FinanceAuditLogFilter menampung parameter penyaringan histori audit log finance §16.1.
+type FinanceAuditLogFilter struct {
+	Entity string
+	Action string
+	Page   int
+	Limit  int
+}
+
+// FinanceAuditLogItem adalah satu baris tr_finance_audit_log untuk CMS.
+type FinanceAuditLogItem struct {
+	LogID       int64          `gorm:"column:logID" json:"logID"`
+	ActorUserID int64          `gorm:"column:actorUserID" json:"actorUserID"`
+	ActorName   sql.NullString `gorm:"column:actorName" json:"actorName,omitempty"`
+	Action      string         `gorm:"column:action" json:"action"`
+	Entity      string         `gorm:"column:entity" json:"entity"`
+	EntityID    int64          `gorm:"column:entityID" json:"entityID"`
+	BeforeJSON  sql.NullString `gorm:"column:beforeJSON" json:"beforeJSON,omitempty"`
+	AfterJSON   sql.NullString `gorm:"column:afterJSON" json:"afterJSON,omitempty"`
+	Metadata    sql.NullString `gorm:"column:metadata" json:"metadata,omitempty"`
+	CreatedDate time.Time      `gorm:"column:createdDate" json:"createdDate"`
+}

@@ -211,3 +211,15 @@ func (h *HandlerImpl) RunReconciliation(c *gin.Context) {
 	}
 	httphelper.Success(c, "Rekonsiliasi dijalankan", result)
 }
+
+func (h *HandlerImpl) FinanceAuditLog(c *gin.Context) {
+	q := dto.ParseListQuery(c)
+	data, total, err := h.svc.ListFinanceAuditLog(c.Request.Context(), report_dto.FinanceAuditLogFilter{
+		Entity: c.Query("entity"), Action: c.Query("action"), Page: q.Page, Limit: q.Limit,
+	})
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}

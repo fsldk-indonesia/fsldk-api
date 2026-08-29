@@ -461,6 +461,14 @@ func (s *ServiceImpl) ListReconciliationHistory(ctx context.Context, q dto.ListQ
 	return rows, int(total), nil
 }
 
+func (s *ServiceImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error) {
+	rows, total, err := s.repo.ListFinanceAuditLog(ctx, f)
+	if err != nil {
+		return nil, 0, apperror.Internal("")
+	}
+	return rows, int(total), nil
+}
+
 // RunReconciliationScheduler menjalankan RunReconciliation tiap
 // reconciliationCheckInterval sampai proses berhenti — pola sama
 // donation_service.RunExpireScheduler/withdrawal_service.RunReconcileScheduler.

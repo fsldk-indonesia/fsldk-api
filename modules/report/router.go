@@ -32,6 +32,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewar
 			ka.GET("/withdrawals/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportWithdrawalReport)
 			ka.GET("/reconciliation", mw.RequirePermission(constants.PermFinanceReportView), h.ReconciliationHistory)
 			ka.POST("/reconciliation/run", mw.RequirePermission(constants.PermFinanceReportExport), h.RunReconciliation)
+			ka.GET("/audit-log", mw.RequirePermission(constants.PermFinanceAuditView), h.FinanceAuditLog)
 		}
 	}
 }

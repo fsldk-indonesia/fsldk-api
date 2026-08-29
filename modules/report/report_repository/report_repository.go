@@ -58,4 +58,8 @@ type Repository interface {
 	// ListReconciliationSnapshots mengembalikan histori snapshot terbaru
 	// lebih dulu, untuk melihat tren discrepancy dari waktu ke waktu.
 	ListReconciliationSnapshots(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int64, error)
+
+	// ListFinanceAuditLog mengembalikan histori tr_finance_audit_log §16.1,
+	// terbaru lebih dulu.
+	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error)
 }

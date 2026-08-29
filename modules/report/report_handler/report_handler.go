@@ -18,4 +18,5 @@ type Handler interface {
 	ExportWithdrawalReport(c *gin.Context)
 	ReconciliationHistory(c *gin.Context)
 	RunReconciliation(c *gin.Context)
+	FinanceAuditLog(c *gin.Context)
 }

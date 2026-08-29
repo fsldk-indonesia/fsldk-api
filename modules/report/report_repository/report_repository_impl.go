@@ -319,3 +319,33 @@ func (r *RepositoryImpl) ListReconciliationSnapshots(ctx context.Context, q dto.
 	err := base.Order("snapshotID DESC").Offset(q.Offset()).Limit(q.Limit).Find(&out).Error
 	return out, total, err
 }
+
+func (r *RepositoryImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error) {
+	base := r.db.WithContext(ctx).Table(constants.TableFinanceAuditLog + " l").
+		Joins("LEFT JOIN " + constants.TableUser + " u ON u.userID = l.actorUserID")
+	if f.Entity != "" {
+		base = base.Where("l.entity = ?", f.Entity)
+	}
+	if f.Action != "" {
+		base = base.Where("l.action = ?", f.Action)
+	}
+	base = base.Session(&gorm.Session{})
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	page, limit := f.Page, f.Limit
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	var out []report_dto.FinanceAuditLogItem
+	err := base.Select("l.logID, l.actorUserID, u.fullName AS actorName, l.action, l.entity, l.entityID, l.beforeJSON, l.afterJSON, l.metadata, l.createdDate").
+		Order("l.logID DESC").Offset((page - 1) * limit).Limit(limit).Find(&out).Error
+	return out, total, err
+}
