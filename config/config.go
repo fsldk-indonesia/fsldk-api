@@ -54,6 +54,16 @@ type AppConfig struct {
 
 	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
 
+	// KantongAmalEnabled adalah feature flag go-live (Phase 14) — default
+	// false (lihat setDefaults()). Bila false, seluruh route publik/self-
+	// service/CMS modul campaign/donation/wallet/withdrawal dan sub-route
+	// laporan finance `reports/kantong-amal/*` tidak didaftarkan sama sekali
+	// (404, bukan 403 — konsisten dengan pola IDOR-safe proyek: fitur yang
+	// belum aktif tidak boleh membocorkan keberadaannya), dan dua scheduler
+	// latar belakangnya (donation.expire_check/withdrawal.reconcile_check)
+	// tidak dijalankan. Modul lain (user/role/news/dst.) tidak terpengaruh.
+	KantongAmalEnabled bool `mapstructure:"KANTONG_AMAL_ENABLED"`
+
 	// Kantong Amal — formula MDR & masa berlaku QRIS (Phase 3), kredensial
 	// dan pengaturan klien BisaTopup/Bisabiller (Phase 4). WIDGET_KEY dan
 	// ADMIN_FEE_PERCENT dari dokumen referensi sengaja tidak ditambahkan di
@@ -225,6 +235,8 @@ func setDefaults() {
 	viper.SetDefault("MAIL_FROM_NAME", "FSLDK Indonesia")
 
 	viper.SetDefault("CORS_ALLOWED_ORIGINS", "http://localhost:4200")
+
+	viper.SetDefault("KANTONG_AMAL_ENABLED", false)
 
 	viper.SetDefault("BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING", 1)
 	viper.SetDefault("BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING", 24)

@@ -9,8 +9,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterRoutes mendaftarkan endpoint modul report.
-func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewares.Middleware) {
+// RegisterRoutes mendaftarkan endpoint modul report. kantongAmalEnabled
+// adalah feature flag go-live Phase 14 (config.AppConfig.KantongAmalEnabled)
+// — bila false, sub-route `/reports/kantong-amal/*` tidak didaftarkan sama
+// sekali (404 generik), konsisten dengan gating modul campaign/donation/
+// wallet/withdrawal lain di router.go. Endpoint /submissions/export (report
+// existing, tidak terkait Kantong Amal) tidak terpengaruh flag ini.
+func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewares.Middleware, kantongAmalEnabled bool) {
 	g := rg.Group("/reports")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
@@ -20,19 +25,21 @@ func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewar
 
 		// Kantong Amal (Phase 9, §15 techspec) — akses dibatasi murni via
 		// permission (least-privilege), bukan org-scope seperti report submission.
-		ka := g.Group("/kantong-amal")
-		{
-			ka.GET("/balance", mw.RequirePermission(constants.PermFinanceReportView), h.BalanceReport)
-			ka.GET("/balance/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportBalanceReport)
-			ka.GET("/campaigns", mw.RequirePermission(constants.PermFinanceReportView), h.CampaignReport)
-			ka.GET("/campaigns/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportCampaignReport)
-			ka.GET("/donations", mw.RequirePermission(constants.PermFinanceReportView), h.DonationReport)
-			ka.GET("/donations/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportDonationReport)
-			ka.GET("/withdrawals", mw.RequirePermission(constants.PermFinanceReportView), h.WithdrawalReport)
-			ka.GET("/withdrawals/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportWithdrawalReport)
-			ka.GET("/reconciliation", mw.RequirePermission(constants.PermFinanceReportView), h.ReconciliationHistory)
-			ka.POST("/reconciliation/run", mw.RequirePermission(constants.PermFinanceReportExport), h.RunReconciliation)
-			ka.GET("/audit-log", mw.RequirePermission(constants.PermFinanceAuditView), h.FinanceAuditLog)
+		if kantongAmalEnabled {
+			ka := g.Group("/kantong-amal")
+			{
+				ka.GET("/balance", mw.RequirePermission(constants.PermFinanceReportView), h.BalanceReport)
+				ka.GET("/balance/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportBalanceReport)
+				ka.GET("/campaigns", mw.RequirePermission(constants.PermFinanceReportView), h.CampaignReport)
+				ka.GET("/campaigns/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportCampaignReport)
+				ka.GET("/donations", mw.RequirePermission(constants.PermFinanceReportView), h.DonationReport)
+				ka.GET("/donations/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportDonationReport)
+				ka.GET("/withdrawals", mw.RequirePermission(constants.PermFinanceReportView), h.WithdrawalReport)
+				ka.GET("/withdrawals/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportWithdrawalReport)
+				ka.GET("/reconciliation", mw.RequirePermission(constants.PermFinanceReportView), h.ReconciliationHistory)
+				ka.POST("/reconciliation/run", mw.RequirePermission(constants.PermFinanceReportExport), h.RunReconciliation)
+				ka.GET("/audit-log", mw.RequirePermission(constants.PermFinanceAuditView), h.FinanceAuditLog)
+			}
 		}
 	}
 }

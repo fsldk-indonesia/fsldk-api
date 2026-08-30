@@ -206,9 +206,13 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, audit, db, cfg)
 	// Job terjadwal internal (§13.4 techspec) — goroutine time.Ticker
 	// langsung, bukan lewat job queue: donation.expire_check,
-	// withdrawal.reconcile_check.
-	go donationSvc.RunExpireScheduler()
-	go withdrawalSvc.RunReconcileScheduler()
+	// withdrawal.reconcile_check. Dilewati bila fitur nonaktif (Phase 14
+	// KANTONG_AMAL_ENABLED=false, default) — tidak ada data yang perlu
+	// disweep bila tidak ada trafik masuk ke modulnya sama sekali.
+	if cfg.KantongAmalEnabled {
+		go donationSvc.RunExpireScheduler()
+		go withdrawalSvc.RunReconcileScheduler()
+	}
 
 	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
@@ -290,7 +294,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	submission_form.RegisterRoutes(api, formH, mw)
 	submission.RegisterRoutes(api, subH, mw)
 	dashboard.RegisterRoutes(api, dashH, mw)
-	report.RegisterRoutes(api, reportH, mw)
+	report.RegisterRoutes(api, reportH, mw, cfg.KantongAmalEnabled)
 
 	news.RegisterPublicRoutes(pub, newsH)
 	news.RegisterCMSRoutes(api, newsH, mw)
@@ -312,21 +316,30 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	comment.RegisterPublicRoutes(pub, commentH, mw)
 	comment.RegisterCMSRoutes(api, commentH, mw)
 
-	campaign.RegisterPublicRoutes(pub, campaignH)
-	campaign.RegisterMeRoutes(api, campaignH, mw)
-	campaign.RegisterCMSRoutes(api, campaignH, mw)
+	// Feature flag go-live (Phase 14, §18.6 techspec) — KANTONG_AMAL_ENABLED
+	// default false. Route sama sekali tidak didaftarkan ke Gin bila
+	// nonaktif (bukan didaftarkan lalu ditolak di handler), jadi permintaan
+	// ke jalur-jalur ini jatuh ke 404 generik Gin seperti route yang memang
+	// tidak pernah ada — tidak membocorkan bahwa fitur ini "ada tapi
+	// dimatikan". reportH/mw tetap didaftarkan untuk endpoint report
+	// existing (submission) yang tidak terkait Kantong Amal.
+	if cfg.KantongAmalEnabled {
+		campaign.RegisterPublicRoutes(pub, campaignH)
+		campaign.RegisterMeRoutes(api, campaignH, mw)
+		campaign.RegisterCMSRoutes(api, campaignH, mw)
 
-	donation.RegisterPublicRoutes(pub, donationH, mw)
-	donation.RegisterCallbackRoutes(api, donationH, mw)
-	donation.RegisterMeRoutes(api, donationH, mw)
-	donation.RegisterCMSRoutes(api, donationH, mw)
+		donation.RegisterPublicRoutes(pub, donationH, mw)
+		donation.RegisterCallbackRoutes(api, donationH, mw)
+		donation.RegisterMeRoutes(api, donationH, mw)
+		donation.RegisterCMSRoutes(api, donationH, mw)
 
-	wallet.RegisterMeRoutes(api, walletH, mw)
-	wallet.RegisterCMSRoutes(api, walletH, mw)
+		wallet.RegisterMeRoutes(api, walletH, mw)
+		wallet.RegisterCMSRoutes(api, walletH, mw)
 
-	withdrawal.RegisterMeRoutes(api, withdrawalH, mw)
-	withdrawal.RegisterCMSRoutes(api, withdrawalH, mw)
-	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
+		withdrawal.RegisterMeRoutes(api, withdrawalH, mw)
+		withdrawal.RegisterCMSRoutes(api, withdrawalH, mw)
+		withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
+	}
 
 	return engine
 }
