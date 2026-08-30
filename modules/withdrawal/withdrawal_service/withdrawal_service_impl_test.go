@@ -201,6 +201,15 @@ func (f *fakeWithdrawalRepository) MarkOtpVerified(ctx context.Context, challeng
 	f.otpChallenges[challengeID] = c
 	return nil
 }
+func (f *fakeWithdrawalRepository) CountOtpChallengesByWithdrawal(ctx context.Context, withdrawalID int64) (int64, error) {
+	var count int64
+	for _, c := range f.otpChallenges {
+		if c.WithdrawalID == withdrawalID {
+			count++
+		}
+	}
+	return count, nil
+}
 
 // fakeUserRepository adalah implementasi user_repository.Repository minimal
 // — hanya FindByID yang berperilaku bermakna (dipakai VerifySecurity untuk
@@ -672,6 +681,32 @@ func TestRequestSecurityOtp_CreatesChallenge(t *testing.T) {
 	}
 	if len(repo.otpChallenges) != 1 {
 		t.Fatalf("expected 1 OTP challenge to be created, got %d", len(repo.otpChallenges))
+	}
+}
+
+// TestRequestSecurityOtp_RejectsAfterMaxRequests menutup celah keamanan
+// Phase 13: FindActiveOtpChallenge selalu melayani challenge terbaru, jadi
+// tanpa batas kumulatif ini caller yang kehabisan maxOtpAttempts di satu
+// challenge bisa memanggil RequestSecurityOtp berulang untuk selalu dapat
+// attemptCount baru yang bersih — meniadakan batas 5-percobaan-per-challenge.
+func TestRequestSecurityOtp_RejectsAfterMaxRequests(t *testing.T) {
+	repo := newFakeWithdrawalRepo()
+	repo.byID[1] = withdrawal_model.Withdrawal{WithdrawalID: 1, RequestedByUserID: 10, Status: constants.WithdrawalStatusSecurityCheck}
+	svc := NewService(repo, &fakeCampaignRepository{}, &fakeUserRepository{}, &fakeWalletService{}, &fakeGateway{}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{}, nil, testConfig())
+
+	for i := 0; i < maxOtpRequestsPerWithdrawal; i++ {
+		if err := svc.RequestSecurityOtp(context.Background(), 1, 10); err != nil {
+			t.Fatalf("expected request %d to succeed, got error: %v", i+1, err)
+		}
+	}
+
+	err := svc.RequestSecurityOtp(context.Background(), 1, 10)
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeTooManyRequest {
+		t.Fatalf("expected TooManyRequests after %d requests, got %v", maxOtpRequestsPerWithdrawal, err)
+	}
+	if len(repo.otpChallenges) != maxOtpRequestsPerWithdrawal {
+		t.Fatalf("expected exactly %d challenges to exist, got %d", maxOtpRequestsPerWithdrawal, len(repo.otpChallenges))
 	}
 }
 

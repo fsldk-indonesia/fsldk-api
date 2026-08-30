@@ -61,4 +61,9 @@ type Repository interface {
 	IncrementOtpAttempt(ctx context.Context, challengeID int64) error
 	// MarkOtpVerified menandai challenge terverifikasi (sekali pakai).
 	MarkOtpVerified(ctx context.Context, challengeID int64) error
+	// CountOtpChallengesByWithdrawal menghitung total challenge (baru maupun
+	// kedaluwarsa/gagal) yang pernah dibuat untuk satu withdrawal — dipakai
+	// membatasi jumlah kumulatif permintaan OTP baru per withdrawal (Phase 13
+	// security hardening), bukan hanya percobaan per challenge.
+	CountOtpChallengesByWithdrawal(ctx context.Context, withdrawalID int64) (int64, error)
 }

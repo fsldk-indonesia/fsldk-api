@@ -69,6 +69,17 @@ const otpValidityDuration = 5 * time.Minute
 // pola ldksyahid-app: 5 percobaan (§12.9).
 const maxOtpAttempts = 5
 
+// maxOtpRequestsPerWithdrawal adalah batas KUMULATIF permintaan kode OTP
+// baru per withdrawal (Phase 13 security hardening) — tanpa ini,
+// FindActiveOtpChallenge selalu melayani challenge terbaru sehingga caller
+// yang kehabisan maxOtpAttempts di satu challenge bisa memanggil
+// RequestSecurityOtp lagi untuk mendapat attemptCount baru yang bersih,
+// membuat batas 5-percobaan-per-challenge efektif tidak berlaku (rate limit
+// per-IP di router tidak cukup karena dikunci per ClientIP, mudah dihindari
+// lewat banyak IP). Setelah batas ini tercapai, withdrawal wajib dibatalkan
+// dan diajukan ulang (lewat Cancel) — bukan dikunci permanen.
+const maxOtpRequestsPerWithdrawal = 3
+
 var sortColumns = map[string]string{"createdDate": "w.createdDate", "amount": "w.amount"}
 
 // ServiceImpl adalah implementasi Service.
@@ -299,6 +310,14 @@ func (s *ServiceImpl) RequestSecurityOtp(ctx context.Context, withdrawalID, requ
 	}
 	if w.Status != constants.WithdrawalStatusSecurityCheck {
 		return apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu verifikasi keamanan")
+	}
+
+	requestCount, err := s.repo.CountOtpChallengesByWithdrawal(ctx, withdrawalID)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	if requestCount >= maxOtpRequestsPerWithdrawal {
+		return apperror.TooManyRequests("Batas permintaan kode OTP untuk penarikan ini sudah tercapai, silakan batalkan dan ajukan penarikan baru")
 	}
 
 	code, err := generateOtpCode()

@@ -238,3 +238,11 @@ func (r *RepositoryImpl) MarkOtpVerified(ctx context.Context, challengeID int64)
 		Where("challengeID = ?", challengeID).
 		Update("verifiedDate", time.Now()).Error
 }
+
+func (r *RepositoryImpl) CountOtpChallengesByWithdrawal(ctx context.Context, withdrawalID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table(otpChallengeTable).
+		Where("withdrawalID = ?", withdrawalID).
+		Count(&count).Error
+	return count, err
+}
