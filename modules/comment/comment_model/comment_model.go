@@ -50,4 +50,4 @@ var ReactionTypes = []string{"like", "dislike", "love", "heart_eyes", "laughing"
 // to. Add an entry here (and update the matching `oneof=...` validate tags
 // in comment_dto) whenever a new content module needs comments — no
 // migration required since contentType is a plain VARCHAR column.
-var ValidContentTypes = []string{"article", "news", "event"}
+var ValidContentTypes = []string{"article", "news", "event", "catalogBook"}

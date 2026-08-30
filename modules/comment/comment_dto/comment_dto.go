@@ -3,7 +3,7 @@ package comment_dto
 
 // CreateRequest is the body for creating a new comment or reply.
 type CreateRequest struct {
-	ContentType string `json:"contentType" validate:"required,oneof=article news event"`
+	ContentType string `json:"contentType" validate:"required,oneof=article news event catalogBook"`
 	ContentID   int64  `json:"contentID" validate:"required,min=1"`
 	ParentID    *int64 `json:"parentID"`
 	CommentText string `json:"commentText" validate:"max=2000"`
