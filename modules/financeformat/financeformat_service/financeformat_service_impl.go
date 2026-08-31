@@ -6,7 +6,6 @@ import (
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
-	"fsldk-api/base/slug"
 	"fsldk-api/modules/financeformat/financeformat_dto"
 	"fsldk-api/modules/financeformat/financeformat_model"
 	"fsldk-api/modules/financeformat/financeformat_repository"
@@ -116,9 +115,11 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64) (financeformat_model.Fi
 	return m, nil
 }
 
-// PrepareDownload resolves an active format to its on-disk path plus the
-// filename to hand the browser: the user's fileName as a kebab-case slug with
-// a .xlsx extension (the stored fileName itself is left exactly as typed).
+// PrepareDownload resolves an active format to its on-disk path plus the name
+// to hand the browser: the user's fileName exactly as entered, with a .xlsx
+// extension appended if missing. The file on disk keeps its random upload
+// token name — only the Content-Disposition name changes, so admins never
+// need to touch the physical file or fileURL.
 func (s *ServiceImpl) PrepareDownload(ctx context.Context, id int64) (localPath string, downloadName string, err error) {
 	m, err := s.repo.FindByID(ctx, id)
 	if err != nil || !m.IsActive {
@@ -127,8 +128,11 @@ func (s *ServiceImpl) PrepareDownload(ctx context.Context, id int64) (localPath 
 	if _, statErr := s.upload.FileSize(m.FileURL); statErr != nil {
 		return "", "", apperror.NotFound("Berkas tidak ditemukan")
 	}
-	base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(m.FileName)), ".xlsx")
-	return s.upload.LocalPath(m.FileURL), slug.Make(base) + ".xlsx", nil
+	name := strings.TrimSpace(m.FileName)
+	if !strings.HasSuffix(strings.ToLower(name), ".xlsx") {
+		name += ".xlsx"
+	}
+	return s.upload.LocalPath(m.FileURL), name, nil
 }
 
 func (s *ServiceImpl) FormatTypes(ctx context.Context) ([]financeformat_model.FormatType, error) {

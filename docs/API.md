@@ -243,7 +243,7 @@ Repositori publik template Excel (`.xlsx`) format laporan keuangan, dikelompokka
 | Method | Endpoint | Deskripsi |
 |---|---|---|
 | GET | `/public/finance-formats` | Payload gabungan `{ formatTypes, formats, cpName, cpPhone }` — `formatTypes` = 9 kategori urut `sortOrder` (selalu lengkap, termasuk yang belum punya berkas), `formats` = seluruh berkas `isActive=true` urut `formatTypeID`, lalu `createdDate` DESC; frontend yang mengelompokkan. `cpName`/`cpPhone` dari App Settings grup `format_keuangan` (opsional — string kosong bila belum diisi) |
-| GET | `/public/finance-formats/:id/download[/:name]` | Unduh berkas `.xlsx` (hanya `isActive=true`). Disajikan dengan `Content-Disposition: attachment; filename="<fileName kebab-case>.xlsx"` — nama unduhan mengikuti `fileName` yang diinput admin, di-slug jadi kebab-case (mis. `Format Arus Kas 2026` → `format-arus-kas-2026.xlsx`), **bukan** token acak dari `fileURL`. Segmen `:name` opsional & hanya dekoratif (biar tautan yang disalin terbaca); nama berkas selalu diambil dari DB |
+| GET | `/public/finance-formats/:id/download[/:name]` | Unduh berkas `.xlsx` (hanya `isActive=true`). Disajikan dengan `Content-Disposition: attachment; filename="<fileName>.xlsx"` — nama unduhan **persis** `fileName` yang diinput admin (mis. field `Format RAB` → berkas tersimpan sebagai `Format RAB.xlsx`), `.xlsx` ditambahkan bila belum ada. Berkas fisik di disk tetap memakai nama token acak dari `fileURL`; admin tidak perlu me-rename berkas atau mengubah `fileURL`. Segmen `:name` opsional & hanya dekoratif (slug agar tautan yang disalin enak dibaca); nama berkas selalu diambil dari DB |
 
 ### CMS — ✅🔒 + permission
 
