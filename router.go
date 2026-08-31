@@ -62,6 +62,11 @@ import (
 	"fsldk-api/modules/catalogbook/catalogbook_repository"
 	"fsldk-api/modules/catalogbook/catalogbook_service"
 
+	"fsldk-api/modules/financeformat"
+	"fsldk-api/modules/financeformat/financeformat_handler"
+	"fsldk-api/modules/financeformat/financeformat_repository"
+	"fsldk-api/modules/financeformat/financeformat_service"
+
 	"fsldk-api/modules/event"
 	"fsldk-api/modules/event/event_handler"
 	"fsldk-api/modules/event/event_repository"
@@ -131,6 +136,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	catalogbookRepo := catalogbook_repository.NewRepository(db)
+	financeformatRepo := financeformat_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
@@ -183,6 +189,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
 	catalogbookSvc := catalogbook_service.NewService(catalogbookRepo, uploader, commentSvc)
 	eventSvc := event_service.NewService(eventRepo, commentSvc)
+	// uploader satisfies FileDeleter; settingSvc satisfies SettingReader for
+	// the optional contact-person card on the public page.
+	financeformatSvc := financeformat_service.NewService(financeformatRepo, uploader, settingSvc)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -195,6 +204,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
+	financeformatH := financeformat_handler.NewHandler(financeformatSvc)
 	eventH := event_handler.NewHandler(eventSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
@@ -253,6 +263,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	article.RegisterCMSRoutes(api, articleH, mw)
 	catalogbook.RegisterPublicRoutes(pub, catalogbookH)
 	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
+	financeformat.RegisterPublicRoutes(pub, financeformatH)
+	financeformat.RegisterCMSRoutes(api, financeformatH, mw)
 	event.RegisterPublicRoutes(pub, eventH)
 	event.RegisterCMSRoutes(api, eventH, mw)
 

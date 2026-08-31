@@ -58,6 +58,12 @@ const (
 	PermCatalogBookDelete  = "catalogbook.delete"
 	PermCatalogBookPublish = "catalogbook.publish"
 
+	PermFinanceFormatView    = "financeformat.view"
+	PermFinanceFormatCreate  = "financeformat.create"
+	PermFinanceFormatUpdate  = "financeformat.update"
+	PermFinanceFormatDelete  = "financeformat.delete"
+	PermFinanceFormatPublish = "financeformat.publish"
+
 	PermUserView   = "user.view"
 	PermUserCreate = "user.create"
 	PermUserUpdate = "user.update"
