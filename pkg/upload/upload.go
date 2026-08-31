@@ -115,3 +115,26 @@ func (u *Uploader) DeleteFile(publicURL string) error {
 	}
 	return nil
 }
+
+// FileSize returns the size in bytes of a previously uploaded file given its
+// public URL. Read-only helper for module-specific size rules that need to be
+// enforced after the shared upload endpoint has already accepted the file
+// (which caps at MaxDocumentSize / MaxImageSize).
+func (u *Uploader) FileSize(publicURL string) (int64, error) {
+	info, err := os.Stat(u.LocalPath(publicURL))
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
+// LocalPath resolves a public URL (the value SaveImage/SaveDocument returned)
+// to the file's path on disk. Read-only helper for callers that need to serve
+// the file themselves (e.g. with a custom Content-Disposition filename).
+func (u *Uploader) LocalPath(publicURL string) string {
+	name := path.Base(publicURL)
+	if parsed, err := url.Parse(publicURL); err == nil {
+		name = path.Base(parsed.Path)
+	}
+	return filepath.Join(u.dir, name)
+}
