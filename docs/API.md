@@ -399,6 +399,23 @@ Approve/Reject menolak (`409 Conflict`) bila permintaan sudah pernah diproses (`
 
 ---
 
+## 8b. Kalkulator Zakat (`/zakat`)
+
+Halaman publik `/kalkulator-zakat` di frontend menghitung 7 jenis zakat sepenuhnya di browser (data & rumus hardcoded). Satu-satunya endpoint backend adalah proxy harga emas Antam ber-cache — tanpa tabel DB, permission, atau menu CMS.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate limit | Deskripsi |
+|---|---|---|---|
+| GET | `/public/zakat/gold-price` | `30x / menit / IP` (burst 10) | Harga emas batangan 1 gr (Antam). Query opsional `refresh=1` memaksa fetch ulang ke upstream (dipakai tombol "Perbarui") |
+
+Response `result`: `{ "success": true, "price": 2750000, "source": "antam-live", "cachedAt": "2026-08-31 10:00:00" }`.
+
+- **Selalu `200 OK`** — bahkan saat upstream (`logam-mulia-api`, proyek pihak ketiga tanpa SLA) gagal: `success` menjadi `false`, `price` berisi nilai fallback (`ZAKAT_GOLD_PRICE_FALLBACK`, default `2600000`), `source` menjadi `"fallback"`. Frontend membedakan lewat `success`, bukan status HTTP.
+- Hasil sukses di-cache in-memory selama `ZAKAT_GOLD_PRICE_CACHE_MINUTES` (default 60) — satu pemanggilan upstream per jam untuk semua pengunjung. Hasil fallback **tidak** di-cache sebagai "segar": permintaan berikutnya langsung mencoba upstream lagi begitu provider pulih.
+
+---
+
 ## 9. Organization (`/organizations`, `/me/organizations`) — ✅🔒
 
 Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") caller diresolusi server-side dari `organizationID`/`organizationTypeCode` (cascade: LDK→diri sendiri, Puskomda→diri+LDK di bawahnya, Puskomnas→seluruh organisasi) **atau** `wildcardTierAccess` (mem-bypass cascade untuk akun seperti Super Admin) — **tidak pernah** dipercaya dari input klien. Endpoint bertanda `RequireOrganizationScope` menolak (`403`) permintaan ke `:id` di luar cakupan caller, terlepas dari apa yang ditampilkan UI.
