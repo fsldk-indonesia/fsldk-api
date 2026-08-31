@@ -8,6 +8,7 @@ import (
 	"fsldk-api/base/token"
 	"fsldk-api/config"
 	"fsldk-api/middlewares"
+	"fsldk-api/pkg/goldprice"
 	"fsldk-api/pkg/googleauth"
 	"fsldk-api/pkg/kirimdev"
 	"fsldk-api/pkg/mailer"
@@ -105,6 +106,10 @@ import (
 	"fsldk-api/modules/upload/upload_service"
 	uploadpkg "fsldk-api/pkg/upload"
 
+	"fsldk-api/modules/zakat"
+	"fsldk-api/modules/zakat/zakat_handler"
+	"fsldk-api/modules/zakat/zakat_service"
+
 	"fsldk-api/modules/report"
 	"fsldk-api/modules/report/report_handler"
 	"fsldk-api/modules/report/report_repository"
@@ -180,6 +185,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
+	// Zakat calculator — DB-less; the service wraps the in-memory-cached
+	// gold-price client (pkg/goldprice), no repository.
+	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
+	zakatSvc := zakat_service.NewService(goldClient)
 	// commentSvc dibuat sebelum newsSvc/articleSvc/catalogbookSvc/eventSvc:
 	// keempatnya menerimanya sebagai CommentCleaner untuk membersihkan
 	// komentar saat konten induknya dihapus (ms_comment tidak punya FK ke
@@ -211,6 +220,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
+	zakatH := zakat_handler.NewHandler(zakatSvc)
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
 
@@ -280,6 +290,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	comment.RegisterPublicRoutes(pub, commentH, mw)
 	comment.RegisterCMSRoutes(api, commentH, mw)
+
+	zakat.RegisterPublicRoutes(pub, zakatH)
 
 	return engine
 }
