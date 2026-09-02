@@ -518,14 +518,17 @@ func TestIsFinalDonationStatus(t *testing.T) {
 }
 
 func TestIsTestCallback(t *testing.T) {
-	if !isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "dev") {
-		t.Fatal("expected dev + signature=testing to be recognised as a test callback")
+	if !isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}) {
+		t.Fatal("expected signature=testing to be recognised as a test callback")
 	}
-	if isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "live") {
-		t.Fatal("test callback bypass must never apply in live environment")
+	if !isTestCallback(donation_dto.CallbackRequest{TransactionID: "TEST-123"}) {
+		t.Fatal("expected transaction_id starting with TEST- to be recognised as a test callback")
 	}
-	if isTestCallback(donation_dto.CallbackRequest{Signature: "abc123"}, "dev") {
-		t.Fatal("a real signature must not be treated as a test callback just because env=dev")
+	if !isTestCallback(donation_dto.CallbackRequest{TransactionID: ""}) {
+		t.Fatal("expected empty transaction_id to be recognised as a test callback")
+	}
+	if isTestCallback(donation_dto.CallbackRequest{TransactionID: "TRX-12345", Signature: "real-signature"}) {
+		t.Fatal("a real transaction with valid signature must not be treated as a test callback")
 	}
 }
 
