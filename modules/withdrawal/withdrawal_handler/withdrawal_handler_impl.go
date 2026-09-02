@@ -129,8 +129,18 @@ func (h *HandlerImpl) Process(c *gin.Context) {
 // field signature untuk callback transfer, lihat withdrawal_service.ProcessCallback).
 func (h *HandlerImpl) Callback(c *gin.Context) {
 	var req withdrawal_dto.DisbursementCallbackRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	isPing, err := httphelper.BindCallbackJSON(c, &req)
+	if err != nil {
 		httphelper.Error(c, apperror.BadRequest("Format callback tidak valid"))
+		return
+	}
+	if isPing {
+		// Body kosong — connectivity ping dari dashboard Bisatopup (tombol
+		// "Test" pada Url Callback Transfer), bukan payload disbursement
+		// asli. Sengaja tidak memvalidasi :secret untuk ping ini — tidak ada
+		// data yang diproses/terbongkar, cuma konfirmasi endpoint hidup.
+		// Lihat httphelper.BindCallbackJSON.
+		httphelper.Success(c, "OK", nil)
 		return
 	}
 	if err := h.svc.ProcessCallback(c.Request.Context(), req, c.Param("secret")); err != nil {

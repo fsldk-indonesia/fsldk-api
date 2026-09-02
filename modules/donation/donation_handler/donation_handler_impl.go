@@ -62,8 +62,16 @@ func (h *HandlerImpl) Detail(c *gin.Context) {
 // standar seperti endpoint lain, cukup HTTP 200 untuk menandakan sukses.
 func (h *HandlerImpl) Callback(c *gin.Context) {
 	var req donation_dto.CallbackRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	isPing, err := httphelper.BindCallbackJSON(c, &req)
+	if err != nil {
 		httphelper.Error(c, apperror.BadRequest("Format callback tidak valid"))
+		return
+	}
+	if isPing {
+		// Body kosong — connectivity ping dari dashboard Bisatopup (tombol
+		// "Test" pada Url Callback), bukan payload webhook asli. Lihat
+		// httphelper.BindCallbackJSON.
+		httphelper.Success(c, "OK", nil)
 		return
 	}
 	if err := h.svc.ProcessCallback(c.Request.Context(), req); err != nil {
