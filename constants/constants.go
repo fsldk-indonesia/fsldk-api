@@ -58,6 +58,12 @@ const (
 	PermCatalogBookDelete  = "catalogbook.delete"
 	PermCatalogBookPublish = "catalogbook.publish"
 
+	PermScheduleView    = "schedule.view"
+	PermScheduleCreate  = "schedule.create"
+	PermScheduleUpdate  = "schedule.update"
+	PermScheduleDelete  = "schedule.delete"
+	PermSchedulePublish = "schedule.publish"
+
 	PermFinanceFormatView    = "financeformat.view"
 	PermFinanceFormatCreate  = "financeformat.create"
 	PermFinanceFormatUpdate  = "financeformat.update"
@@ -74,10 +80,10 @@ const (
 	PermRoleUpdate = "role.update"
 	PermRoleDelete = "role.delete"
 
-	PermShortlinkView    = "shortlink.view"
-	PermShortlinkCreate  = "shortlink.create"
-	PermShortlinkUpdate  = "shortlink.update"
-	PermShortlinkDelete  = "shortlink.delete"
+	PermShortlinkView   = "shortlink.view"
+	PermShortlinkCreate = "shortlink.create"
+	PermShortlinkUpdate = "shortlink.update"
+	PermShortlinkDelete = "shortlink.delete"
 
 	PermOrganizationCreate          = "organization.create"
 	PermOrganizationDeactivate      = "organization.deactivate"
@@ -110,7 +116,7 @@ const (
 	PermReportRegionExport   = "report.region.export"
 	PermReportNationalView   = "report.national.view"
 	PermReportNationalExport = "report.national.export"
-	PermShortlinkApprove = "shortlink.approve"
+	PermShortlinkApprove     = "shortlink.approve"
 
 	PermEventView   = "event.view"
 	PermEventCreate = "event.create"
@@ -128,6 +134,14 @@ const (
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
 )
+
+// ScheduleCategories are the valid slugs for ms_schedule.category. The
+// frontend renders labels/colours from its own copy of this list; the backend
+// only validates membership (DTO `oneof` tag + a service guard).
+var ScheduleCategories = []string{
+	"kajian", "rapat", "daurah", "aksi", "kaderisasi",
+	"keputrian", "lomba", "libur", "lainnya",
+}
 
 // Kode form pendataan konkret bawaan (dibangun di atas submission form engine).
 const (
@@ -216,21 +230,22 @@ const (
 
 // Database table names (convention: prefix_PascalCase).
 const (
-	TableUser               = "ms_user"
-	TableRole               = "ms_role"
-	TablePermission         = "lk_permission"
-	TableRolePermission     = "map_role_permission"
-	TableNews               = "ms_news"
-	TableNewsCategory       = "lk_news_category"
-	TableArticle            = "ms_article"
-	TableArticleCategory    = "lk_article_category"
-	TableShortlink          = "ms_shortlink"
-	TableShortlinkRequest   = "ms_shortlink_request"
-	TableComment            = "ms_comment"
-	TableCommentReaction    = "tr_comment_reaction"
-	TableUserLoginLog       = "tr_user_login_log"
-	TableEmailToken         = "tr_email_token" // token verifikasi email & reset password
-	TableEvent              = "ms_event"
+	TableUser             = "ms_user"
+	TableRole             = "ms_role"
+	TablePermission       = "lk_permission"
+	TableRolePermission   = "map_role_permission"
+	TableNews             = "ms_news"
+	TableNewsCategory     = "lk_news_category"
+	TableArticle          = "ms_article"
+	TableArticleCategory  = "lk_article_category"
+	TableShortlink        = "ms_shortlink"
+	TableShortlinkRequest = "ms_shortlink_request"
+	TableComment          = "ms_comment"
+	TableCommentReaction  = "tr_comment_reaction"
+	TableUserLoginLog     = "tr_user_login_log"
+	TableEmailToken       = "tr_email_token" // token verifikasi email & reset password
+	TableEvent            = "ms_event"
+	TableSchedule         = "ms_schedule"
 
 	TableOrganization     = "ms_organization"
 	TableOrganizationType = "lk_organization_type"
@@ -250,9 +265,9 @@ const (
 	TableLevel            = "lk_level"
 	TableLevelisasiResult = "tr_levelisasi_result"
 
-	TableFormAuditLog = "tr_form_audit_log"
-	TableUserAuditLog = "tr_user_audit_log"
-	TableExportLog    = "tr_export_log"
+	TableFormAuditLog       = "tr_form_audit_log"
+	TableUserAuditLog       = "tr_user_audit_log"
+	TableExportLog          = "tr_export_log"
 	TableSetting            = "ms_setting"
 	TableJobQueue           = "tr_job_queue"
 	TableWhatsAppMessageLog = "tr_whatsapp_message_log"
