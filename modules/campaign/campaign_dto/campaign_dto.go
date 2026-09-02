@@ -25,8 +25,8 @@ type CreateRequest struct {
 	OrganizationNameOverride string   `json:"organizationNameOverride" validate:"max=150"`
 	OrganizationLogoUrl      string   `json:"organizationLogoUrl" validate:"max=500"`
 	OrganizationLinkUrl      string   `json:"organizationLinkUrl" validate:"max=500"`
-	StartDate                *string  `json:"startDate"` // format YYYY-MM-DD
-	EndDate                  *string  `json:"endDate"`   // format YYYY-MM-DD
+	StartDate                *string  `json:"startDate"` // format YYYY-MM-DDTHH:mm (atau YYYY-MM-DD, tanpa jam)
+	EndDate                  *string  `json:"endDate"`   // format YYYY-MM-DDTHH:mm (atau YYYY-MM-DD, tanpa jam)
 	IsAnonymousAllowed       *bool    `json:"isAnonymousAllowed"`
 }
 

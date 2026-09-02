@@ -293,6 +293,8 @@ func (r *RepositoryImpl) CreateReconciliationSnapshot(ctx context.Context, p rep
 		"expectedBalance":            p.ExpectedBalance,
 		"gatewayWalletBalance":       p.GatewayWalletBalance,
 		"discrepancyAmount":          p.DiscrepancyAmount,
+		"settlementPendingAmount":    p.SettlementPendingAmount,
+		"settlementMinutes":          p.SettlementMinutes,
 		"hasAnomaly":                 p.HasAnomaly,
 		"createdDate":                time.Now(),
 	}

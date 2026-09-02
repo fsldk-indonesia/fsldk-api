@@ -31,6 +31,15 @@ import (
 	"fsldk-api/pkg/kirimdev"
 )
 
+// defaultDonationMessage dipakai saat donatur tidak menulis pesan/doa apa pun
+// di form donasi publik — persis teks default ldksyahid-app (app/Models/
+// Donation.php: pesan_donatur ?? "Bismillah Semoga Berkah yaaa ! tetap
+// Semangat Semuanya !!"), supaya daftar donatur & notifikasi tidak pernah
+// tampil kosong. Hanya berlaku di alur Create() (donasi publik/self-service)
+// — donasi manual yang diinput admin (AdminCreate/AdminUpdate) TIDAK
+// mendapat teks ini, karena field itu murni catatan admin apa adanya.
+const defaultDonationMessage = "Bismillah Semoga Berkah yaaa ! tetap Semangat Semuanya !!"
+
 // JobEnqueuer adalah irisan sempit jobqueue_service.Service yang dibutuhkan
 // modul ini — dipenuhi otomatis oleh jobqueue_service.Service (pola sama
 // shortlinkrequest_service.JobEnqueuer).
@@ -113,7 +122,7 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		DonorDomicile:   nullStringFrom(req.DonorDomicile),
 		DonorOccupation: nullStringFrom(req.DonorOccupation),
 		IsAnonymous:     req.IsAnonymous,
-		Message:         nullStringFrom(req.Message),
+		Message:         nullStringFrom(messageOrDefault(req.Message)),
 		Amount:          float64(amount),
 		AdminFee:        float64(adminFee),
 		TotalAmount:     float64(grossTotal),
@@ -461,7 +470,7 @@ func (s *ServiceImpl) PublicRecentDonations(ctx context.Context, slug string, li
 	for _, d := range rows {
 		name := d.DonorName
 		if d.IsAnonymous {
-			name = "Donatur (anonim)"
+			name = "Hamba Allah"
 		}
 		out = append(out, donation_dto.PublicDonationItem{
 			DonorName: name, IsAnonymous: d.IsAnonymous, Amount: d.Amount, Message: d.Message.String, CreatedDate: d.CreatedDate,
@@ -700,6 +709,15 @@ func truncateNoEllipsis(s string, max int) string {
 		return s
 	}
 	return string(r[:max])
+}
+
+// messageOrDefault mengembalikan defaultDonationMessage bila donatur tidak
+// menulis pesan sama sekali — lihat komentar defaultDonationMessage.
+func messageOrDefault(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return defaultDonationMessage
+	}
+	return s
 }
 
 func nullStringFrom(s string) sql.NullString {

@@ -143,6 +143,12 @@ type ReconciliationSnapshotResponse struct {
 	ExpectedBalance              float64       `gorm:"column:expectedBalance" json:"expectedBalance"`
 	GatewayWalletBalance         float64       `gorm:"column:gatewayWalletBalance" json:"gatewayWalletBalance"`
 	DiscrepancyAmount            float64       `gorm:"column:discrepancyAmount" json:"discrepancyAmount"`
+	// SettlementPendingAmount = jumlah donasi PAID dalam SettlementMinutes menit
+	// sebelum snapshot ini dijalankan — masih mungkin belum settle penuh di
+	// wallet gateway saat itu, jadi selisih sebesar ini ditoleransi (tidak
+	// dianggap anomali). Setara "Settlement Pending" di ldksyahid-app.
+	SettlementPendingAmount      float64       `gorm:"column:settlementPendingAmount" json:"settlementPendingAmount"`
+	SettlementMinutes            int           `gorm:"column:settlementMinutes" json:"settlementMinutes"`
 	HasAnomaly                   bool          `gorm:"column:hasAnomaly" json:"hasAnomaly"`
 	GatewayError                 sql.NullString `gorm:"column:gatewayError" json:"gatewayError,omitempty"`
 	CreatedDate                  time.Time     `gorm:"column:createdDate" json:"createdDate"`
@@ -160,6 +166,8 @@ type ReconciliationSnapshotParams struct {
 	ExpectedBalance            float64
 	GatewayWalletBalance       float64
 	DiscrepancyAmount          float64
+	SettlementPendingAmount    float64
+	SettlementMinutes          int
 	HasAnomaly                 bool
 	GatewayError               string
 }

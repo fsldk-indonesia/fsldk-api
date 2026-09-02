@@ -499,11 +499,11 @@ func toResponses(rows []campaign_model.Campaign) []campaign_dto.Response {
 func parseDateRange(startStr, endStr *string) (sql.NullTime, sql.NullTime, error) {
 	start, err := parseDate(startStr)
 	if err != nil {
-		return sql.NullTime{}, sql.NullTime{}, apperror.BadRequest("Format startDate tidak valid (YYYY-MM-DD)")
+		return sql.NullTime{}, sql.NullTime{}, apperror.BadRequest("Format startDate tidak valid (YYYY-MM-DDTHH:mm atau YYYY-MM-DD)")
 	}
 	end, err := parseDate(endStr)
 	if err != nil {
-		return sql.NullTime{}, sql.NullTime{}, apperror.BadRequest("Format endDate tidak valid (YYYY-MM-DD)")
+		return sql.NullTime{}, sql.NullTime{}, apperror.BadRequest("Format endDate tidak valid (YYYY-MM-DDTHH:mm atau YYYY-MM-DD)")
 	}
 	if start.Valid && end.Valid && !end.Time.After(start.Time) {
 		return sql.NullTime{}, sql.NullTime{}, apperror.BadRequest("endDate harus setelah startDate")
@@ -511,9 +511,18 @@ func parseDateRange(startStr, endStr *string) (sql.NullTime, sql.NullTime, error
 	return start, end, nil
 }
 
+// parseDate menerima format datetime-local ("2006-01-02T15:04", dikirim
+// <app-datetime-picker> dengan showTime=true — revisi jam mulai/selesai
+// campaign, revision-prompt-3.md poin 1) maupun format tanggal polos lama
+// ("2006-01-02", tanpa jam — dipertahankan untuk kompatibilitas data/klien
+// lama). Kolom startDate/endDate sudah DATETIME sejak awal (migration 0019),
+// jadi tidak perlu perubahan skema, hanya parsing-nya yang diperlonggar.
 func parseDate(s *string) (sql.NullTime, error) {
 	if s == nil || *s == "" {
 		return sql.NullTime{}, nil
+	}
+	if t, err := time.Parse("2006-01-02T15:04", *s); err == nil {
+		return sql.NullTime{Time: t, Valid: true}, nil
 	}
 	t, err := time.Parse("2006-01-02", *s)
 	if err != nil {

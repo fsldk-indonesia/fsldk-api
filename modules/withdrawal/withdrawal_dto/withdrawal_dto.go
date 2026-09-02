@@ -11,7 +11,13 @@ import "time"
 // (beneficiaryAccountHolder) diambil dari hasil inquiry yang terverifikasi
 // gateway, bukan dari input client, supaya tidak bisa dipalsukan.
 type CreateRequest struct {
-	Amount                   float64 `json:"amount" validate:"required,gte=50000"`
+	// Tidak ada nominal minimum tetap (revisi — sebelumnya gte=50000, angka
+	// arbitrer yang tidak ada padanannya di ldksyahid-app). Validasi
+	// sesungguhnya ada di withdrawal_service.Request: amount <= saldo tersedia
+	// (wallet_service.ReserveWithdrawal) dan amount-fee > 0 (net setelah
+	// biaya transfer bank, dipotong DARI amount ini — bukan ditambah di
+	// atasnya), persis pola ldksyahid-app WithdrawalController::store().
+	Amount                   float64 `json:"amount" validate:"required,gt=0"`
 	BeneficiaryBankCode      string  `json:"beneficiaryBankCode" validate:"required,max=20"`
 	BeneficiaryAccountNumber string  `json:"beneficiaryAccountNumber" validate:"required,max=30"`
 	IdempotencyKey           string  `json:"idempotencyKey" validate:"omitempty,max=100"`

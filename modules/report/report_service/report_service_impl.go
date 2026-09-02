@@ -408,6 +408,14 @@ func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.Reconci
 		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
 	}
 
+	// recentlyPaid = donasi PAID dalam settlementWindow menit terakhir — belum
+	// tentu sudah settle penuh di wallet gateway saat snapshot ini diambil.
+	// Dihitung selalu (bukan cuma saat gateway sukses) supaya nilainya tetap
+	// tersimpan & bisa ditampilkan di histori walau gatewayBalance gagal diambil.
+	settlementMinutes := s.cfg.BisatopupSettlementMinutesCrowdfunding
+	settlementWindow := time.Duration(settlementMinutes) * time.Minute
+	recentlyPaid, _ := s.repo.LedgerSumByType(ctx, 0, constants.LedgerEntryDonationCredit, now.Add(-settlementWindow), now)
+
 	var gatewayBalance float64
 	var gatewayErrMsg string
 	hasAnomaly := false
@@ -421,9 +429,8 @@ func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.Reconci
 	discrepancy := gatewayBalance - expectedBalance
 	if gerr == nil {
 		// Toleransi tambahan untuk donasi yang baru PAID dan belum settle
-		// penuh di wallet gateway (§15.1 — atribusi "Settling...").
-		settlementWindow := time.Duration(s.cfg.BisatopupSettlementMinutesCrowdfunding) * time.Minute
-		recentlyPaid, _ := s.repo.LedgerSumByType(ctx, 0, constants.LedgerEntryDonationCredit, now.Add(-settlementWindow), now)
+		// penuh di wallet gateway (§15.1 — atribusi "Settling..."), setara
+		// "Settlement Pending" di ldksyahid-app (balance-report.blade.php).
 		allowedGap := reconciliationDiscrepancyThreshold + recentlyPaid
 		hasAnomaly = math.Abs(discrepancy) > allowedGap
 	}
@@ -432,8 +439,9 @@ func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.Reconci
 		SnapshotDate: now, DonationPaidCount: donationCount, DonationPaidAmount: donationAmount,
 		LedgerDonationCreditAmount: ledgerDonationCredit, WithdrawalSuccessCount: withdrawalCount,
 		WithdrawalSuccessAmount: withdrawalAmount, ExpectedBalance: expectedBalance,
-		GatewayWalletBalance: gatewayBalance, DiscrepancyAmount: discrepancy, HasAnomaly: hasAnomaly,
-		GatewayError: gatewayErrMsg,
+		GatewayWalletBalance: gatewayBalance, DiscrepancyAmount: discrepancy,
+		SettlementPendingAmount: recentlyPaid, SettlementMinutes: settlementMinutes,
+		HasAnomaly: hasAnomaly, GatewayError: gatewayErrMsg,
 	}
 	id, err := s.repo.CreateReconciliationSnapshot(ctx, params)
 	if err != nil {
@@ -449,7 +457,9 @@ func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.Reconci
 		LedgerDonationCreditAmount: params.LedgerDonationCreditAmount,
 		WithdrawalSuccessCount:     params.WithdrawalSuccessCount, WithdrawalSuccessAmount: params.WithdrawalSuccessAmount,
 		ExpectedBalance: params.ExpectedBalance, GatewayWalletBalance: params.GatewayWalletBalance,
-		DiscrepancyAmount: params.DiscrepancyAmount, HasAnomaly: params.HasAnomaly, CreatedDate: now,
+		DiscrepancyAmount: params.DiscrepancyAmount,
+		SettlementPendingAmount: params.SettlementPendingAmount, SettlementMinutes: params.SettlementMinutes,
+		HasAnomaly: params.HasAnomaly, CreatedDate: now,
 	}, nil
 }
 
