@@ -63,10 +63,13 @@ func NewClient(cfg Config) Gateway {
 }
 
 func (c *client) baseURL() string {
+	// Semua endpoint Bisabiller berada di bawah prefix /api (lihat Postman
+	// docs, direplikasi di ldksyahid-app/app/Services/BisaTopup.php) — bukan
+	// di root domain.
 	if c.cfg.Env == "live" {
-		return strings.TrimRight(c.cfg.BaseURLLive, "/")
+		return strings.TrimRight(c.cfg.BaseURLLive, "/") + "/api"
 	}
-	return strings.TrimRight(c.cfg.BaseURLDev, "/")
+	return strings.TrimRight(c.cfg.BaseURLDev, "/") + "/api"
 }
 
 // BuildSignature membuat signature outbound (create transaction) —
