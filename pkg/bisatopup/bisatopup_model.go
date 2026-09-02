@@ -17,6 +17,10 @@ type Config struct {
 }
 
 // CreateQRISTransactionParams adalah parameter membuat transaksi QRIS baru.
+// ItemID/ItemName wajib diisi Bisabiller ("The item details field is
+// required") — direplikasi dari ldksyahid-app (PublicController::
+// storeDonationCampaign): satu item_details berisi campaign ID/judul dengan
+// harga = quantity 1 = Nominal (donasi bukan transaksi multi-item).
 type CreateQRISTransactionParams struct {
 	TransactionID   string
 	Nominal         int64
@@ -26,6 +30,8 @@ type CreateQRISTransactionParams struct {
 	CustomerName    string
 	CustomerEmail   string
 	CustomerNumber  string
+	ItemID          int64
+	ItemName        string
 }
 
 // Transaction merepresentasikan data transaksi payment gateway Bisabiller —
