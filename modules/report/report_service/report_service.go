@@ -5,6 +5,7 @@ package report_service
 import (
 	"context"
 
+	"fsldk-api/base/dto"
 	"fsldk-api/modules/report/report_dto"
 )
 
@@ -30,4 +31,42 @@ type OrgScopeResolver interface {
 // Service adalah kontrak logika bisnis report.
 type Service interface {
 	ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error)
+
+	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
+
+	// GetBalanceReport menghitung ringkasan saldo satu periode §15.1,
+	// tervalidasi otomatis terhadap ledger (isBalanced).
+	GetBalanceReport(ctx context.Context, f report_dto.BalanceReportFilter) (report_dto.BalanceReportResponse, error)
+	ExportBalanceReport(ctx context.Context, actorUserID int64, f report_dto.BalanceReportFilter) (report_dto.ExportResult, error)
+
+	ListCampaignReport(ctx context.Context, f report_dto.KantongAmalReportFilter) ([]report_dto.CampaignReportRow, int, error)
+	ExportCampaignReport(ctx context.Context, actorUserID int64, f report_dto.KantongAmalReportFilter) (report_dto.ExportResult, error)
+
+	ListDonationReport(ctx context.Context, f report_dto.KantongAmalReportFilter) ([]report_dto.DonationReportRow, int, error)
+	ExportDonationReport(ctx context.Context, actorUserID int64, f report_dto.KantongAmalReportFilter) (report_dto.ExportResult, error)
+
+	// ListWithdrawalReport juga mengembalikan funnel breakdown per status §15.4.
+	ListWithdrawalReport(ctx context.Context, f report_dto.KantongAmalReportFilter) ([]report_dto.WithdrawalReportRow, int, []report_dto.WithdrawalStatusFunnel, error)
+	ExportWithdrawalReport(ctx context.Context, actorUserID int64, f report_dto.KantongAmalReportFilter) (report_dto.ExportResult, error)
+
+	// RunReconciliation menjalankan satu kali perbandingan lima sumber §15.5
+	// dan menyimpannya sebagai snapshot baru — dipanggil job terjadwal
+	// (RunReconciliationScheduler) maupun manual trigger admin bila perlu.
+	RunReconciliation(ctx context.Context) (report_dto.ReconciliationSnapshotResponse, error)
+	ListReconciliationHistory(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int, error)
+	// ListFinanceAuditLog mengembalikan histori audit trail finance §16.1.
+	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error)
+
+	// ListGlobalLedger mengembalikan laporan debit/kredit global (item 6
+	// revision-prompt-2.md).
+	ListGlobalLedger(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int, error)
+	// GetAnalytics mengembalikan data tab Analitik (item 7
+	// revision-prompt-2.md) — distribusi nominal donasi, distribusi usia
+	// donor, dan progres campaign, sekali panggil.
+	GetAnalytics(ctx context.Context, campaignID int64) (report_dto.AnalyticsResponse, error)
+
+	// RunReconciliationScheduler menjalankan RunReconciliation harian
+	// (goroutine time.Ticker, bukan lewat job queue — §13.4 techspec, job
+	// `finance.daily_reconciliation`) sampai proses berhenti.
+	RunReconciliationScheduler()
 }
