@@ -112,6 +112,7 @@ import (
 	uploadpkg "fsldk-api/pkg/upload"
 
 	"fsldk-api/modules/zakat"
+	"fsldk-api/modules/structure"
 	"fsldk-api/modules/zakat/zakat_handler"
 	"fsldk-api/modules/zakat/zakat_service"
 
@@ -302,6 +303,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	comment.RegisterCMSRoutes(api, commentH, mw)
 
 	zakat.RegisterPublicRoutes(pub, zakatH)
+
+	structure.RegisterRoutes(api, pub, db, mw)
 
 	return engine
 }
