@@ -3,33 +3,28 @@ package campaign_service
 import "fsldk-api/constants"
 
 // validTransitions memetakan status asal ke himpunan status tujuan yang sah.
-// COMPLETED dan EXPIRED hanya dicapai lewat proses sistem (deadline lewat,
-// target tercapai — belum dibangun di fase ini) sehingga belum ada handler
-// yang memicunya, tapi tetap didaftarkan di sini supaya validasi transisi
-// sudah konsisten begitu proses tersebut dibangun tanpa perlu mengubah tabel
-// ini lagi nanti.
+// Revisi (2026-08-30): alur submission/review dihapus sesuai permintaan
+// product owner — campaign kini murni CRUD + permission gate, tanpa langkah
+// "diajukan lalu ditinjau orang lain". DRAFT langsung bisa dipublish oleh
+// siapapun pemegang izin kantong_amal.campaign.publish. PUBLISHED/PAUSED
+// juga langsung bisa diarsipkan (sebelumnya hanya lewat COMPLETED, yang
+// tidak pernah benar-benar dipicu proses manapun — Archive() jadi tidak
+// pernah bisa dipakai; bug lama ditutup sekalian di sini). COMPLETED dan
+// EXPIRED tetap didaftarkan untuk proses sistem (deadline lewat, target
+// tercapai) meski belum dibangun di fase ini.
 var validTransitions = map[string]map[string]bool{
 	constants.CampaignStatusDraft: {
-		constants.CampaignStatusSubmitted: true,
-	},
-	constants.CampaignStatusRevisionRequested: {
-		constants.CampaignStatusSubmitted: true,
-	},
-	constants.CampaignStatusSubmitted: {
-		constants.CampaignStatusApproved:          true,
-		constants.CampaignStatusRevisionRequested: true,
-		constants.CampaignStatusRejected:          true,
-	},
-	constants.CampaignStatusApproved: {
 		constants.CampaignStatusPublished: true,
 	},
 	constants.CampaignStatusPublished: {
 		constants.CampaignStatusPaused:    true,
 		constants.CampaignStatusCompleted: true,
 		constants.CampaignStatusExpired:   true,
+		constants.CampaignStatusArchived:  true,
 	},
 	constants.CampaignStatusPaused: {
 		constants.CampaignStatusPublished: true,
+		constants.CampaignStatusArchived:  true,
 	},
 	constants.CampaignStatusCompleted: {
 		constants.CampaignStatusArchived: true,

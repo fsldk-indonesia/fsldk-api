@@ -7,7 +7,11 @@ import (
 )
 
 // Campaign merepresentasikan satu baris ms_campaign (dengan kolom join
-// kategori/pemilik/organisasi).
+// kategori/organisasi). beneficiaryName/beneficiaryBankCode/
+// beneficiaryAccountNumber/beneficiaryAccountHolder/beneficiaryLockedUntil
+// tetap ada di DB tapi tidak lagi dipakai (revisi 2026-09-01 — rekening
+// penerima pindah ke withdrawal_request, bukan campaign) — precedent sama
+// tr_queue_job, kolom lama dibiarkan menganggur daripada migrasi DROP COLUMN.
 type Campaign struct {
 	CampaignID               int64          `gorm:"column:campaignID;primaryKey"`
 	PublicRef                string         `gorm:"column:publicRef"`
@@ -15,26 +19,28 @@ type Campaign struct {
 	Title                    string         `gorm:"column:title"`
 	CategoryID               int64          `gorm:"column:categoryID"`
 	CategoryName             string         `gorm:"column:categoryName;->"`
-	OwnerUserID              int64          `gorm:"column:ownerUserID"`
-	OwnerName                string         `gorm:"column:ownerName;->"`
 	OrganizationID           sql.NullInt64  `gorm:"column:organizationID"`
 	OrganizationName         sql.NullString `gorm:"column:organizationName;->"`
+	ProvinceName             sql.NullString `gorm:"column:provinceName"`
+	CityName                 sql.NullString `gorm:"column:cityName"`
 	Story                    string         `gorm:"column:story"`
+	Goals                    string         `gorm:"column:goals"`
 	LatestUpdate             sql.NullString `gorm:"column:latestUpdate"`
 	CoverImageUrl            string         `gorm:"column:coverImageUrl"`
 	TargetAmount             float64        `gorm:"column:targetAmount"`
 	CollectedAmountCache     float64        `gorm:"column:collectedAmountCache"`
-	BeneficiaryName          string         `gorm:"column:beneficiaryName"`
-	BeneficiaryBankCode      string         `gorm:"column:beneficiaryBankCode"`
-	BeneficiaryAccountNumber string         `gorm:"column:beneficiaryAccountNumber"`
-	BeneficiaryAccountHolder string         `gorm:"column:beneficiaryAccountHolder"`
-	BeneficiaryLockedUntil   sql.NullTime   `gorm:"column:beneficiaryLockedUntil"`
+	PicName                  string         `gorm:"column:picName"`
+	PicPhone                 string         `gorm:"column:picPhone"`
+	OrganizationNameOverride sql.NullString `gorm:"column:organizationNameOverride"`
+	OrganizationLogoUrl      sql.NullString `gorm:"column:organizationLogoUrl"`
+	OrganizationLinkUrl      sql.NullString `gorm:"column:organizationLinkUrl"`
 	StartDate                sql.NullTime   `gorm:"column:startDate"`
 	EndDate                  sql.NullTime   `gorm:"column:endDate"`
 	Status                   string         `gorm:"column:status"`
 	ModerationNote           sql.NullString `gorm:"column:moderationNote"`
 	IsFeatured               bool           `gorm:"column:isFeatured"`
 	IsAnonymousAllowed       bool           `gorm:"column:isAnonymousAllowed"`
+	HasDonations             bool           `gorm:"column:hasDonations;->"`
 	CreatedDate              time.Time      `gorm:"column:createdDate"`
 	CreatedBy                int64          `gorm:"column:createdBy"`
 	UpdatedDate              sql.NullTime   `gorm:"column:updatedDate"`
@@ -47,17 +53,6 @@ type Image struct {
 	CampaignID      int64  `gorm:"column:campaignID"`
 	ImageUrl        string `gorm:"column:imageUrl"`
 	SortOrder       int    `gorm:"column:sortOrder"`
-}
-
-// Review merepresentasikan satu baris tr_campaign_review (dengan nama reviewer, hasil join).
-type Review struct {
-	ReviewID       int64          `gorm:"column:reviewID;primaryKey"`
-	CampaignID     int64          `gorm:"column:campaignID"`
-	ReviewerUserID int64          `gorm:"column:reviewerUserID"`
-	ReviewerName   string         `gorm:"column:reviewerName;->"`
-	Decision       string         `gorm:"column:decision"`
-	Note           sql.NullString `gorm:"column:note"`
-	ReviewedDate   time.Time      `gorm:"column:reviewedDate"`
 }
 
 // Category merepresentasikan satu baris lk_campaign_category.
@@ -75,15 +70,18 @@ type CreateParams struct {
 	Slug                     string
 	Title                    string
 	CategoryID               int64
-	OwnerUserID              int64
 	OrganizationID           sql.NullInt64
+	ProvinceName             sql.NullString
+	CityName                 sql.NullString
 	Story                    string
+	Goals                    string
 	CoverImageUrl            string
 	TargetAmount             float64
-	BeneficiaryName          string
-	BeneficiaryBankCode      string
-	BeneficiaryAccountNumber string
-	BeneficiaryAccountHolder string
+	PicName                  string
+	PicPhone                 string
+	OrganizationNameOverride sql.NullString
+	OrganizationLogoUrl      sql.NullString
+	OrganizationLinkUrl      sql.NullString
 	StartDate                sql.NullTime
 	EndDate                  sql.NullTime
 	IsAnonymousAllowed       bool
@@ -96,35 +94,20 @@ type UpdateParams struct {
 	Title                    string
 	CategoryID               int64
 	OrganizationID           sql.NullInt64
+	ProvinceName             sql.NullString
+	CityName                 sql.NullString
 	Story                    string
+	Goals                    string
 	LatestUpdate             sql.NullString
 	CoverImageUrl            string
 	TargetAmount             float64
-	BeneficiaryName          string
-	BeneficiaryBankCode      string
-	BeneficiaryAccountNumber string
-	BeneficiaryAccountHolder string
+	PicName                  string
+	PicPhone                 string
+	OrganizationNameOverride sql.NullString
+	OrganizationLogoUrl      sql.NullString
+	OrganizationLinkUrl      sql.NullString
 	StartDate                sql.NullTime
 	EndDate                  sql.NullTime
 	IsAnonymousAllowed       bool
 	UpdatedBy                int64
-}
-
-// UpdateBeneficiaryParams menampung data mengganti rekening penerima
-// campaign yang sudah PUBLISHED — memicu cooling period (beneficiaryLockedUntil),
-// terpisah dari Update() biasa yang hanya berlaku saat DRAFT/REVISION_REQUESTED.
-type UpdateBeneficiaryParams struct {
-	BeneficiaryName          string
-	BeneficiaryBankCode      string
-	BeneficiaryAccountNumber string
-	BeneficiaryAccountHolder string
-	LockedUntil              time.Time
-}
-
-// ReviewParams menampung data untuk mencatat satu baris tr_campaign_review.
-type ReviewParams struct {
-	CampaignID     int64
-	ReviewerUserID int64
-	Decision       string
-	Note           sql.NullString
 }

@@ -14,11 +14,12 @@ import (
 )
 
 const campaignSelectCols = "c.campaignID, c.publicRef, c.slug, c.title, c.categoryID, cat.categoryName, " +
-	"c.ownerUserID, u.fullName AS ownerName, c.organizationID, o.organizationName, " +
-	"c.story, c.latestUpdate, c.coverImageUrl, c.targetAmount, c.collectedAmountCache, " +
-	"c.beneficiaryName, c.beneficiaryBankCode, c.beneficiaryAccountNumber, c.beneficiaryAccountHolder, c.beneficiaryLockedUntil, " +
+	"c.organizationID, o.organizationName, c.provinceName, c.cityName, " +
+	"c.story, c.goals, c.latestUpdate, c.coverImageUrl, c.targetAmount, c.collectedAmountCache, " +
+	"c.picName, c.picPhone, c.organizationNameOverride, c.organizationLogoUrl, c.organizationLinkUrl, " +
 	"c.startDate, c.endDate, c.status, c.moderationNote, c.isFeatured, c.isAnonymousAllowed, " +
-	"c.createdDate, c.createdBy, c.updatedDate, c.updatedBy"
+	"c.createdDate, c.createdBy, c.updatedDate, c.updatedBy, " +
+	"EXISTS(SELECT 1 FROM " + constants.TableDonation + " d WHERE d.campaignID = c.campaignID) AS hasDonations"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
 type RepositoryImpl struct{ db *gorm.DB }
@@ -29,7 +30,6 @@ func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).Table(constants.TableCampaign + " c").
 		Joins("JOIN " + constants.TableCampaignCategory + " cat ON cat.campaignCategoryID = c.categoryID").
-		Joins("JOIN ms_user u ON u.userID = c.ownerUserID").
 		Joins("LEFT JOIN ms_organization o ON o.organizationID = c.organizationID")
 }
 
@@ -40,9 +40,6 @@ func (r *RepositoryImpl) List(ctx context.Context, f campaign_dto.ListFilter) ([
 	}
 	if f.CategoryID > 0 {
 		q = q.Where("c.categoryID = ?", f.CategoryID)
-	}
-	if f.OwnerUserID != nil {
-		q = q.Where("c.ownerUserID = ?", *f.OwnerUserID)
 	}
 	if f.Search != "" {
 		q = q.Where("c.title LIKE ?", "%"+f.Search+"%")
@@ -56,6 +53,13 @@ func (r *RepositoryImpl) List(ctx context.Context, f campaign_dto.ListFilter) ([
 	var out []campaign_model.Campaign
 	err := q.Select(campaignSelectCols).Order(f.OrderBy).Limit(f.Limit).Offset(f.Offset).Find(&out).Error
 	return out, total, err
+}
+
+func (r *RepositoryImpl) ListLite(ctx context.Context) ([]campaign_model.Campaign, error) {
+	var out []campaign_model.Campaign
+	err := r.db.WithContext(ctx).Table(constants.TableCampaign+" c").
+		Select("c.campaignID, c.title").Order("c.title").Find(&out).Error
+	return out, err
 }
 
 func (r *RepositoryImpl) findOne(ctx context.Context, where string, arg interface{}) (campaign_model.Campaign, error) {
@@ -101,16 +105,19 @@ func (r *RepositoryImpl) Create(ctx context.Context, p campaign_model.CreatePara
 		"slug":                     p.Slug,
 		"title":                    p.Title,
 		"categoryID":               p.CategoryID,
-		"ownerUserID":              p.OwnerUserID,
 		"organizationID":           p.OrganizationID,
+		"provinceName":             p.ProvinceName,
+		"cityName":                 p.CityName,
 		"story":                    p.Story,
+		"goals":                    p.Goals,
 		"coverImageUrl":            p.CoverImageUrl,
 		"targetAmount":             p.TargetAmount,
 		"collectedAmountCache":     0,
-		"beneficiaryName":          p.BeneficiaryName,
-		"beneficiaryBankCode":      p.BeneficiaryBankCode,
-		"beneficiaryAccountNumber": p.BeneficiaryAccountNumber,
-		"beneficiaryAccountHolder": p.BeneficiaryAccountHolder,
+		"picName":                  p.PicName,
+		"picPhone":                 p.PicPhone,
+		"organizationNameOverride": p.OrganizationNameOverride,
+		"organizationLogoUrl":      p.OrganizationLogoUrl,
+		"organizationLinkUrl":      p.OrganizationLinkUrl,
 		"startDate":                p.StartDate,
 		"endDate":                  p.EndDate,
 		"status":                   constants.CampaignStatusDraft,
@@ -134,14 +141,18 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, p campaign_model.
 		"title":                    p.Title,
 		"categoryID":               p.CategoryID,
 		"organizationID":           p.OrganizationID,
+		"provinceName":             p.ProvinceName,
+		"cityName":                 p.CityName,
 		"story":                    p.Story,
+		"goals":                    p.Goals,
 		"latestUpdate":             p.LatestUpdate,
 		"coverImageUrl":            p.CoverImageUrl,
 		"targetAmount":             p.TargetAmount,
-		"beneficiaryName":          p.BeneficiaryName,
-		"beneficiaryBankCode":      p.BeneficiaryBankCode,
-		"beneficiaryAccountNumber": p.BeneficiaryAccountNumber,
-		"beneficiaryAccountHolder": p.BeneficiaryAccountHolder,
+		"picName":                  p.PicName,
+		"picPhone":                 p.PicPhone,
+		"organizationNameOverride": p.OrganizationNameOverride,
+		"organizationLogoUrl":      p.OrganizationLogoUrl,
+		"organizationLinkUrl":      p.OrganizationLinkUrl,
 		"startDate":                p.StartDate,
 		"endDate":                  p.EndDate,
 		"isAnonymousAllowed":       p.IsAnonymousAllowed,
@@ -150,15 +161,13 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, p campaign_model.
 	}).Error
 }
 
-func (r *RepositoryImpl) UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error {
-	return r.db.WithContext(ctx).Table(constants.TableCampaign).Where("campaignID = ?", id).Updates(map[string]interface{}{
-		"beneficiaryName":          p.BeneficiaryName,
-		"beneficiaryBankCode":      p.BeneficiaryBankCode,
-		"beneficiaryAccountNumber": p.BeneficiaryAccountNumber,
-		"beneficiaryAccountHolder": p.BeneficiaryAccountHolder,
-		"beneficiaryLockedUntil":   p.LockedUntil,
-		"updatedDate":              time.Now(),
-	}).Error
+func (r *RepositoryImpl) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM "+constants.TableCampaignImage+" WHERE campaignID = ?", id).Error; err != nil {
+			return err
+		}
+		return tx.Exec("DELETE FROM "+constants.TableCampaign+" WHERE campaignID = ?", id).Error
+	})
 }
 
 func (r *RepositoryImpl) UpdateStatus(ctx context.Context, id int64, status string, note sql.NullString, updatedBy int64) error {
@@ -195,34 +204,5 @@ func (r *RepositoryImpl) ListImages(ctx context.Context, campaignID int64) ([]ca
 	var out []campaign_model.Image
 	err := r.db.WithContext(ctx).Table(constants.TableCampaignImage).
 		Where("campaignID = ?", campaignID).Order("sortOrder").Find(&out).Error
-	return out, err
-}
-
-func (r *RepositoryImpl) CreateReview(ctx context.Context, p campaign_model.ReviewParams) (int64, error) {
-	values := map[string]interface{}{
-		"campaignID":     p.CampaignID,
-		"reviewerUserID": p.ReviewerUserID,
-		"decision":       p.Decision,
-		"note":           p.Note,
-		"reviewedDate":   time.Now(),
-	}
-	var newID int64
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Table(constants.TableCampaignReview).Create(values).Error; err != nil {
-			return err
-		}
-		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
-	})
-	return newID, err
-}
-
-func (r *RepositoryImpl) ListReviews(ctx context.Context, campaignID int64) ([]campaign_model.Review, error) {
-	var out []campaign_model.Review
-	err := r.db.WithContext(ctx).Table(constants.TableCampaignReview+" r").
-		Select("r.reviewID, r.campaignID, r.reviewerUserID, u.fullName AS reviewerName, r.decision, r.note, r.reviewedDate").
-		Joins("JOIN ms_user u ON u.userID = r.reviewerUserID").
-		Where("r.campaignID = ?", campaignID).
-		Order("r.reviewedDate DESC").
-		Find(&out).Error
 	return out, err
 }

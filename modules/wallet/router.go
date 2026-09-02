@@ -1,4 +1,4 @@
-// Package wallet merangkai routing modul wallet (milik-sendiri, CMS).
+// Package wallet merangkai routing modul wallet (CMS).
 package wallet
 
 import (
@@ -9,20 +9,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterMeRoutes mendaftarkan endpoint balance/ledger milik campaign
-// owner sendiri. Kepemilikan campaign divalidasi di wallet_service (404
-// bila bukan pemilik), permission di sini hanya gerbang umum "boleh
-// mengelola campaign sendiri" — pola sama seperti modules/campaign.
-func RegisterMeRoutes(rg *gin.RouterGroup, h wallet_handler.Handler, mw *middlewares.Middleware) {
-	g := rg.Group("/me/campaigns/:id")
-	g.Use(mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermCampaignCreate))
-	{
-		g.GET("/balance", h.MyBalance)
-		g.GET("/ledger", h.MyLedger)
-	}
-}
-
-// RegisterCMSRoutes mendaftarkan endpoint balance untuk admin.
+// RegisterCMSRoutes mendaftarkan endpoint balance/ledger campaign untuk
+// admin CMS — TIDAK ada lagi endpoint milik-sendiri (revisi 2026-09-01,
+// campaign tidak lagi punya kepemilikan; balance/ledger self-service
+// digantikan Laporan Kantong Amal, item 6 revision-prompt-2.md).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h wallet_handler.Handler, mw *middlewares.Middleware) {
-	rg.GET("/campaigns/:id/balance", mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermWalletView), h.CMSBalance)
+	g := rg.Group("/campaigns/:id")
+	g.Use(mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermWalletView))
+	{
+		g.GET("/balance", h.CMSBalance)
+		g.GET("/ledger", h.CMSLedger)
+	}
 }

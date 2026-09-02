@@ -35,7 +35,18 @@ func RegisterMeRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middl
 	rg.GET("/me/donations", mw.Auth(), mw.RequireVerified(), h.MyList)
 }
 
-// RegisterCMSRoutes mendaftarkan endpoint CMS monitoring donasi.
+// RegisterCMSRoutes mendaftarkan endpoint CMS monitoring donasi + CRUD
+// donasi manual/offline (item 1 revision-prompt-2.md — donasi yang tidak
+// lewat Amdigipay/Bisatopup). AdminUpdate/AdminDelete menolak donasi
+// gateway="bisatopup" di service layer (lihat donation_service_impl.go).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
-	rg.GET("/donations", mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermDonationView), h.CMSList)
+	g := rg.Group("/donations")
+	g.Use(mw.Auth(), mw.RequireVerified())
+	{
+		g.GET("", mw.RequirePermission(constants.PermDonationView), h.CMSList)
+		g.GET("/:id", mw.RequirePermission(constants.PermDonationView), h.CMSGet)
+		g.POST("", mw.RequirePermission(constants.PermDonationCreate), h.AdminCreate)
+		g.PUT("/:id", mw.RequirePermission(constants.PermDonationUpdate), h.AdminUpdate)
+		g.DELETE("/:id", mw.RequirePermission(constants.PermDonationDelete), h.AdminDelete)
+	}
 }

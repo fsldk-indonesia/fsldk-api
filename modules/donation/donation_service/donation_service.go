@@ -23,6 +23,22 @@ type Service interface {
 	PublicRecentDonations(ctx context.Context, slug string, limit int) ([]donation_dto.PublicDonationItem, error)
 	MyList(ctx context.Context, donorUserID int64, q dto.ListQuery) ([]donation_dto.Response, int, error)
 	CMSList(ctx context.Context, q dto.ListQuery, campaignID int64, status string) ([]donation_dto.Response, int, error)
+	// CMSGet mengembalikan detail donasi termasuk PII donor — dipakai
+	// membuka form edit donasi manual di CMS (lihat donation_dto.AdminDetailResponse).
+	CMSGet(ctx context.Context, id int64) (donation_dto.AdminDetailResponse, error)
+
+	// AdminCreate/AdminUpdate/AdminDelete adalah CRUD donasi manual/offline
+	// (item 1 revision-prompt-2.md) — menangani donasi yang tidak lewat
+	// Amdigipay/Bisatopup (mis. tunai/transfer manual). Selalu gateway="manual",
+	// TIDAK PERNAH menyentuh tr_wallet_ledger — saldo campaign yang bisa
+	// ditarik (withdrawal) tetap murni berasal dari donasi Bisatopup saja.
+	AdminCreate(ctx context.Context, req donation_dto.AdminCreateRequest) (donation_dto.Response, error)
+	// AdminUpdate/AdminDelete menolak (apperror.Forbidden) bila donasi target
+	// bukan gateway="manual" — donasi Bisatopup adalah catatan finansial yang
+	// tidak boleh diubah/dihapus dari sini (pola sama celengan syahid
+	// destroyAdminDonation).
+	AdminUpdate(ctx context.Context, id int64, req donation_dto.AdminUpdateRequest) (donation_dto.Response, error)
+	AdminDelete(ctx context.Context, id int64) error
 
 	// ProcessCallback menangani webhook payment callback Bisabiller: verifikasi
 	// signature, idempotency (status final tidak pernah ditimpa ulang kecuali

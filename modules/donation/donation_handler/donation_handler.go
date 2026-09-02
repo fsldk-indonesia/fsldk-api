@@ -14,4 +14,8 @@ type Handler interface {
 	MyList(c *gin.Context)
 
 	CMSList(c *gin.Context)
+	CMSGet(c *gin.Context)
+	AdminCreate(c *gin.Context)
+	AdminUpdate(c *gin.Context)
+	AdminDelete(c *gin.Context)
 }

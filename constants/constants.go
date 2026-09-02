@@ -123,17 +123,24 @@ const (
 
 	PermCampaignCreate   = "kantong_amal.campaign.create"
 	PermCampaignView     = "kantong_amal.campaign.view"
-	PermCampaignReview   = "kantong_amal.campaign.review"
+	PermCampaignUpdate   = "kantong_amal.campaign.update"
+	PermCampaignDelete   = "kantong_amal.campaign.delete"
 	PermCampaignPublish  = "kantong_amal.campaign.publish"
 	PermCampaignModerate = "kantong_amal.campaign.moderate"
 
-	PermDonationView = "kantong_amal.donation.view"
+	PermDonationView   = "kantong_amal.donation.view"
+	PermDonationCreate = "kantong_amal.donation.create"
+	PermDonationUpdate = "kantong_amal.donation.update"
+	PermDonationDelete = "kantong_amal.donation.delete"
 
 	PermWalletView = "kantong_amal.wallet.view"
 
 	PermWithdrawalRequest = "kantong_amal.withdrawal.request"
+	// PermWithdrawalApprove kini menggerbang akses lihat/kelola daftar
+	// withdrawal ("Penarikan" di sidebar CMS) — bukan lagi aksi approve
+	// terpisah (maker-checker dihapus, revisi 2026-08-30); kode dipertahankan
+	// apa adanya untuk menghindari cascade rename ke role grant/dokumentasi.
 	PermWithdrawalApprove = "kantong_amal.withdrawal.approve"
-	PermWithdrawalReject  = "kantong_amal.withdrawal.reject"
 	PermWithdrawalProcess = "kantong_amal.withdrawal.process"
 
 	PermFinanceReportView   = "kantong_amal.report.view"
@@ -341,9 +348,25 @@ const (
 	DonationStatusAmountMismatch = "AMOUNT_MISMATCH"
 )
 
-// Gateway tr_donation.gateway.
+// Gateway tr_donation.gateway. DonationGatewayManual menandai donasi
+// offline/manual yang dicatat admin (revisi 2026-09-01, pola sama celengan
+// syahid ldksyahid-app) — TIDAK PERNAH menyentuh tr_wallet_ledger, sehingga
+// withdrawal (yang membaca saldo dari ledger) otomatis hanya bisa menarik
+// dana yang benar-benar berasal dari Bisatopup (item 5 revision-prompt-2.md).
 const (
 	DonationGatewayBisatopup = "bisatopup"
+	DonationGatewayManual    = "manual"
+)
+
+// Metode pembayaran donasi manual/offline (tr_donation.paymentMethod) —
+// hanya relevan untuk DonationGatewayManual; donasi Bisatopup selalu QRIS.
+const (
+	DonationPaymentMethodCash         = "CASH"
+	DonationPaymentMethodQris         = "QRIS"
+	DonationPaymentMethodEwallet      = "EWALLET"
+	DonationPaymentMethodTransfer     = "TRANSFER"
+	DonationPaymentMethodBankTransfer = "BANK_TRANSFER"
+	DonationPaymentMethodOther        = "OTHER"
 )
 
 // Status tr_withdrawal.status.
@@ -362,15 +385,22 @@ const (
 
 // tr_withdrawal.securityVerifiedMethod — NULL berarti step-up password saja
 // (Option B, withdrawal rutin non-risiko), non-NULL berarti OTP/TOTP juga
-// diverifikasi (Option D, dipicu risk-based). Hanya OTP_WA yang dipakai versi
-// awal — TOTP/OTP_EMAIL opt-in ditunda (lihat phase-07-summary.md).
+// diverifikasi (Option D, dipicu risk-based). OTP_WA dipakai versi awal;
+// OTP_EMAIL menggantikannya sejak revisi 2026-09-01 (item 8
+// revision-prompt-2.md — OTP dikirim ke email tetap di ms_setting, bukan
+// WhatsApp). Kode lama dipertahankan untuk baris historis, tidak dihapus.
 const (
-	WithdrawalSecurityMethodOtpWa = "OTP_WA"
+	WithdrawalSecurityMethodOtpWa    = "OTP_WA"
+	WithdrawalSecurityMethodOtpEmail = "OTP_EMAIL"
 )
 
-// Channel tr_otp_challenge.channel.
+// Channel tr_otp_challenge.channel. OtpChannelEmail menggantikan
+// OtpChannelWhatsapp untuk OTP withdrawal Kantong Amal (item 8
+// revision-prompt-2.md, 2026-09-01) — dikirim ke email tetap yang
+// dikonfigurasi admin di ms_setting, bukan WhatsApp requester.
 const (
 	OtpChannelWhatsapp = "OTP_WA"
+	OtpChannelEmail    = "OTP_EMAIL"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

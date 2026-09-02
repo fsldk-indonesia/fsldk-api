@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"strconv"
@@ -24,7 +25,6 @@ import (
 	"fsldk-api/modules/donation/donation_repository"
 	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_model"
-	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/bisatopup"
@@ -45,6 +45,17 @@ type FinanceAuditor interface {
 	LogFinance(ctx context.Context, e auditlog.Entry)
 }
 
+// Mailer adalah irisan sempit mailer.Mailer yang dibutuhkan modul ini — pola
+// sama JobEnqueuer/FinanceAuditor.
+type Mailer interface {
+	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error
+	// SendDonationInvoice dikirim SEGERA setelah donasi dibuat (sebelum
+	// dibayar) — konfirmasi pertama dari dua email donasi (item 2
+	// revision-prompt-2.md), berisi tagihan QRIS. SendDonationReceipt
+	// (di atas) adalah email kedua, dikirim setelah pembayaran dikonfirmasi PAID.
+	SendDonationInvoice(toEmail, toName, campaignTitle, amount, qrURL, expiredDateStr string) error
+}
+
 var sortColumns = map[string]string{
 	"createdDate": "d.createdDate",
 	"amount":      "d.amount",
@@ -54,18 +65,18 @@ var sortColumns = map[string]string{
 type ServiceImpl struct {
 	repo         donation_repository.Repository
 	campaignRepo campaign_repository.Repository
-	userRepo     user_repository.Repository
 	walletSvc    wallet_service.Service
 	gateway      bisatopup.Gateway
 	jobs         JobEnqueuer
 	audit        FinanceAuditor
+	mail         Mailer
 	db           *gorm.DB // hanya dipakai ProcessCallback, yang membuka transaksinya sendiri
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service donation.
-func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, audit FinanceAuditor, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, audit: audit, db: db, cfg: cfg}
+func NewService(repo donation_repository.Repository, campaignRepo campaign_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, audit FinanceAuditor, mail Mailer, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, audit: audit, mail: mail, db: db, cfg: cfg}
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error) {
@@ -160,6 +171,15 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	s.notify(ctx, req.DonorPhone, "invoice_donasi_kantong_amal",
 		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, qris.PaymentLinks},
 		id)
+	// Email pertama dari dua email donasi (item 2 revision-prompt-2.md) —
+	// konfirmasi/tagihan segera setelah donasi dibuat, sebelum dibayar.
+	// Email kedua (SendDonationReceipt) menyusul setelah PAID, lihat
+	// notifyDonationPaid(). Best-effort, gagal kirim tidak menggagalkan alur donasi.
+	if req.DonorEmail != "" {
+		if err := s.mail.SendDonationInvoice(req.DonorEmail, req.DonorName, camp.Title, formatRupiah(float64(grossTotal)), qris.QrCode, expiredAt.Format("02 Jan 2006 15:04")); err != nil {
+			log.Printf("[DONATION] gagal kirim email invoice donasi %d: %v", id, err)
+		}
+	}
 	var actorID int64
 	if donorUserID != nil {
 		actorID = *donorUserID
@@ -337,26 +357,33 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, req donation_dto.Ca
 
 // notifyDonationPaid mengirim notifikasi WA ke donor dan (bila tidak
 // anonim/PIC tetap perlu tahu) ke pemilik campaign — §14.3/§14.9 techspec.
+// Juga mengirim email konfirmasi ke donor (revisi 2026-08-30, pola sama
+// Celengan Syahid ldksyahid-app) — best-effort, gagal kirim email tidak
+// pernah menggagalkan proses callback pembayaran.
 func (s *ServiceImpl) notifyDonationPaid(ctx context.Context, d donation_model.Donation) {
 	amountStr := formatRupiah(d.Amount)
 	if d.DonorPhone != "" {
 		s.notify(ctx, d.DonorPhone, "donasi_berhasil_kantong_amal", []string{d.DonorName, amountStr, d.CampaignTitle}, d.DonationID)
 	}
+	if d.DonorEmail != "" {
+		receiptURL := fmt.Sprintf("%s/kantong-amal/donasi/%s/bukti", strings.TrimRight(s.cfg.FrontendURL, "/"), d.PublicRef)
+		if err := s.mail.SendDonationReceipt(d.DonorEmail, d.DonorName, d.CampaignTitle, amountStr, formatRupiah(d.TotalAmount), d.CreatedDate.Format("02 Jan 2006 15:04"), d.PublicRef, receiptURL); err != nil {
+			log.Printf("[DONATION] gagal kirim email konfirmasi donasi %d: %v", d.DonationID, err)
+		}
+	}
 
 	camp, err := s.campaignRepo.FindByID(ctx, d.CampaignID)
-	if err != nil {
-		log.Printf("[DONATION] gagal ambil campaign %d untuk notifikasi PIC: %v", d.CampaignID, err)
-		return
-	}
-	owner, err := s.userRepo.FindByID(ctx, camp.OwnerUserID)
-	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
+	if err != nil || camp.PicPhone == "" {
+		if err != nil {
+			log.Printf("[DONATION] gagal ambil campaign %d untuk notifikasi PIC: %v", d.CampaignID, err)
+		}
 		return
 	}
 	donorLabel := d.DonorName
 	if d.IsAnonymous {
 		donorLabel = "Donatur (anonim)"
 	}
-	s.notify(ctx, owner.PhoneNumber.String, "notifikasi_pic_donasi_kantong_amal", []string{amountStr, donorLabel, camp.Title}, d.DonationID)
+	s.notify(ctx, camp.PicPhone, "notifikasi_pic_donasi_kantong_amal", []string{amountStr, donorLabel, camp.Title}, d.DonationID)
 }
 
 // ExpireStale menandai EXPIRED seluruh donasi PENDING yang sudah lewat
@@ -463,6 +490,103 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, campaignID i
 	})
 }
 
+func (s *ServiceImpl) CMSGet(ctx context.Context, id int64) (donation_dto.AdminDetailResponse, error) {
+	d, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return donation_dto.AdminDetailResponse{}, apperror.NotFound("Donasi tidak ditemukan")
+	}
+	return donation_dto.AdminDetailResponse{
+		Response:        toResponse(d),
+		DonorEmail:      d.DonorEmail,
+		DonorPhone:      d.DonorPhone,
+		DonorAge:        d.DonorAge.String,
+		DonorDomicile:   d.DonorDomicile.String,
+		DonorOccupation: d.DonorOccupation.String,
+	}, nil
+}
+
+func (s *ServiceImpl) AdminCreate(ctx context.Context, req donation_dto.AdminCreateRequest) (donation_dto.Response, error) {
+	if _, err := s.campaignRepo.FindByID(ctx, req.CampaignID); err != nil {
+		return donation_dto.Response{}, apperror.NotFound("Campaign tidak ditemukan")
+	}
+	id, err := s.repo.AdminCreate(ctx, donation_model.AdminCreateParams{
+		PublicRef:       idgen.NewUUIDv4(),
+		CampaignID:      req.CampaignID,
+		DonorName:       req.DonorName,
+		DonorEmail:      nullStringFrom(req.DonorEmail),
+		DonorPhone:      nullStringFrom(req.DonorPhone),
+		DonorAge:        nullStringFrom(req.DonorAge),
+		DonorDomicile:   nullStringFrom(req.DonorDomicile),
+		DonorOccupation: nullStringFrom(req.DonorOccupation),
+		IsAnonymous:     req.IsAnonymous,
+		Message:         nullStringFrom(req.Message),
+		Amount:          float64(roundRupiah(req.Amount)),
+		PaymentMethod:   nullStringFrom(req.PaymentMethod),
+		PaymentStatus:   req.PaymentStatus,
+		IdempotencyKey:  idgen.NewUUIDv4(),
+	})
+	if err != nil {
+		return donation_dto.Response{}, apperror.Internal("Gagal mencatat donasi manual")
+	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		Action: "donation.manual_created", Entity: "donation", EntityID: id,
+		After: map[string]interface{}{"campaignID": req.CampaignID, "amount": req.Amount, "paymentStatus": req.PaymentStatus},
+	})
+	return s.getResponse(ctx, id)
+}
+
+// AdminUpdate/AdminDelete hanya berlaku untuk donasi gateway="manual" —
+// donasi Bisatopup adalah catatan finansial yang tidak boleh diubah/dihapus
+// dari sini (pola sama celengan syahid destroyAdminDonation).
+func (s *ServiceImpl) AdminUpdate(ctx context.Context, id int64, req donation_dto.AdminUpdateRequest) (donation_dto.Response, error) {
+	d, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return donation_dto.Response{}, apperror.NotFound("Donasi tidak ditemukan")
+	}
+	if d.Gateway != constants.DonationGatewayManual {
+		return donation_dto.Response{}, apperror.Forbidden("Donasi via Bisatopup tidak dapat diubah dari sini")
+	}
+	if err := s.repo.AdminUpdate(ctx, id, donation_model.AdminUpdateParams{
+		DonorName:       req.DonorName,
+		DonorEmail:      nullStringFrom(req.DonorEmail),
+		DonorPhone:      nullStringFrom(req.DonorPhone),
+		DonorAge:        nullStringFrom(req.DonorAge),
+		DonorDomicile:   nullStringFrom(req.DonorDomicile),
+		DonorOccupation: nullStringFrom(req.DonorOccupation),
+		IsAnonymous:     req.IsAnonymous,
+		Message:         nullStringFrom(req.Message),
+		Amount:          float64(roundRupiah(req.Amount)),
+		PaymentMethod:   nullStringFrom(req.PaymentMethod),
+		PaymentStatus:   req.PaymentStatus,
+	}); err != nil {
+		return donation_dto.Response{}, apperror.Internal("Gagal memperbarui donasi")
+	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		Action: "donation.manual_updated", Entity: "donation", EntityID: id,
+		Before: map[string]interface{}{"amount": d.Amount, "paymentStatus": d.PaymentStatus},
+		After:  map[string]interface{}{"amount": req.Amount, "paymentStatus": req.PaymentStatus},
+	})
+	return s.getResponse(ctx, id)
+}
+
+func (s *ServiceImpl) AdminDelete(ctx context.Context, id int64) error {
+	d, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return apperror.NotFound("Donasi tidak ditemukan")
+	}
+	if d.Gateway != constants.DonationGatewayManual {
+		return apperror.Forbidden("Donasi via Bisatopup tidak dapat dihapus — merupakan catatan finansial")
+	}
+	if err := s.repo.AdminDelete(ctx, id); err != nil {
+		return apperror.Internal("Gagal menghapus donasi")
+	}
+	s.audit.LogFinance(ctx, auditlog.Entry{
+		Action: "donation.manual_deleted", Entity: "donation", EntityID: id,
+		Before: map[string]interface{}{"amount": d.Amount, "campaignID": d.CampaignID},
+	})
+	return nil
+}
+
 func (s *ServiceImpl) list(ctx context.Context, f donation_dto.ListFilter) ([]donation_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, f)
 	if err != nil {
@@ -497,6 +621,7 @@ func toResponse(d donation_model.Donation) donation_dto.Response {
 		TotalAmount:   d.TotalAmount,
 		PaymentStatus: d.PaymentStatus,
 		Gateway:       d.Gateway,
+		PaymentMethod: d.PaymentMethod.String,
 		CreatedDate:   d.CreatedDate,
 	}
 	if d.Message.Valid {

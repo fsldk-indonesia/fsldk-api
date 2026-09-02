@@ -461,6 +461,30 @@ func (s *ServiceImpl) ListReconciliationHistory(ctx context.Context, q dto.ListQ
 	return rows, int(total), nil
 }
 
+func (s *ServiceImpl) ListGlobalLedger(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int, error) {
+	rows, total, err := s.repo.GlobalLedgerRows(ctx, f)
+	if err != nil {
+		return nil, 0, apperror.Internal("")
+	}
+	return rows, int(total), nil
+}
+
+func (s *ServiceImpl) GetAnalytics(ctx context.Context, campaignID int64) (report_dto.AnalyticsResponse, error) {
+	amountBands, err := s.repo.DonationAmountBands(ctx, campaignID)
+	if err != nil {
+		return report_dto.AnalyticsResponse{}, apperror.Internal("")
+	}
+	ageBands, err := s.repo.DonorAgeBands(ctx, campaignID)
+	if err != nil {
+		return report_dto.AnalyticsResponse{}, apperror.Internal("")
+	}
+	progress, _, err := s.repo.CampaignReportRows(ctx, report_dto.KantongAmalReportFilter{CampaignID: campaignID, Page: 1, Limit: 100})
+	if err != nil {
+		return report_dto.AnalyticsResponse{}, apperror.Internal("")
+	}
+	return report_dto.AnalyticsResponse{DonationAmountBands: amountBands, DonorAgeBands: ageBands, CampaignProgress: progress}, nil
+}
+
 func (s *ServiceImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error) {
 	rows, total, err := s.repo.ListFinanceAuditLog(ctx, f)
 	if err != nil {

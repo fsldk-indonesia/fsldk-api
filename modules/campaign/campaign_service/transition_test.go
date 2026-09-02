@@ -23,19 +23,20 @@ var campaignAllStatuses = []string{
 // status asal/tujuan (100 pasangan) terhadap daftar transisi sah yang
 // didefinisikan independen dari validTransitions — memastikan tidak ada
 // transisi tak sengaja terbuka/tertutup akibat salah ketik di map asli.
+// Revisi (2026-08-30): alur submission/review dihapus — DRAFT langsung ke
+// PUBLISHED, dan PUBLISHED/PAUSED bisa langsung diarsipkan (bug lama
+// tertutup sekalian: Archive() sebelumnya tidak pernah bisa dipakai karena
+// hanya valid dari COMPLETED, yang tidak pernah dipicu proses manapun).
 func TestIsValidTransition_ExhaustiveMatrix(t *testing.T) {
 	valid := map[[2]string]bool{
-		{constants.CampaignStatusDraft, constants.CampaignStatusSubmitted}:             true,
-		{constants.CampaignStatusRevisionRequested, constants.CampaignStatusSubmitted}: true,
-		{constants.CampaignStatusSubmitted, constants.CampaignStatusApproved}:          true,
-		{constants.CampaignStatusSubmitted, constants.CampaignStatusRevisionRequested}: true,
-		{constants.CampaignStatusSubmitted, constants.CampaignStatusRejected}:          true,
-		{constants.CampaignStatusApproved, constants.CampaignStatusPublished}:          true,
-		{constants.CampaignStatusPublished, constants.CampaignStatusPaused}:            true,
-		{constants.CampaignStatusPublished, constants.CampaignStatusCompleted}:         true,
-		{constants.CampaignStatusPublished, constants.CampaignStatusExpired}:           true,
-		{constants.CampaignStatusPaused, constants.CampaignStatusPublished}:            true,
-		{constants.CampaignStatusCompleted, constants.CampaignStatusArchived}:          true,
+		{constants.CampaignStatusDraft, constants.CampaignStatusPublished}:     true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusPaused}:    true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusCompleted}: true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusExpired}:   true,
+		{constants.CampaignStatusPublished, constants.CampaignStatusArchived}:  true,
+		{constants.CampaignStatusPaused, constants.CampaignStatusPublished}:    true,
+		{constants.CampaignStatusPaused, constants.CampaignStatusArchived}:     true,
+		{constants.CampaignStatusCompleted, constants.CampaignStatusArchived}:  true,
 	}
 
 	for _, from := range campaignAllStatuses {
@@ -49,7 +50,7 @@ func TestIsValidTransition_ExhaustiveMatrix(t *testing.T) {
 }
 
 func TestIsValidTransition_UnknownStatusRejected(t *testing.T) {
-	if isValidTransition("UNKNOWN", constants.CampaignStatusSubmitted) {
+	if isValidTransition("UNKNOWN", constants.CampaignStatusPublished) {
 		t.Fatal("expected transition from unknown status to be rejected")
 	}
 	if isValidTransition(constants.CampaignStatusDraft, "UNKNOWN") {

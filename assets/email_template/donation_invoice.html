@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="id">
+<body style="margin:0; background:#f2f5f3; font-family:Arial,Helvetica,sans-serif; color:#14171a;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f3; padding:32px 0;">
+    <tr>
+      <td align="center">
+
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:18px; overflow:hidden; max-width:580px; width:100%; box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#00712e; background-image:linear-gradient(135deg,#00a744,#00611f); padding:40px 32px 32px; text-align:center;">
+              <table role="presentation" align="center" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="background:#ffffff; border-radius:16px; padding:12px;">
+                    <img src="cid:{{.LogoCID}}" alt="FSLDK Indonesia" width="40" height="40" style="display:block;">
+                  </td>
+                </tr>
+              </table>
+              <div style="color:#ffffff; font-size:19px; font-weight:700; letter-spacing:.2px; margin-top:14px;">
+                Kantong Amal FSLDK
+              </div>
+              <div style="color:#d7f3e2; font-size:12px; margin-top:4px;">
+                Forum Silaturahmi Lembaga Dakwah Kampus
+              </div>
+            </td>
+          </tr>
+
+          <!-- Status band -->
+          <tr>
+            <td style="background:#fff6e1; padding:16px 32px; text-align:center;">
+              <span style="display:inline-block; background:#c98a00; color:#ffffff; font-size:11px; font-weight:700; letter-spacing:.3px; padding:7px 18px; border-radius:999px;">
+                MENUNGGU PEMBAYARAN ⏳
+              </span>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 36px 8px; text-align:center;">
+
+              <h1 style="font-size:24px; font-weight:600; margin:0 0 16px; color:#1a3d29;">
+                Assalamu'alaikum, {{.Name}}! 🤍
+              </h1>
+
+              <p style="font-size:15px; line-height:1.75; color:#5b6168; margin:0 0 24px;">
+                Terima kasih atas niat baik Anda berdonasi untuk campaign <strong>"{{.CampaignTitle}}"</strong>.
+                Donasi Anda belum kami terima — silakan selesaikan pembayaran QRIS sebelum batas waktu berikut agar donasi tercatat.
+              </p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="margin:0 0 24px; border:1px solid #eef0ee; border-radius:12px; overflow:hidden;">
+                <tr>
+                  <td style="padding:14px 20px; background:#f6faf7; font-size:13px; color:#5b6168; border-bottom:1px solid #eef0ee;">Campaign</td>
+                  <td style="padding:14px 20px; background:#f6faf7; font-size:13px; color:#1a3d29; font-weight:600; text-align:right; border-bottom:1px solid #eef0ee;">{{.CampaignTitle}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px; font-size:13px; color:#5b6168; border-bottom:1px solid #eef0ee;">Total Tagihan</td>
+                  <td style="padding:14px 20px; font-size:13px; color:#1a3d29; font-weight:600; text-align:right; border-bottom:1px solid #eef0ee;">{{.Amount}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 20px; background:#f6faf7; font-size:13px; color:#5b6168;">Batas Waktu Bayar</td>
+                  <td style="padding:14px 20px; background:#f6faf7; font-size:13px; color:#1a3d29; font-weight:600; text-align:right;">{{.ExpiredDate}}</td>
+                </tr>
+              </table>
+
+              <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">
+                <tr>
+                  <td style="background-color:#00712e; background-image:linear-gradient(135deg,#00a744,#00611f); border-radius:10px;">
+                    <a href="{{.QrURL}}"
+                       style="display:inline-block; color:#ffffff; text-decoration:none; font-weight:600; padding:15px 30px; font-size:15px;">
+                      Bayar Sekarang
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="font-size:15px; line-height:1.75; color:#5b6168; margin:0 0 8px; padding-top:24px; border-top:1px solid #eef0ee;">
+                Kami akan mengirim email konfirmasi terpisah setelah pembayaran Anda berhasil kami terima.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:26px 36px; background:#f6faf7; text-align:center;">
+              <p style="margin:0 0 4px; font-size:14px; font-weight:600; color:#1a3d29;">
+                Wassalamu'alaikum Warahmatullahi Wabarakatuh 🤍
+              </p>
+              <p style="margin:0 0 2px; font-size:12px; color:#5b6168;">
+                Tim FSLDK Indonesia
+              </p>
+              <p style="margin:0; font-size:11px; color:#00933b; font-weight:700; letter-spacing:.2px;">
+                #SatuLangkahDakwah
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <!-- Outside-card disclaimer -->
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0" style="max-width:580px; width:100%;">
+          <tr>
+            <td align="center" style="padding-top:16px; font-size:11px; color:#9aa1a8; line-height:1.6;">
+              Email ini dikirim otomatis oleh sistem FSLDK Indonesia. Jika Anda tidak merasa melakukan
+              donasi ini, abaikan email ini.<br>
+              &copy; FSLDK Indonesia — Menyatukan Langkah Dakwah Kampus se-Indonesia.
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

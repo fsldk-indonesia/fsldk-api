@@ -4,13 +4,17 @@ package withdrawal_dto
 
 import "time"
 
-// CreateRequest adalah body mengajukan penarikan saldo baru. Beneficiary
-// selalu memakai rekening default campaign (ms_campaign) — mengganti
-// rekening tujuan bukan bagian dari request ini (lihat 11-withdrawal.md
-// §11.3, mekanisme ganti rekening + cooling period dibangun terpisah).
+// CreateRequest adalah body mengajukan penarikan saldo baru. Rekening
+// tujuan diinput ulang setiap pengajuan (revisi 2026-09-01 — beneficiary
+// TIDAK LAGI tersimpan di campaign, lihat campaign_dto) dan divalidasi ulang
+// via inquiry live gateway di withdrawal_service.Request; pemilik rekening
+// (beneficiaryAccountHolder) diambil dari hasil inquiry yang terverifikasi
+// gateway, bukan dari input client, supaya tidak bisa dipalsukan.
 type CreateRequest struct {
-	Amount         float64 `json:"amount" validate:"required,gte=50000"`
-	IdempotencyKey string  `json:"idempotencyKey" validate:"omitempty,max=100"`
+	Amount                   float64 `json:"amount" validate:"required,gte=50000"`
+	BeneficiaryBankCode      string  `json:"beneficiaryBankCode" validate:"required,max=20"`
+	BeneficiaryAccountNumber string  `json:"beneficiaryAccountNumber" validate:"required,max=30"`
+	IdempotencyKey           string  `json:"idempotencyKey" validate:"omitempty,max=100"`
 }
 
 // Response adalah representasi withdrawal untuk pengaju/pemilik campaign & CMS.
@@ -30,11 +34,6 @@ type Response struct {
 	ApprovedDate             *time.Time `json:"approvedDate,omitempty"`
 	CompletedDate            *time.Time `json:"completedDate,omitempty"`
 	CreatedDate              time.Time  `json:"createdDate"`
-}
-
-// RejectRequest adalah body admin menolak withdrawal.
-type RejectRequest struct {
-	Reason string `json:"reason" validate:"required,max=255"`
 }
 
 // InquiryRequest adalah body verifikasi rekening tujuan sebelum submit.

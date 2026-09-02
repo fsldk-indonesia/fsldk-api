@@ -17,9 +17,12 @@ type RepositoryImpl struct{ db *gorm.DB }
 // NewRepository membuat implementasi Repository.
 func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 
+// List mengembalikan setting yang boleh tampil di App Settings CMS —
+// baris isHide=true (mis. email OTP withdrawal, item 8 revision-prompt-2.md)
+// sengaja disaring di sini, tetap bisa dibaca langsung via FindByGroupKey.
 func (r *RepositoryImpl) List(ctx context.Context) ([]setting_model.Setting, error) {
 	var out []setting_model.Setting
-	err := r.db.WithContext(ctx).Table("ms_setting").Order("settingGroup, settingID").Find(&out).Error
+	err := r.db.WithContext(ctx).Table("ms_setting").Where("isHide = ?", false).Order("settingGroup, settingID").Find(&out).Error
 	return out, err
 }
 

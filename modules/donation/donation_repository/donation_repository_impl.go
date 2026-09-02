@@ -18,7 +18,7 @@ const mysqlDuplicateEntryErrNo = 1062
 
 const donationSelectCols = "d.donationID, d.publicRef, d.campaignID, c.title AS campaignTitle, c.slug AS campaignSlug, " +
 	"d.donorUserID, d.donorName, d.donorEmail, d.donorPhone, d.donorAge, d.donorDomicile, d.donorOccupation, " +
-	"d.isAnonymous, d.message, d.amount, d.adminFee, d.totalAmount, d.paymentStatus, d.gateway, " +
+	"d.isAnonymous, d.message, d.amount, d.adminFee, d.totalAmount, d.paymentStatus, d.gateway, d.paymentMethod, " +
 	"d.externalTransactionID, d.idempotencyKey, d.qrPayload, d.paymentCode, d.paymentLink, d.gatewayStatusID, " +
 	"d.expiredDate, d.createdDate, d.updatedDate"
 
@@ -162,6 +162,73 @@ func (r *RepositoryImpl) UpdateCallbackStatus(tx *gorm.DB, donationID int64, p d
 		values["adminFee"] = *p.AdminFee
 	}
 	return tx.Table(constants.TableDonation).Where("donationID = ?", donationID).Updates(values).Error
+}
+
+func (r *RepositoryImpl) CountPaidByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Where("campaignID = ? AND paymentStatus = ?", campaignID, constants.DonationStatusPaid).Count(&count).Error
+	return count, err
+}
+
+func (r *RepositoryImpl) CountPendingByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Where("campaignID = ? AND paymentStatus = ?", campaignID, constants.DonationStatusPending).Count(&count).Error
+	return count, err
+}
+
+func (r *RepositoryImpl) AdminCreate(ctx context.Context, p donation_model.AdminCreateParams) (int64, error) {
+	values := map[string]interface{}{
+		"publicRef":       p.PublicRef,
+		"campaignID":      p.CampaignID,
+		"donorName":       p.DonorName,
+		"donorEmail":      p.DonorEmail,
+		"donorPhone":      p.DonorPhone,
+		"donorAge":        p.DonorAge,
+		"donorDomicile":   p.DonorDomicile,
+		"donorOccupation": p.DonorOccupation,
+		"isAnonymous":     p.IsAnonymous,
+		"message":         p.Message,
+		"amount":          p.Amount,
+		"adminFee":        0,
+		"totalAmount":     p.Amount,
+		"paymentStatus":   p.PaymentStatus,
+		"gateway":         constants.DonationGatewayManual,
+		"paymentMethod":   p.PaymentMethod,
+		"idempotencyKey":  p.IdempotencyKey,
+		"createdDate":     time.Now(),
+	}
+	var newID int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table(constants.TableDonation).Create(values).Error; err != nil {
+			return err
+		}
+		return tx.Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
+	})
+	return newID, err
+}
+
+func (r *RepositoryImpl) AdminUpdate(ctx context.Context, id int64, p donation_model.AdminUpdateParams) error {
+	return r.db.WithContext(ctx).Table(constants.TableDonation).Where("donationID = ?", id).Updates(map[string]interface{}{
+		"donorName":       p.DonorName,
+		"donorEmail":      p.DonorEmail,
+		"donorPhone":      p.DonorPhone,
+		"donorAge":        p.DonorAge,
+		"donorDomicile":   p.DonorDomicile,
+		"donorOccupation": p.DonorOccupation,
+		"isAnonymous":     p.IsAnonymous,
+		"message":         p.Message,
+		"amount":          p.Amount,
+		"totalAmount":     p.Amount,
+		"paymentStatus":   p.PaymentStatus,
+		"paymentMethod":   p.PaymentMethod,
+		"updatedDate":     time.Now(),
+	}).Error
+}
+
+func (r *RepositoryImpl) AdminDelete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Exec("DELETE FROM "+constants.TableDonation+" WHERE donationID = ?", id).Error
 }
 
 func (r *RepositoryImpl) ExpireStalePending(ctx context.Context) (int64, []int64, error) {

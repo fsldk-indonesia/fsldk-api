@@ -9,7 +9,9 @@ import (
 )
 
 // CallerScope menampung identitas & scope organisasi pengguna pemanggil,
-// diambil dari klaim token (lihat base/appctx).
+// diambil dari klaim token (lihat base/appctx). UserID dipakai sebagai
+// actor audit trail (createdBy/updatedBy), bukan lagi kepemilikan — campaign
+// murni CRUD berbasis permission CMS (revisi 2026-09-01).
 type CallerScope struct {
 	UserID               int64
 	OrganizationID       *int64
@@ -31,22 +33,22 @@ type Service interface {
 	PublicDetail(ctx context.Context, slug string) (campaign_dto.DetailResponse, error)
 	Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error)
 
-	MyList(ctx context.Context, caller CallerScope, q dto.ListQuery) ([]campaign_dto.Response, int, error)
-	// MyGet mengembalikan detail satu campaign milik caller (dipakai halaman
-	// edit) — IDOR-safe, 404 bila campaign bukan milik caller (pola sama Update).
-	MyGet(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
+	// Create/Update/Delete murni permission-gated (kantong_amal.campaign.
+	// create/.update/.delete) — TIDAK ada lagi pengecekan kepemilikan,
+	// siapapun dengan permission terkait boleh mengelola campaign manapun
+	// (revisi 2026-09-01, mengikuti model celengan syahid ldksyahid-app).
 	Create(ctx context.Context, caller CallerScope, req campaign_dto.CreateRequest) (campaign_dto.DetailResponse, error)
 	Update(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateRequest) (campaign_dto.DetailResponse, error)
-	Submit(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
-	// UpdateBeneficiary mengganti rekening penerima campaign yang sudah
-	// PUBLISHED — beda dari Update() yang hanya berlaku pra-publish. Memicu
-	// cooling period 24 jam sebelum rekening baru bisa dipakai withdrawal.
-	UpdateBeneficiary(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateBeneficiaryRequest) (campaign_dto.DetailResponse, error)
+	// Delete menghapus campaign permanen — diblokir bila ada donasi PAID
+	// dengan saldo belum ditarik, withdrawal yang masih berjalan, atau
+	// donasi PENDING aktif (lihat campaign_service_impl.go Delete()).
+	Delete(ctx context.Context, id int64) error
 
 	CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error)
+	// ListLite mengembalikan seluruh campaign (id + judul) untuk dropdown
+	// filter campaign di Laporan Kantong Amal (item 6).
+	ListLite(ctx context.Context) ([]campaign_dto.LiteResponse, error)
 	Get(ctx context.Context, id int64) (campaign_dto.DetailResponse, error)
-	ReviewHistory(ctx context.Context, id int64) ([]campaign_dto.ReviewResponse, error)
-	Review(ctx context.Context, id int64, caller CallerScope, req campaign_dto.ReviewRequest) (campaign_dto.DetailResponse, error)
 	Publish(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
 	Pause(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)
 	Resume(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error)

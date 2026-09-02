@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -16,24 +15,29 @@ import (
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
 	"fsldk-api/modules/campaign/campaign_repository"
-	"fsldk-api/modules/jobqueue/jobqueue_dto"
-	"fsldk-api/modules/jobqueue/jobqueue_model"
-	"fsldk-api/modules/user/user_repository"
+	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/pkg/auditlog"
-	"fsldk-api/pkg/kirimdev"
 )
-
-// JobEnqueuer adalah irisan sempit jobqueue_service.Service yang dibutuhkan
-// modul ini (pola sama shortlinkrequest_service.JobEnqueuer).
-type JobEnqueuer interface {
-	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
-}
 
 // FinanceAuditor adalah irisan sempit auditlog.Logger yang dibutuhkan modul
 // ini — pola sama JobEnqueuer, memenuhi kontrak dengan *auditlog.Logger
 // sungguhan sekaligus memudahkan fake di unit test tanpa perlu *gorm.DB.
 type FinanceAuditor interface {
 	LogFinance(ctx context.Context, e auditlog.Entry)
+}
+
+// DonationChecker adalah irisan sempit donation_repository.Repository yang
+// dibutuhkan guard Delete() — mencegah campaign yang masih punya donasi
+// aktif/belum ditarik terhapus (pola sama celengan syahid destroyAdminCampaign).
+type DonationChecker interface {
+	CountPaidByCampaign(ctx context.Context, campaignID int64) (int64, error)
+	CountPendingByCampaign(ctx context.Context, campaignID int64) (int64, error)
+}
+
+// WithdrawalChecker adalah irisan sempit withdrawal_repository.Repository
+// yang dibutuhkan guard Delete().
+type WithdrawalChecker interface {
+	CountNonFinalByCampaign(ctx context.Context, campaignID int64) (int64, error)
 }
 
 var sortColumns = map[string]string{
@@ -45,41 +49,17 @@ var sortColumns = map[string]string{
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo      campaign_repository.Repository
-	userRepo  user_repository.Repository
-	orgAccess OrgAccessChecker
-	jobs      JobEnqueuer
-	audit     FinanceAuditor
+	repo       campaign_repository.Repository
+	orgAccess  OrgAccessChecker
+	audit      FinanceAuditor
+	donations  DonationChecker
+	withdrawal WithdrawalChecker
+	wallet     wallet_service.Service
 }
 
 // NewService membuat Service campaign.
-func NewService(repo campaign_repository.Repository, userRepo user_repository.Repository, orgAccess OrgAccessChecker, jobs JobEnqueuer, audit FinanceAuditor) Service {
-	return &ServiceImpl{repo: repo, userRepo: userRepo, orgAccess: orgAccess, jobs: jobs, audit: audit}
-}
-
-// notify mengirim satu notifikasi WhatsApp lewat job queue (async, best-effort
-// — kegagalan enqueue di-log, tidak pernah menggagalkan alur utama).
-func (s *ServiceImpl) notify(ctx context.Context, toPhone, templateName string, params []string, campaignID int64) {
-	if strings.TrimSpace(toPhone) == "" {
-		return
-	}
-	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
-		Queue: jobqueue_model.QueueWhatsApp, JobType: jobqueue_model.JobTypeWhatsAppTemplate,
-		Payload:         kirimdev.TemplateMessage{ToPhone: toPhone, TemplateName: templateName, Params: params},
-		CorrelationType: jobqueue_model.CorrelationTypeCampaign, CorrelationID: campaignID,
-	}); err != nil {
-		log.Printf("[CAMPAIGN] gagal enqueue notifikasi WA (%s) untuk campaignID=%d: %v", templateName, campaignID, err)
-	}
-}
-
-// notifyOwner mengirim notifikasi ke pemilik campaign, mengambil nomor
-// WhatsApp-nya dari ms_user — no-op diam-diam bila owner belum punya nomor.
-func (s *ServiceImpl) notifyOwner(ctx context.Context, camp campaign_model.Campaign, templateName string, params []string) {
-	owner, err := s.userRepo.FindByID(ctx, camp.OwnerUserID)
-	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
-		return
-	}
-	s.notify(ctx, owner.PhoneNumber.String, templateName, params, camp.CampaignID)
+func NewService(repo campaign_repository.Repository, orgAccess OrgAccessChecker, audit FinanceAuditor, donations DonationChecker, withdrawal WithdrawalChecker, wallet wallet_service.Service) Service {
+	return &ServiceImpl{repo: repo, orgAccess: orgAccess, audit: audit, donations: donations, withdrawal: withdrawal, wallet: wallet}
 }
 
 // ---------- Public ----------
@@ -119,18 +99,7 @@ func (s *ServiceImpl) Categories(ctx context.Context) ([]campaign_dto.CategoryRe
 	return out, nil
 }
 
-// ---------- Owner (me) ----------
-
-func (s *ServiceImpl) MyList(ctx context.Context, caller CallerScope, q dto.ListQuery) ([]campaign_dto.Response, int, error) {
-	uid := caller.UserID
-	return s.list(ctx, campaign_dto.ListFilter{
-		OwnerUserID: &uid,
-		Search:      q.Search,
-		Limit:       q.Limit,
-		Offset:      q.Offset(),
-		OrderBy:     q.OrderBy(sortColumns, "c.createdDate DESC"),
-	})
-}
+// ---------- CMS (create/update/delete murni permission-gated) ----------
 
 func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req campaign_dto.CreateRequest) (campaign_dto.DetailResponse, error) {
 	if err := s.validateCategory(ctx, req.CategoryID); err != nil {
@@ -154,15 +123,18 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req campai
 		Slug:                     slugStr,
 		Title:                    req.Title,
 		CategoryID:               req.CategoryID,
-		OwnerUserID:              caller.UserID,
 		OrganizationID:           orgID,
+		ProvinceName:             nullStringFrom(req.ProvinceName),
+		CityName:                 nullStringFrom(req.CityName),
 		Story:                    req.Story,
+		Goals:                    req.Goals,
 		CoverImageUrl:            req.CoverImageUrl,
 		TargetAmount:             req.TargetAmount,
-		BeneficiaryName:          req.BeneficiaryName,
-		BeneficiaryBankCode:      req.BeneficiaryBankCode,
-		BeneficiaryAccountNumber: req.BeneficiaryAccountNumber,
-		BeneficiaryAccountHolder: req.BeneficiaryAccountHolder,
+		PicName:                  req.PicName,
+		PicPhone:                 req.PicPhone,
+		OrganizationNameOverride: nullStringFrom(req.OrganizationNameOverride),
+		OrganizationLogoUrl:      nullStringFrom(req.OrganizationLogoUrl),
+		OrganizationLinkUrl:      nullStringFrom(req.OrganizationLinkUrl),
 		StartDate:                startDate,
 		EndDate:                  endDate,
 		IsAnonymousAllowed:       boolOrDefault(req.IsAnonymousAllowed, true),
@@ -183,26 +155,13 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req campai
 	return s.getDetail(ctx, id)
 }
 
-func (s *ServiceImpl) MyGet(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error) {
-	camp, err := s.repo.FindByID(ctx, id)
-	if err != nil || camp.OwnerUserID != caller.UserID {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
-	}
-	return s.toDetail(ctx, camp)
-}
-
 func (s *ServiceImpl) Update(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateRequest) (campaign_dto.DetailResponse, error) {
 	camp, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
-	// IDOR: caller di luar pemilik campaign mendapat 404, bukan 403, agar
-	// tidak membocorkan keberadaan campaign milik user lain.
-	if camp.OwnerUserID != caller.UserID {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
-	}
-	if camp.Status != constants.CampaignStatusDraft && camp.Status != constants.CampaignStatusRevisionRequested {
-		return campaign_dto.DetailResponse{}, apperror.InvalidStatusTransition("Campaign hanya dapat diubah saat berstatus draft atau revisi")
+	if camp.Status == constants.CampaignStatusArchived {
+		return campaign_dto.DetailResponse{}, apperror.InvalidStatusTransition("Campaign yang sudah diarsipkan tidak dapat diubah")
 	}
 	if err := s.validateCategory(ctx, req.CategoryID); err != nil {
 		return campaign_dto.DetailResponse{}, err
@@ -228,14 +187,18 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, caller CallerScope, 
 		Title:                    req.Title,
 		CategoryID:               req.CategoryID,
 		OrganizationID:           orgID,
+		ProvinceName:             nullStringFrom(req.ProvinceName),
+		CityName:                 nullStringFrom(req.CityName),
 		Story:                    req.Story,
+		Goals:                    req.Goals,
 		LatestUpdate:             nullStringFrom(req.LatestUpdate),
 		CoverImageUrl:            req.CoverImageUrl,
 		TargetAmount:             req.TargetAmount,
-		BeneficiaryName:          req.BeneficiaryName,
-		BeneficiaryBankCode:      req.BeneficiaryBankCode,
-		BeneficiaryAccountNumber: req.BeneficiaryAccountNumber,
-		BeneficiaryAccountHolder: req.BeneficiaryAccountHolder,
+		PicName:                  req.PicName,
+		PicPhone:                 req.PicPhone,
+		OrganizationNameOverride: nullStringFrom(req.OrganizationNameOverride),
+		OrganizationLogoUrl:      nullStringFrom(req.OrganizationLogoUrl),
+		OrganizationLinkUrl:      nullStringFrom(req.OrganizationLinkUrl),
 		StartDate:                startDate,
 		EndDate:                  endDate,
 		IsAnonymousAllowed:       boolOrDefault(req.IsAnonymousAllowed, camp.IsAnonymousAllowed),
@@ -258,66 +221,56 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, caller CallerScope, 
 	return s.getDetail(ctx, id)
 }
 
-func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error) {
+// Delete menghapus campaign permanen. Guard mengikuti persis
+// destroyAdminCampaign celengan syahid (ldksyahid-app), minus pengecekan
+// rekonsiliasi live Bisatopup (sudah tercakup di Laporan Kantong Amal —
+// item 6 — sebagai pengawasan terpisah, bukan blocker hapus per-campaign):
+//  1. Ada donasi PAID dengan withdrawal masih berjalan → blokir.
+//  2. Ada donasi PAID dengan saldo tersedia (belum ditarik habis) → blokir.
+//  3. Ada donasi PENDING aktif (gateway maupun manual) → blokir.
+func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	camp, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+		return apperror.NotFound("Campaign tidak ditemukan")
 	}
-	if camp.OwnerUserID != caller.UserID {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
-	}
-	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusSubmitted, "campaign.submitted", sql.NullString{},
-		"Campaign hanya dapat diajukan saat berstatus draft atau revisi")
-}
 
-// ---------- CMS ----------
-
-// beneficiaryCoolingPeriod adalah masa jeda wajib sebelum rekening
-// penerima baru bisa dipakai withdrawal — keputusan final OQ-19/§12.1.
-const beneficiaryCoolingPeriod = 24 * time.Hour
-
-func (s *ServiceImpl) UpdateBeneficiary(ctx context.Context, id int64, caller CallerScope, req campaign_dto.UpdateBeneficiaryRequest) (campaign_dto.DetailResponse, error) {
-	camp, err := s.repo.FindByID(ctx, id)
+	paidCount, err := s.donations.CountPaidByCampaign(ctx, id)
 	if err != nil {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+		return apperror.Internal("")
 	}
-	// IDOR: caller di luar pemilik campaign mendapat 404, bukan 403 — pola
-	// sama dengan Update()/Submit().
-	if camp.OwnerUserID != caller.UserID {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
+	if paidCount > 0 {
+		nonFinalWithdrawal, err := s.withdrawal.CountNonFinalByCampaign(ctx, id)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if nonFinalWithdrawal > 0 {
+			return apperror.Unprocessable("Campaign tidak dapat dihapus: masih ada penarikan saldo yang sedang berjalan")
+		}
+		bal, err := s.wallet.GetBalance(ctx, id)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if bal.AvailableBalance > 0 {
+			return apperror.Unprocessable("Campaign tidak dapat dihapus: masih ada saldo donasi yang belum ditarik")
+		}
 	}
 
-	if err := s.repo.UpdateBeneficiary(ctx, id, campaign_model.UpdateBeneficiaryParams{
-		BeneficiaryName:          req.BeneficiaryName,
-		BeneficiaryBankCode:      req.BeneficiaryBankCode,
-		BeneficiaryAccountNumber: req.BeneficiaryAccountNumber,
-		BeneficiaryAccountHolder: req.BeneficiaryAccountHolder,
-		LockedUntil:              time.Now().Add(beneficiaryCoolingPeriod),
-	}); err != nil {
-		return campaign_dto.DetailResponse{}, apperror.Internal("")
+	pendingCount, err := s.donations.CountPendingByCampaign(ctx, id)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	if pendingCount > 0 {
+		return apperror.Unprocessable("Campaign tidak dapat dihapus: masih ada donasi yang sedang diproses")
 	}
 
-	// Security alert — pemilik selalu diberi tahu setiap kali rekening
-	// diganti, terlepas siapa yang melakukannya (deteksi dini bila akun
-	// diambil alih & rekening diganti tanpa sepengetahuan pemilik asli).
-	masked := maskAccountNumber(req.BeneficiaryAccountNumber)
-	s.notifyOwner(ctx, camp, "rekening_diubah", []string{masked, time.Now().Format("02 Jan 2006 15:04")})
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return apperror.Internal("Gagal menghapus campaign")
+	}
 	s.audit.LogFinance(ctx, auditlog.Entry{
-		ActorUserID: caller.UserID, Action: "beneficiary.changed", Entity: "campaign", EntityID: id,
-		Before: map[string]string{"beneficiaryAccountNumber": maskAccountNumber(camp.BeneficiaryAccountNumber), "beneficiaryBankCode": camp.BeneficiaryBankCode},
-		After:  map[string]string{"beneficiaryAccountNumber": masked, "beneficiaryBankCode": req.BeneficiaryBankCode},
+		Action: "campaign.deleted", Entity: "campaign", EntityID: id,
+		Before: map[string]interface{}{"title": camp.Title},
 	})
-
-	return s.getDetail(ctx, id)
-}
-
-// maskAccountNumber menyisakan 4 digit terakhir untuk notifikasi keamanan
-// (mis. "****7890") — nomor rekening penuh tidak perlu dikirim ulang lewat WA.
-func maskAccountNumber(accountNumber string) string {
-	if len(accountNumber) <= 4 {
-		return accountNumber
-	}
-	return "****" + accountNumber[len(accountNumber)-4:]
+	return nil
 }
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error) {
@@ -331,78 +284,19 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status strin
 	})
 }
 
-func (s *ServiceImpl) Get(ctx context.Context, id int64) (campaign_dto.DetailResponse, error) {
-	return s.getDetail(ctx, id)
-}
-
-func (s *ServiceImpl) ReviewHistory(ctx context.Context, id int64) ([]campaign_dto.ReviewResponse, error) {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
-		return nil, apperror.NotFound("Campaign tidak ditemukan")
-	}
-	reviews, err := s.repo.ListReviews(ctx, id)
+func (s *ServiceImpl) ListLite(ctx context.Context) ([]campaign_dto.LiteResponse, error) {
+	rows, err := s.repo.ListLite(ctx)
 	if err != nil {
 		return nil, apperror.Internal("")
 	}
-	out := make([]campaign_dto.ReviewResponse, 0, len(reviews))
-	for _, r := range reviews {
-		out = append(out, campaign_dto.ReviewResponse{
-			ReviewID:     r.ReviewID,
-			ReviewerName: r.ReviewerName,
-			Decision:     r.Decision,
-			Note:         r.Note.String,
-			ReviewedDate: r.ReviewedDate,
-		})
+	out := make([]campaign_dto.LiteResponse, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, campaign_dto.LiteResponse{CampaignID: c.CampaignID, Title: c.Title})
 	}
 	return out, nil
 }
 
-func (s *ServiceImpl) Review(ctx context.Context, id int64, caller CallerScope, req campaign_dto.ReviewRequest) (campaign_dto.DetailResponse, error) {
-	camp, err := s.repo.FindByID(ctx, id)
-	if err != nil {
-		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
-	}
-
-	var toStatus string
-	switch req.Decision {
-	case constants.ReviewDecisionApproved:
-		toStatus = constants.CampaignStatusApproved
-	case constants.ReviewDecisionRevisionRequested:
-		toStatus = constants.CampaignStatusRevisionRequested
-	case constants.ReviewDecisionRejected:
-		toStatus = constants.CampaignStatusRejected
-	default:
-		return campaign_dto.DetailResponse{}, apperror.BadRequest("Keputusan tidak valid")
-	}
-	if !isValidTransition(camp.Status, toStatus) {
-		return campaign_dto.DetailResponse{}, apperror.InvalidStatusTransition("Campaign tidak dapat direview pada status saat ini")
-	}
-
-	if _, err := s.repo.CreateReview(ctx, campaign_model.ReviewParams{
-		CampaignID:     id,
-		ReviewerUserID: caller.UserID,
-		Decision:       req.Decision,
-		Note:           nullStringFrom(req.Note),
-	}); err != nil {
-		return campaign_dto.DetailResponse{}, apperror.Internal("")
-	}
-	if err := s.repo.UpdateStatus(ctx, id, toStatus, nullStringFrom(req.Note), caller.UserID); err != nil {
-		return campaign_dto.DetailResponse{}, apperror.Internal("")
-	}
-
-	switch req.Decision {
-	case constants.ReviewDecisionApproved:
-		s.notifyOwner(ctx, camp, "campaign_disetujui", []string{camp.Title})
-	case constants.ReviewDecisionRevisionRequested:
-		s.notifyOwner(ctx, camp, "campaign_revisi", []string{camp.Title, req.Note})
-	case constants.ReviewDecisionRejected:
-		s.notifyOwner(ctx, camp, "campaign_ditolak", []string{camp.Title, req.Note})
-	}
-	s.audit.LogFinance(ctx, auditlog.Entry{
-		ActorUserID: caller.UserID, Action: "campaign.reviewed", Entity: "campaign", EntityID: id,
-		Before: map[string]string{"status": camp.Status}, After: map[string]string{"status": toStatus},
-		Metadata: map[string]string{"decision": req.Decision, "note": req.Note},
-	})
-
+func (s *ServiceImpl) Get(ctx context.Context, id int64) (campaign_dto.DetailResponse, error) {
 	return s.getDetail(ctx, id)
 }
 
@@ -412,7 +306,7 @@ func (s *ServiceImpl) Publish(ctx context.Context, id int64, caller CallerScope)
 		return campaign_dto.DetailResponse{}, apperror.NotFound("Campaign tidak ditemukan")
 	}
 	return s.transition(ctx, camp, caller.UserID, constants.CampaignStatusPublished, "campaign.published", sql.NullString{},
-		"Campaign hanya dapat dipublish saat berstatus approved")
+		"Campaign hanya dapat dipublish saat berstatus draft")
 }
 
 func (s *ServiceImpl) Pause(ctx context.Context, id int64, caller CallerScope) (campaign_dto.DetailResponse, error) {
@@ -535,26 +429,24 @@ func (s *ServiceImpl) uniqueSlug(ctx context.Context, title string, exceptID int
 
 func toResponse(c campaign_model.Campaign) campaign_dto.Response {
 	resp := campaign_dto.Response{
-		CampaignID:               c.CampaignID,
-		PublicRef:                c.PublicRef,
-		Slug:                     c.Slug,
-		Title:                    c.Title,
-		CategoryID:               c.CategoryID,
-		CategoryName:             c.CategoryName,
-		OwnerUserID:              c.OwnerUserID,
-		OwnerName:                c.OwnerName,
-		Story:                    c.Story,
-		CoverImageUrl:            c.CoverImageUrl,
-		TargetAmount:             c.TargetAmount,
-		CollectedAmount:          c.CollectedAmountCache,
-		BeneficiaryName:          c.BeneficiaryName,
-		BeneficiaryBankCode:      c.BeneficiaryBankCode,
-		BeneficiaryAccountNumber: c.BeneficiaryAccountNumber,
-		BeneficiaryAccountHolder: c.BeneficiaryAccountHolder,
-		Status:                   c.Status,
-		IsFeatured:               c.IsFeatured,
-		IsAnonymousAllowed:       c.IsAnonymousAllowed,
-		CreatedDate:              c.CreatedDate,
+		CampaignID:         c.CampaignID,
+		PublicRef:          c.PublicRef,
+		Slug:                c.Slug,
+		Title:               c.Title,
+		CategoryID:          c.CategoryID,
+		CategoryName:        c.CategoryName,
+		Story:               c.Story,
+		Goals:               c.Goals,
+		CoverImageUrl:       c.CoverImageUrl,
+		TargetAmount:        c.TargetAmount,
+		CollectedAmount:     c.CollectedAmountCache,
+		PicName:             c.PicName,
+		PicPhone:            c.PicPhone,
+		Status:              c.Status,
+		IsFeatured:          c.IsFeatured,
+		IsAnonymousAllowed:  c.IsAnonymousAllowed,
+		HasDonations:        c.HasDonations,
+		CreatedDate:         c.CreatedDate,
 	}
 	if c.OrganizationID.Valid {
 		id := c.OrganizationID.Int64
@@ -563,6 +455,21 @@ func toResponse(c campaign_model.Campaign) campaign_dto.Response {
 	if c.OrganizationName.Valid {
 		name := c.OrganizationName.String
 		resp.OrganizationName = &name
+	}
+	if c.ProvinceName.Valid {
+		resp.ProvinceName = c.ProvinceName.String
+	}
+	if c.CityName.Valid {
+		resp.CityName = c.CityName.String
+	}
+	if c.OrganizationNameOverride.Valid {
+		resp.OrganizationNameOverride = c.OrganizationNameOverride.String
+	}
+	if c.OrganizationLogoUrl.Valid {
+		resp.OrganizationLogoUrl = c.OrganizationLogoUrl.String
+	}
+	if c.OrganizationLinkUrl.Valid {
+		resp.OrganizationLinkUrl = c.OrganizationLinkUrl.String
 	}
 	if c.LatestUpdate.Valid {
 		resp.LatestUpdate = c.LatestUpdate.String

@@ -56,6 +56,15 @@ type Service interface {
 	ListReconciliationHistory(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int, error)
 	// ListFinanceAuditLog mengembalikan histori audit trail finance §16.1.
 	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error)
+
+	// ListGlobalLedger mengembalikan laporan debit/kredit global (item 6
+	// revision-prompt-2.md).
+	ListGlobalLedger(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int, error)
+	// GetAnalytics mengembalikan data tab Analitik (item 7
+	// revision-prompt-2.md) — distribusi nominal donasi, distribusi usia
+	// donor, dan progres campaign, sekali panggil.
+	GetAnalytics(ctx context.Context, campaignID int64) (report_dto.AnalyticsResponse, error)
+
 	// RunReconciliationScheduler menjalankan RunReconciliation harian
 	// (goroutine time.Ticker, bukan lewat job queue — §13.4 techspec, job
 	// `finance.daily_reconciliation`) sampai proses berhenti.

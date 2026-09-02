@@ -62,4 +62,15 @@ type Repository interface {
 	// ListFinanceAuditLog mengembalikan histori tr_finance_audit_log §16.1,
 	// terbaru lebih dulu.
 	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error)
+
+	// GlobalLedgerRows mengembalikan baris debit/kredit global (item 6
+	// revision-prompt-2.md) — langsung dari tr_wallet_ledger (khusus
+	// Bisatopup by construction, lihat komentar report_dto.GlobalLedgerFilter).
+	GlobalLedgerRows(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int64, error)
+
+	// DonationAmountBands/DonorAgeBands mengembalikan distribusi donasi PAID
+	// untuk tab Analitik (item 7 revision-prompt-2.md) — campaignID 0 berarti
+	// seluruh campaign.
+	DonationAmountBands(ctx context.Context, campaignID int64) ([]report_dto.AmountBandRow, error)
+	DonorAgeBands(ctx context.Context, campaignID int64) ([]report_dto.AgeBandRow, error)
 }

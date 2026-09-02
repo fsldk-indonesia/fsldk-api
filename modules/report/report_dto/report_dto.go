@@ -164,6 +164,55 @@ type ReconciliationSnapshotParams struct {
 	GatewayError               string
 }
 
+// GlobalLedgerFilter menampung parameter laporan debit/kredit global (item 6
+// revision-prompt-2.md) — campaignID 0 berarti seluruh campaign. Sumbernya
+// selalu tr_wallet_ledger, yang sejak revisi 2026-09-01 HANYA pernah diisi
+// donasi Bisatopup (donasi manual tidak pernah menyentuh ledger, lihat
+// constants.DonationGatewayManual) — laporan ini otomatis "khusus Amdigipay-
+// Bisatopup" tanpa perlu filter gateway terpisah.
+type GlobalLedgerFilter struct {
+	CampaignID int64
+	Direction  string // "" = semua, CREDIT, atau DEBIT
+	Page       int
+	Limit      int
+}
+
+// GlobalLedgerRow adalah satu baris laporan debit/kredit global.
+type GlobalLedgerRow struct {
+	LedgerID      int64     `gorm:"column:ledgerID" json:"ledgerID"`
+	CampaignID    int64     `gorm:"column:campaignID" json:"campaignID"`
+	CampaignTitle string    `gorm:"column:campaignTitle" json:"campaignTitle"`
+	EntryType     string    `gorm:"column:entryType" json:"entryType"`
+	Direction     string    `gorm:"column:direction" json:"direction"`
+	Amount        float64   `gorm:"column:amount" json:"amount"`
+	BalanceAfter  float64   `gorm:"column:balanceAfter" json:"balanceAfter"`
+	ReferenceType string    `gorm:"column:referenceType" json:"referenceType"`
+	ReferenceID   int64     `gorm:"column:referenceID" json:"referenceID"`
+	CreatedDate   time.Time `gorm:"column:createdDate" json:"createdDate"`
+}
+
+// AmountBandRow/AgeBandRow adalah satu bucket distribusi untuk tab Analitik
+// (item 7 revision-prompt-2.md) — dihitung sekali per band lewat UNION di
+// repository, bukan di-groupby nilai mentah (nominal/usia donor terlalu
+// bervariasi untuk GROUP BY langsung bermakna sebagai chart).
+type AmountBandRow struct {
+	BandLabel string `json:"bandLabel"`
+	Count     int64  `json:"count"`
+}
+
+type AgeBandRow struct {
+	BandLabel string `json:"bandLabel"`
+	Count     int64  `json:"count"`
+}
+
+// AnalyticsResponse membungkus seluruh data tab Analitik satu campaign
+// (atau seluruh campaign bila campaignID 0) sekali panggil.
+type AnalyticsResponse struct {
+	DonationAmountBands []AmountBandRow    `json:"donationAmountBands"`
+	DonorAgeBands       []AgeBandRow       `json:"donorAgeBands"`
+	CampaignProgress    []CampaignReportRow `json:"campaignProgress"`
+}
+
 // FinanceAuditLogFilter menampung parameter penyaringan histori audit log finance §16.1.
 type FinanceAuditLogFilter struct {
 	Entity string

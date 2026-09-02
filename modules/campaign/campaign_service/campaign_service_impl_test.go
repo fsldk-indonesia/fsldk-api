@@ -5,15 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
-	"time"
+
+	"gorm.io/gorm"
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/constants"
 	"fsldk-api/modules/campaign/campaign_dto"
 	"fsldk-api/modules/campaign/campaign_model"
-	"fsldk-api/modules/jobqueue/jobqueue_dto"
-	"fsldk-api/modules/user/user_dto"
-	"fsldk-api/modules/user/user_model"
+	"fsldk-api/modules/wallet/wallet_dto"
 	"fsldk-api/pkg/auditlog"
 )
 
@@ -23,6 +22,7 @@ import (
 // ini yang punya perilaku bermakna, sisanya no-op.
 type fakeCampaignRepository struct {
 	campaigns map[int64]campaign_model.Campaign
+	deleted   []int64
 }
 
 func newFakeRepo(c campaign_model.Campaign) *fakeCampaignRepository {
@@ -31,6 +31,10 @@ func newFakeRepo(c campaign_model.Campaign) *fakeCampaignRepository {
 
 func (f *fakeCampaignRepository) List(ctx context.Context, filter campaign_dto.ListFilter) ([]campaign_model.Campaign, int64, error) {
 	return nil, 0, nil
+}
+
+func (f *fakeCampaignRepository) ListLite(ctx context.Context) ([]campaign_model.Campaign, error) {
+	return nil, nil
 }
 
 func (f *fakeCampaignRepository) FindByID(ctx context.Context, id int64) (campaign_model.Campaign, error) {
@@ -64,14 +68,10 @@ func (f *fakeCampaignRepository) Create(ctx context.Context, p campaign_model.Cr
 func (f *fakeCampaignRepository) Update(ctx context.Context, id int64, p campaign_model.UpdateParams) error {
 	return nil
 }
-func (f *fakeCampaignRepository) UpdateBeneficiary(ctx context.Context, id int64, p campaign_model.UpdateBeneficiaryParams) error {
-	c := f.campaigns[id]
-	c.BeneficiaryName = p.BeneficiaryName
-	c.BeneficiaryBankCode = p.BeneficiaryBankCode
-	c.BeneficiaryAccountNumber = p.BeneficiaryAccountNumber
-	c.BeneficiaryAccountHolder = p.BeneficiaryAccountHolder
-	c.BeneficiaryLockedUntil = sql.NullTime{Time: p.LockedUntil, Valid: true}
-	f.campaigns[id] = c
+
+func (f *fakeCampaignRepository) Delete(ctx context.Context, id int64) error {
+	f.deleted = append(f.deleted, id)
+	delete(f.campaigns, id)
 	return nil
 }
 
@@ -90,14 +90,6 @@ func (f *fakeCampaignRepository) ListImages(ctx context.Context, campaignID int6
 	return nil, nil
 }
 
-func (f *fakeCampaignRepository) CreateReview(ctx context.Context, p campaign_model.ReviewParams) (int64, error) {
-	return 0, nil
-}
-
-func (f *fakeCampaignRepository) ListReviews(ctx context.Context, campaignID int64) ([]campaign_model.Review, error) {
-	return nil, nil
-}
-
 type fakeOrgAccess struct{ allow bool }
 
 func (f fakeOrgAccess) IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error) {
@@ -110,184 +102,131 @@ type fakeFinanceAuditor struct{}
 
 func (f *fakeFinanceAuditor) LogFinance(ctx context.Context, e auditlog.Entry) {}
 
-// fakeUserRepository adalah implementasi user_repository.Repository no-op —
-// tidak ada skenario uji di file ini yang menegaskan isi notifikasi WA,
-// jadi FindByID selalu "not found" cukup (notifyOwner no-op diam-diam).
-type fakeUserRepository struct{}
+// fakeDonationChecker/fakeWithdrawalChecker adalah implementasi no-op untuk
+// guard Delete() — default "tidak ada donasi/withdrawal aktif" (boleh
+// dihapus), override field untuk skenario uji Delete() spesifik.
+type fakeDonationChecker struct {
+	paidCount, pendingCount int64
+}
 
-func (f *fakeUserRepository) FindByID(ctx context.Context, id int64) (user_model.User, error) {
-	return user_model.User{}, errors.New("not found")
+func (f *fakeDonationChecker) CountPaidByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	return f.paidCount, nil
 }
-func (f *fakeUserRepository) FindByEmail(ctx context.Context, email string) (user_model.User, error) {
-	return user_model.User{}, errors.New("not found")
+func (f *fakeDonationChecker) CountPendingByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	return f.pendingCount, nil
 }
-func (f *fakeUserRepository) FindByGoogleID(ctx context.Context, googleID string) (user_model.User, error) {
-	return user_model.User{}, errors.New("not found")
+
+type fakeWithdrawalChecker struct{ nonFinalCount int64 }
+
+func (f *fakeWithdrawalChecker) CountNonFinalByCampaign(ctx context.Context, campaignID int64) (int64, error) {
+	return f.nonFinalCount, nil
 }
-func (f *fakeUserRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	return false, nil
+
+// fakeWalletService adalah implementasi wallet_service.Service no-op — hanya
+// GetBalance yang punya perilaku bermakna (dipakai guard Delete()), method
+// lain tidak pernah dipanggil skenario uji campaign_service.
+type fakeWalletService struct{ availableBalance float64 }
+
+func (f *fakeWalletService) CreditDonation(tx *gorm.DB, campaignID, donationID int64, amount float64, note string) error {
+	return nil
 }
-func (f *fakeUserRepository) ExistsByEmailExcept(ctx context.Context, email string, exceptID int64) (bool, error) {
-	return false, nil
+func (f *fakeWalletService) ReserveWithdrawal(tx *gorm.DB, campaignID, withdrawalID int64, amount float64, actorUserID int64, note string) error {
+	return nil
 }
-func (f *fakeUserRepository) Create(ctx context.Context, p user_model.CreateParams) (int64, error) {
-	return 0, nil
+func (f *fakeWalletService) ReleaseWithdrawal(tx *gorm.DB, campaignID, withdrawalID int64, amount float64, note string) error {
+	return nil
 }
-func (f *fakeUserRepository) List(ctx context.Context, filt user_dto.ListFilter) ([]user_model.User, int64, error) {
+func (f *fakeWalletService) RefundDebit(tx *gorm.DB, campaignID, donationID int64, amount float64, actorUserID int64, note string) error {
+	return nil
+}
+func (f *fakeWalletService) AdjustBalance(ctx context.Context, campaignID int64, amount float64, direction string, actorUserID int64, reason string) error {
+	return nil
+}
+func (f *fakeWalletService) GetBalance(ctx context.Context, campaignID int64) (wallet_dto.BalanceResponse, error) {
+	return wallet_dto.BalanceResponse{AvailableBalance: f.availableBalance}, nil
+}
+func (f *fakeWalletService) ListLedger(ctx context.Context, campaignID int64, filter wallet_dto.LedgerListFilter) ([]wallet_dto.LedgerListItem, int64, error) {
 	return nil, 0, nil
 }
-func (f *fakeUserRepository) SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error) {
-	return nil, nil
-}
-func (f *fakeUserRepository) Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error {
-	return nil
-}
-func (f *fakeUserRepository) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
-	return nil
-}
-func (f *fakeUserRepository) SetActive(ctx context.Context, id int64, active bool, updatedBy int64) error {
-	return nil
-}
-func (f *fakeUserRepository) SetPassword(ctx context.Context, id int64, hashed string, mustChange bool) error {
-	return nil
-}
-func (f *fakeUserRepository) LinkGoogle(ctx context.Context, id int64, googleID string, markVerified bool) error {
-	return nil
-}
-func (f *fakeUserRepository) UpdatePhoto(ctx context.Context, id int64, photoURL string) error {
-	return nil
-}
-func (f *fakeUserRepository) UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error {
-	return nil
-}
-func (f *fakeUserRepository) MarkEmailVerified(ctx context.Context, id int64) error { return nil }
-func (f *fakeUserRepository) SoftDelete(ctx context.Context, id int64, updatedBy int64) error {
-	return nil
-}
-func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua, status string) error {
-	return nil
-}
 
-// fakeJobEnqueuer adalah implementasi JobEnqueuer no-op — notifikasi WA
-// tidak relevan diverifikasi di unit test business-logic ini.
-type fakeJobEnqueuer struct{}
-
-func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error) {
-	return 0, nil
+// newTestService membangun ServiceImpl dengan seluruh dependency no-op —
+// dipakai default oleh skenario uji yang tidak menegaskan guard Delete().
+func newTestService(repo *fakeCampaignRepository) Service {
+	return NewService(repo, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{}, &fakeWithdrawalChecker{}, &fakeWalletService{})
 }
 
 const validStory = "cerita panjang minimal lima puluh karakter untuk lolos validasi story campaign ini"
+const validGoals = "tujuan penggunaan dana yang jelas"
 
-func TestUpdate_RejectsNonOwnerAsNotFound(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+func TestUpdate_RejectsWhenArchived(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusArchived})
+	svc := newTestService(repo)
 
-	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 99}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeNotFound {
-		t.Fatalf("expected NotFound error for non-owner update (IDOR-safe), got %v", err)
-	}
-}
-
-func TestUpdate_RejectsWhenStatusNotEditable(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
-
-	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
+	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory, Goals: validGoals, PicName: "PIC", PicPhone: "6281234567890"})
 	appErr, ok := err.(*apperror.AppError)
 	if !ok || appErr.Code != constants.CodeInvalidStatusTransition {
-		t.Fatalf("expected InvalidStatusTransition error when editing a published campaign, got %v", err)
+		t.Fatalf("expected InvalidStatusTransition error when editing an archived campaign, got %v", err)
 	}
 }
 
-func TestUpdate_AllowsOwnerDuringRevisionRequested(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusRevisionRequested})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+func TestUpdate_AllowsAnyPermittedCallerWhenPublished(t *testing.T) {
+	// Campaign murni CRUD berbasis permission (revisi 2026-09-01) — tidak
+	// ada lagi kepemilikan, siapapun dengan akses boleh mengubah campaign
+	// manapun kecuali ARCHIVED.
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := newTestService(repo)
 
-	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory})
+	_, err := svc.Update(context.Background(), 1, CallerScope{UserID: 999}, campaign_dto.UpdateRequest{Title: "Judul Campaign Baru", Story: validStory, Goals: validGoals, PicName: "PIC", PicPhone: "6281234567890"})
 	if err != nil {
-		t.Fatalf("expected owner to edit a revision-requested campaign, got error: %v", err)
+		t.Fatalf("expected any permitted caller to edit a published campaign, got error: %v", err)
 	}
 }
 
-func TestSubmit_RejectsNonOwnerAsNotFound(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
-
-	_, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 99})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeNotFound {
-		t.Fatalf("expected NotFound error for non-owner submit (IDOR-safe), got %v", err)
-	}
-}
-
-func TestSubmit_SucceedsFromDraft(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
-
-	resp, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 10})
-	if err != nil {
-		t.Fatalf("expected submit from DRAFT to succeed, got error: %v", err)
-	}
-	if resp.Status != constants.CampaignStatusSubmitted {
-		t.Fatalf("expected status SUBMITTED after submit, got %s", resp.Status)
-	}
-}
-
-func TestSubmit_RejectsFromPublished(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
-
-	_, err := svc.Submit(context.Background(), 1, CallerScope{UserID: 10})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeInvalidStatusTransition {
-		t.Fatalf("expected InvalidStatusTransition error submitting an already-published campaign, got %v", err)
-	}
-}
-
-func TestReview_RejectsInvalidDecision(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusSubmitted})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
-
-	_, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: "MAYBE"})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeValidationError {
-		t.Fatalf("expected validation error for unrecognized decision, got %v", err)
-	}
-}
-
-func TestReview_RejectsWhenNotInReviewableStatus(t *testing.T) {
+func TestPublish_SucceedsFromDraft(t *testing.T) {
 	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusDraft})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+	svc := newTestService(repo)
 
-	_, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: constants.ReviewDecisionApproved})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeInvalidStatusTransition {
-		t.Fatalf("expected InvalidStatusTransition error reviewing a draft campaign, got %v", err)
+	resp, err := svc.Publish(context.Background(), 1, CallerScope{UserID: 5})
+	if err != nil {
+		t.Fatalf("expected publish from DRAFT to succeed, got error: %v", err)
+	}
+	if resp.Status != constants.CampaignStatusPublished {
+		t.Fatalf("expected status PUBLISHED after publish, got %s", resp.Status)
 	}
 }
 
-func TestReview_ApprovedMovesToApprovedStatus(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusSubmitted})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+func TestPublish_RejectsWhenAlreadyPublished(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := newTestService(repo)
 
-	resp, err := svc.Review(context.Background(), 1, CallerScope{UserID: 5}, campaign_dto.ReviewRequest{Decision: constants.ReviewDecisionApproved})
-	if err != nil {
-		t.Fatalf("expected review to succeed, got error: %v", err)
+	_, err := svc.Publish(context.Background(), 1, CallerScope{UserID: 5})
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeInvalidStatusTransition {
+		t.Fatalf("expected InvalidStatusTransition error re-publishing an already-published campaign, got %v", err)
 	}
-	if resp.Status != constants.CampaignStatusApproved {
-		t.Fatalf("expected status APPROVED after approving review, got %s", resp.Status)
+}
+
+func TestArchive_SucceedsFromPublished(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := newTestService(repo)
+
+	resp, err := svc.Archive(context.Background(), 1, CallerScope{UserID: 5})
+	if err != nil {
+		t.Fatalf("expected archive from PUBLISHED to succeed, got error: %v", err)
+	}
+	if resp.Status != constants.CampaignStatusArchived {
+		t.Fatalf("expected status ARCHIVED after archive, got %s", resp.Status)
 	}
 }
 
 func TestCreate_RejectsUnknownCategory(t *testing.T) {
 	repo := &fakeCampaignRepository{campaigns: map[int64]campaign_model.Campaign{}}
 	catRejecting := &categoryRejectingRepo{fakeCampaignRepository: repo}
-	svc := NewService(catRejecting, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+	svc := NewService(catRejecting, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{}, &fakeWithdrawalChecker{}, &fakeWalletService{})
 
 	_, err := svc.Create(context.Background(), CallerScope{UserID: 1}, campaign_dto.CreateRequest{
-		Title: "Judul Campaign Baru", CategoryID: 999, Story: validStory, CoverImageUrl: "/uploads/cover.jpg",
-		TargetAmount: 100000, BeneficiaryName: "A", BeneficiaryBankCode: "bca", BeneficiaryAccountNumber: "123", BeneficiaryAccountHolder: "A",
+		Title: "Judul Campaign Baru", CategoryID: 999, Story: validStory, Goals: validGoals, CoverImageUrl: "/uploads/cover.jpg",
+		TargetAmount: 100000, PicName: "PIC", PicPhone: "6281234567890",
 	})
 	appErr, ok := err.(*apperror.AppError)
 	if !ok || appErr.Code != constants.CodeValidationError {
@@ -305,35 +244,56 @@ func (r *categoryRejectingRepo) CategoryExists(ctx context.Context, categoryID i
 	return false, nil
 }
 
-func TestUpdateBeneficiary_RejectsNonOwnerAsNotFound(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+func TestDelete_SucceedsWhenNoDonations(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusDraft})
+	svc := newTestService(repo)
 
-	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 99}, campaign_dto.UpdateBeneficiaryRequest{
-		BeneficiaryName: "A", BeneficiaryBankCode: "bca", BeneficiaryAccountNumber: "999", BeneficiaryAccountHolder: "A",
-	})
-	appErr, ok := err.(*apperror.AppError)
-	if !ok || appErr.Code != constants.CodeNotFound {
-		t.Fatalf("expected NotFound (IDOR-safe) for non-owner beneficiary change, got %v", err)
+	if err := svc.Delete(context.Background(), 1); err != nil {
+		t.Fatalf("expected delete to succeed for campaign with no donations, got error: %v", err)
+	}
+	if _, ok := repo.campaigns[1]; ok {
+		t.Fatalf("expected campaign to be removed from repository")
 	}
 }
 
-func TestUpdateBeneficiary_OwnerSucceedsAndLocksForCoolingPeriod(t *testing.T) {
-	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, OwnerUserID: 10, Status: constants.CampaignStatusPublished})
-	svc := NewService(repo, &fakeUserRepository{}, fakeOrgAccess{allow: true}, &fakeJobEnqueuer{}, &fakeFinanceAuditor{})
+func TestDelete_RejectsWhenPendingDonationsExist(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{pendingCount: 1}, &fakeWithdrawalChecker{}, &fakeWalletService{})
 
-	before := time.Now()
-	_, err := svc.UpdateBeneficiary(context.Background(), 1, CallerScope{UserID: 10}, campaign_dto.UpdateBeneficiaryRequest{
-		BeneficiaryName: "Rekening Baru", BeneficiaryBankCode: "bni", BeneficiaryAccountNumber: "999888777", BeneficiaryAccountHolder: "Rekening Baru",
-	})
-	if err != nil {
-		t.Fatalf("expected owner to change beneficiary successfully, got error: %v", err)
+	err := svc.Delete(context.Background(), 1)
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeUnprocessable {
+		t.Fatalf("expected Unprocessable error when pending donations exist, got %v", err)
 	}
-	updated := repo.campaigns[1]
-	if updated.BeneficiaryBankCode != "bni" || updated.BeneficiaryAccountNumber != "999888777" {
-		t.Fatalf("beneficiary fields not updated: %+v", updated)
+}
+
+func TestDelete_RejectsWhenNonFinalWithdrawalExists(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{paidCount: 1}, &fakeWithdrawalChecker{nonFinalCount: 1}, &fakeWalletService{})
+
+	err := svc.Delete(context.Background(), 1)
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeUnprocessable {
+		t.Fatalf("expected Unprocessable error when a non-final withdrawal exists, got %v", err)
 	}
-	if !updated.BeneficiaryLockedUntil.Valid || !updated.BeneficiaryLockedUntil.Time.After(before.Add(23*time.Hour)) {
-		t.Fatalf("expected beneficiaryLockedUntil to be set ~24h in the future, got %+v", updated.BeneficiaryLockedUntil)
+}
+
+func TestDelete_RejectsWhenBalanceUnwithdrawn(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{paidCount: 1}, &fakeWithdrawalChecker{}, &fakeWalletService{availableBalance: 50000})
+
+	err := svc.Delete(context.Background(), 1)
+	appErr, ok := err.(*apperror.AppError)
+	if !ok || appErr.Code != constants.CodeUnprocessable {
+		t.Fatalf("expected Unprocessable error when balance is not fully withdrawn, got %v", err)
+	}
+}
+
+func TestDelete_SucceedsWhenPaidButFullyWithdrawn(t *testing.T) {
+	repo := newFakeRepo(campaign_model.Campaign{CampaignID: 1, Status: constants.CampaignStatusPublished})
+	svc := NewService(repo, fakeOrgAccess{allow: true}, &fakeFinanceAuditor{}, &fakeDonationChecker{paidCount: 1}, &fakeWithdrawalChecker{}, &fakeWalletService{availableBalance: 0})
+
+	if err := svc.Delete(context.Background(), 1); err != nil {
+		t.Fatalf("expected delete to succeed once balance is fully withdrawn, got error: %v", err)
 	}
 }

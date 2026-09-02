@@ -19,4 +19,6 @@ type Handler interface {
 	ReconciliationHistory(c *gin.Context)
 	RunReconciliation(c *gin.Context)
 	FinanceAuditLog(c *gin.Context)
+	GlobalLedger(c *gin.Context)
+	Analytics(c *gin.Context)
 }

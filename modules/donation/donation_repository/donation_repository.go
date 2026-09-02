@@ -27,6 +27,21 @@ type Repository interface {
 	FindByIdempotencyKey(ctx context.Context, key string) (donation_model.Donation, error)
 	List(ctx context.Context, f donation_dto.ListFilter) ([]donation_model.Donation, int64, error)
 
+	// CountPaidByCampaign/CountPendingByCampaign dipakai guard
+	// campaign_service.Delete() — mencegah campaign yang masih punya donasi
+	// aktif/belum ditarik terhapus.
+	CountPaidByCampaign(ctx context.Context, campaignID int64) (int64, error)
+	CountPendingByCampaign(ctx context.Context, campaignID int64) (int64, error)
+
+	// AdminCreate/AdminUpdate/AdminDelete adalah CRUD donasi manual/offline
+	// (gateway="manual") oleh admin CMS — TIDAK PERNAH menyentuh
+	// tr_wallet_ledger (lihat donation_service_impl.go). AdminDelete/
+	// AdminUpdate wajib dipanggil hanya setelah caller memvalidasi baris
+	// bergateway "manual" (repository tidak mengecek ini sendiri).
+	AdminCreate(ctx context.Context, p donation_model.AdminCreateParams) (int64, error)
+	AdminUpdate(ctx context.Context, id int64, p donation_model.AdminUpdateParams) error
+	AdminDelete(ctx context.Context, id int64) error
+
 	// UpdateGatewayResult menyimpan hasil CreateQRISTransaction (qrPayload/
 	// paymentCode/paymentLink/externalTransactionID) ke donasi yang baru dibuat.
 	UpdateGatewayResult(ctx context.Context, donationID int64, p donation_model.GatewayResultParams) error

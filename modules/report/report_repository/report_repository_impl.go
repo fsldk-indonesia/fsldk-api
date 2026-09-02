@@ -320,6 +320,81 @@ func (r *RepositoryImpl) ListReconciliationSnapshots(ctx context.Context, q dto.
 	return out, total, err
 }
 
+func (r *RepositoryImpl) GlobalLedgerRows(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int64, error) {
+	base := r.db.WithContext(ctx).Table(constants.TableWalletLedger + " l").
+		Joins("JOIN " + constants.TableCampaign + " c ON c.campaignID = l.campaignID")
+	if f.CampaignID > 0 {
+		base = base.Where("l.campaignID = ?", f.CampaignID)
+	}
+	if f.Direction != "" {
+		base = base.Where("l.direction = ?", f.Direction)
+	}
+	base = base.Session(&gorm.Session{})
+
+	var total int64
+	if err := base.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	page, limit := f.Page, f.Limit
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 20
+	}
+
+	var out []report_dto.GlobalLedgerRow
+	err := base.Select(`l.ledgerID, l.campaignID, c.title AS campaignTitle, l.entryType, l.direction, l.amount,
+		l.balanceAfter, l.referenceType, l.referenceID, l.createdDate`).
+		Order("l.ledgerID DESC").Offset((page - 1) * limit).Limit(limit).Find(&out).Error
+	return out, total, err
+}
+
+// donationAmountBandCase/donorAgeBandCase membagi nilai ke 5 bucket lewat
+// CASE WHEN + UNION ALL — bukan window function (server masih MySQL 5.7,
+// lihat komentar balanceAt di atas), dan bukan GROUP BY nilai mentah
+// (nominal/usia terlalu bervariasi untuk chart bermakna).
+const donationAmountBandCase = `CASE
+	WHEN amount < 50000 THEN '1. < Rp50rb'
+	WHEN amount < 100000 THEN '2. Rp50rb - Rp100rb'
+	WHEN amount < 500000 THEN '3. Rp100rb - Rp500rb'
+	WHEN amount < 1000000 THEN '4. Rp500rb - Rp1jt'
+	ELSE '5. >= Rp1jt'
+END`
+
+func (r *RepositoryImpl) DonationAmountBands(ctx context.Context, campaignID int64) ([]report_dto.AmountBandRow, error) {
+	q := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Select(donationAmountBandCase + " AS bandLabel, COUNT(*) AS count").
+		Where("paymentStatus = 'PAID'")
+	if campaignID > 0 {
+		q = q.Where("campaignID = ?", campaignID)
+	}
+	var out []report_dto.AmountBandRow
+	err := q.Group("bandLabel").Order("bandLabel").Find(&out).Error
+	return out, err
+}
+
+const donorAgeBandCase = `CASE
+	WHEN CAST(donorAge AS UNSIGNED) < 20 THEN '1. < 20 tahun'
+	WHEN CAST(donorAge AS UNSIGNED) < 30 THEN '2. 20-29 tahun'
+	WHEN CAST(donorAge AS UNSIGNED) < 40 THEN '3. 30-39 tahun'
+	WHEN CAST(donorAge AS UNSIGNED) < 50 THEN '4. 40-49 tahun'
+	ELSE '5. 50+ tahun'
+END`
+
+func (r *RepositoryImpl) DonorAgeBands(ctx context.Context, campaignID int64) ([]report_dto.AgeBandRow, error) {
+	q := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Select(donorAgeBandCase + " AS bandLabel, COUNT(*) AS count").
+		Where("paymentStatus = 'PAID' AND donorAge REGEXP '^[0-9]+$'")
+	if campaignID > 0 {
+		q = q.Where("campaignID = ?", campaignID)
+	}
+	var out []report_dto.AgeBandRow
+	err := q.Group("bandLabel").Order("bandLabel").Find(&out).Error
+	return out, err
+}
+
 func (r *RepositoryImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error) {
 	base := r.db.WithContext(ctx).Table(constants.TableFinanceAuditLog + " l").
 		Joins("LEFT JOIN " + constants.TableUser + " u ON u.userID = l.actorUserID")

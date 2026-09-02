@@ -112,3 +112,77 @@ func (h *HandlerImpl) CMSList(c *gin.Context) {
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
 }
+
+func donationIDParam(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httphelper.Error(c, apperror.BadRequest("ID donasi tidak valid"))
+		return 0, false
+	}
+	return id, true
+}
+
+func (h *HandlerImpl) CMSGet(c *gin.Context) {
+	id, ok := donationIDParam(c)
+	if !ok {
+		return
+	}
+	data, err := h.svc.CMSGet(c.Request.Context(), id)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) AdminCreate(c *gin.Context) {
+	var req donation_dto.AdminCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.AdminCreate(c.Request.Context(), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Created(c, "Donasi manual berhasil dicatat", data)
+}
+
+func (h *HandlerImpl) AdminUpdate(c *gin.Context) {
+	id, ok := donationIDParam(c)
+	if !ok {
+		return
+	}
+	var req donation_dto.AdminUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.AdminUpdate(c.Request.Context(), id, req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Donasi manual berhasil diperbarui", data)
+}
+
+func (h *HandlerImpl) AdminDelete(c *gin.Context) {
+	id, ok := donationIDParam(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.AdminDelete(c.Request.Context(), id); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Donasi manual berhasil dihapus", nil)
+}

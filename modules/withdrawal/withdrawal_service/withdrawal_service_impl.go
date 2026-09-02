@@ -23,6 +23,7 @@ import (
 	"fsldk-api/modules/campaign/campaign_repository"
 	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_model"
+	"fsldk-api/modules/setting/setting_model"
 	"fsldk-api/modules/user/user_repository"
 	"fsldk-api/modules/wallet/wallet_service"
 	"fsldk-api/modules/withdrawal/withdrawal_dto"
@@ -44,6 +45,21 @@ type JobEnqueuer interface {
 // sungguhan sekaligus memudahkan fake di unit test tanpa perlu *gorm.DB.
 type FinanceAuditor interface {
 	LogFinance(ctx context.Context, e auditlog.Entry)
+}
+
+// Mailer adalah irisan sempit mailer.Mailer yang dibutuhkan modul ini — pola
+// sama donation_service.Mailer. SendOtpEmail dipakai RequestSecurityOtp
+// (item 8 revision-prompt-2.md — OTP withdrawal via email, bukan WhatsApp).
+type Mailer interface {
+	SendOtpEmail(toEmail, code, validityText string) error
+}
+
+// SettingReader adalah irisan sempit setting_repository.Repository yang
+// dibutuhkan modul ini — membaca email penerima OTP withdrawal yang
+// dikonfigurasi admin di ms_setting (isHide=true, tidak tampil di App
+// Settings UI, lihat setting_model.KeyWithdrawalOtpEmail).
+type SettingReader interface {
+	FindByGroupKey(ctx context.Context, group, key string) (setting_model.Setting, error)
 }
 
 // processingEtaText adalah estimasi waktu pencairan yang ditampilkan di
@@ -91,13 +107,15 @@ type ServiceImpl struct {
 	gateway      bisatopup.Gateway
 	jobs         JobEnqueuer
 	audit        FinanceAuditor
+	mail         Mailer
+	settings     SettingReader
 	db           *gorm.DB
 	cfg          config.AppConfig
 }
 
 // NewService membuat Service withdrawal.
-func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, audit FinanceAuditor, db *gorm.DB, cfg config.AppConfig) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, audit: audit, db: db, cfg: cfg}
+func NewService(repo withdrawal_repository.Repository, campaignRepo campaign_repository.Repository, userRepo user_repository.Repository, walletSvc wallet_service.Service, gateway bisatopup.Gateway, jobs JobEnqueuer, audit FinanceAuditor, mail Mailer, settings SettingReader, db *gorm.DB, cfg config.AppConfig) Service {
+	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, userRepo: userRepo, walletSvc: walletSvc, gateway: gateway, jobs: jobs, audit: audit, mail: mail, settings: settings, db: db, cfg: cfg}
 }
 
 // notify mengirim satu notifikasi WhatsApp lewat job queue (async, tidak
@@ -117,15 +135,16 @@ func (s *ServiceImpl) notify(ctx context.Context, toPhone, templateName string, 
 	}
 }
 
-// notifyOwner mengirim notifikasi ke pengaju withdrawal — selalu owner
-// campaign (Request menolak requester yang bukan camp.OwnerUserID), jadi
-// cukup lookup langsung by userID tanpa perlu re-fetch campaign.
-func (s *ServiceImpl) notifyOwner(ctx context.Context, ownerUserID, withdrawalID int64, templateName string, params []string) {
-	owner, err := s.userRepo.FindByID(ctx, ownerUserID)
-	if err != nil || !owner.PhoneNumber.Valid || owner.PhoneNumber.String == "" {
+// notifyPic mengirim notifikasi progres withdrawal ke PIC campaign (bukan
+// lagi "owner" — withdrawal murni CRUD/permission-gated, siapapun dengan
+// akses boleh mengajukan/memproses withdrawal campaign manapun, revisi
+// 2026-09-01, lihat campaign_model.PicPhone).
+func (s *ServiceImpl) notifyPic(ctx context.Context, campaignID, withdrawalID int64, templateName string, params []string) {
+	camp, err := s.campaignRepo.FindByID(ctx, campaignID)
+	if err != nil || camp.PicPhone == "" {
 		return
 	}
-	s.notify(ctx, owner.PhoneNumber.String, templateName, params, withdrawalID)
+	s.notify(ctx, camp.PicPhone, templateName, params, withdrawalID)
 }
 
 // formatRupiah memformat nominal Rupiah dengan pemisah ribuan titik untuk
@@ -153,15 +172,8 @@ func formatRupiah(amount float64) string {
 
 func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID int64, req withdrawal_dto.CreateRequest) (withdrawal_dto.Response, error) {
 	camp, err := s.campaignRepo.FindByID(ctx, campaignID)
-	if err != nil || camp.OwnerUserID != requesterUserID {
+	if err != nil {
 		return withdrawal_dto.Response{}, apperror.NotFound("Campaign tidak ditemukan")
-	}
-
-	// Cooling period (Option F, §12.1/§12.10) — rekening beneficiary yang
-	// baru saja diubah tidak bisa dipakai untuk withdrawal sampai masa jeda
-	// selesai, independen dari trigger risk-based mana pun. Selalu aktif.
-	if camp.BeneficiaryLockedUntil.Valid && time.Now().Before(camp.BeneficiaryLockedUntil.Time) {
-		return withdrawal_dto.Response{}, apperror.Unprocessable("Rekening penerima baru saja diubah — tunggu masa jeda keamanan selesai sebelum mengajukan penarikan")
 	}
 
 	// Fail-fast pre-check di luar transaksi — menghindari panggilan inquiry
@@ -176,12 +188,14 @@ func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID i
 		return withdrawal_dto.Response{}, apperror.Conflict("Sudah ada permintaan penarikan yang masih berjalan untuk campaign ini")
 	}
 
-	// Beneficiary selalu direct dari campaign (bukan diinput ulang) —
-	// divalidasi ulang via inquiry live karena rekening bisa saja sudah
-	// tidak valid lagi sejak campaign disubmit (reuse ldksyahid-app).
-	inq, ierr := s.gateway.InquiryBank(ctx, camp.BeneficiaryBankCode, camp.BeneficiaryAccountNumber)
+	// Rekening tujuan diinput ulang setiap pengajuan (revisi 2026-09-01 —
+	// campaign tidak lagi menyimpan beneficiary, lihat campaign_dto) dan
+	// selalu divalidasi live via inquiry gateway. AccountHolder diambil dari
+	// hasil inquiry yang terverifikasi gateway, bukan input client, supaya
+	// tidak bisa dipalsukan.
+	inq, ierr := s.gateway.InquiryBank(ctx, req.BeneficiaryBankCode, req.BeneficiaryAccountNumber)
 	if ierr != nil || !strings.EqualFold(inq.Status, "SUCCESS") {
-		return withdrawal_dto.Response{}, apperror.Unprocessable("Rekening penerima tidak valid, silakan hubungi admin untuk memperbarui data campaign")
+		return withdrawal_dto.Response{}, apperror.Unprocessable("Rekening penerima tidak valid, silakan periksa kembali nomor rekening")
 	}
 	fee, _ := strconv.ParseFloat(inq.Fee, 64)
 
@@ -223,9 +237,9 @@ func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID i
 				Amount:                   float64(amount),
 				Fee:                      fee,
 				NetAmount:                netAmount,
-				BeneficiaryBankCode:      camp.BeneficiaryBankCode,
-				BeneficiaryAccountNumber: camp.BeneficiaryAccountNumber,
-				BeneficiaryAccountHolder: camp.BeneficiaryAccountHolder,
+				BeneficiaryBankCode:      req.BeneficiaryBankCode,
+				BeneficiaryAccountNumber: req.BeneficiaryAccountNumber,
+				BeneficiaryAccountHolder: inq.AccountHolder,
 				IdempotencyKey:           idemKey,
 			})
 			if cerr != nil {
@@ -249,7 +263,7 @@ func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID i
 	if err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("Gagal membuat permintaan penarikan")
 	}
-	s.notifyOwner(ctx, requesterUserID, id, "withdrawal_diajukan", []string{formatRupiah(float64(amount)), camp.Title})
+	s.notifyPic(ctx, campaignID, id, "withdrawal_diajukan", []string{formatRupiah(float64(amount)), camp.Title})
 	s.audit.LogFinance(ctx, auditlog.Entry{
 		ActorUserID: requesterUserID, Action: "withdrawal.requested", Entity: "withdrawal", EntityID: id,
 		After: map[string]interface{}{"campaignID": campaignID, "amount": float64(amount)},
@@ -259,7 +273,7 @@ func (s *ServiceImpl) Request(ctx context.Context, campaignID, requesterUserID i
 
 func (s *ServiceImpl) Cancel(ctx context.Context, withdrawalID, requesterUserID int64) error {
 	w, err := s.repo.FindByID(ctx, withdrawalID)
-	if err != nil || w.RequestedByUserID != requesterUserID {
+	if err != nil {
 		return apperror.NotFound("Penarikan tidak ditemukan")
 	}
 	if !isCancellableStatus(w.Status) {
@@ -286,12 +300,13 @@ func (s *ServiceImpl) Cancel(ctx context.Context, withdrawalID, requesterUserID 
 // isRiskyWithdrawal menentukan apakah withdrawal ini memicu step-up OTP
 // tambahan (Option D) di atas password (Option B) — keputusan final OQ-01/
 // §12.1. Diimplementasikan: nominal >Rp10 juta ATAU withdrawal pertama yang
-// pernah SUCCESS untuk campaign ini. "Rekening baru" tidak diulang di sini
-// karena sudah di-hard-block penuh oleh cooling period (Request tidak akan
-// pernah sampai sini bila beneficiary masih terkunci); "banyak percobaan
-// gagal sebelumnya" tidak diimplementasikan di fase ini karena techspec
-// tidak memberi angka ambang konkret (beda dari Rp10 juta yang eksplisit) —
-// dicatat sebagai gap di phase-07-summary.md, bukan diputuskan diam-diam.
+// pernah SUCCESS untuk campaign ini. Sejak revisi 2026-09-01, rekening
+// tujuan selalu diinput ulang & divalidasi live tiap pengajuan (tidak ada
+// lagi cooling period campaign-level), jadi trigger "rekening baru" tidak
+// relevan lagi di sini. "Banyak percobaan gagal sebelumnya" tidak
+// diimplementasikan di fase ini karena techspec tidak memberi angka ambang
+// konkret (beda dari Rp10 juta yang eksplisit) — dicatat sebagai gap di
+// phase-07-summary.md, bukan diputuskan diam-diam.
 func (s *ServiceImpl) isRiskyWithdrawal(ctx context.Context, w withdrawal_model.Withdrawal) (bool, error) {
 	if w.Amount > riskAmountThreshold {
 		return true, nil
@@ -305,12 +320,22 @@ func (s *ServiceImpl) isRiskyWithdrawal(ctx context.Context, w withdrawal_model.
 
 func (s *ServiceImpl) RequestSecurityOtp(ctx context.Context, withdrawalID, requesterUserID int64) error {
 	w, err := s.repo.FindByID(ctx, withdrawalID)
-	if err != nil || w.RequestedByUserID != requesterUserID {
+	if err != nil {
 		return apperror.NotFound("Penarikan tidak ditemukan")
 	}
 	if w.Status != constants.WithdrawalStatusSecurityCheck {
 		return apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu verifikasi keamanan")
 	}
+
+	// Email penerima OTP dikonfigurasi admin di ms_setting (isHide=true,
+	// tidak tampil di App Settings UI) — item 8 revision-prompt-2.md, BUKAN
+	// email requester (OTP ini adalah kontrol keamanan operasional tim
+	// keuangan, bukan notifikasi personal).
+	setting, serr := s.settings.FindByGroupKey(ctx, setting_model.GroupKantongAmal, setting_model.KeyWithdrawalOtpEmail)
+	if serr != nil || setting.SettingValue == nil || strings.TrimSpace(*setting.SettingValue) == "" {
+		return apperror.Internal("Email penerima OTP withdrawal belum dikonfigurasi, hubungi Super Admin")
+	}
+	otpEmail := strings.TrimSpace(*setting.SettingValue)
 
 	requestCount, err := s.repo.CountOtpChallengesByWithdrawal(ctx, withdrawalID)
 	if err != nil {
@@ -328,23 +353,32 @@ func (s *ServiceImpl) RequestSecurityOtp(ctx context.Context, withdrawalID, requ
 		WithdrawalID: withdrawalID,
 		UserID:       requesterUserID,
 		CodeHash:     hashOtpCode(code),
-		Channel:      constants.OtpChannelWhatsapp,
+		Channel:      constants.OtpChannelEmail,
 		ExpiredDate:  time.Now().Add(otpValidityDuration),
 	}); err != nil {
 		return apperror.Internal("")
 	}
 
-	// Retrofit Phase 8: sebelumnya hanya log.Printf dev-mode (menunggu
-	// infrastruktur queue). Sekarang mengikuti 14-whatsapp.md §14.4 — tidak
-	// pernah memanggil Kirimdev langsung/sinkron, selalu lewat job queue.
-	s.notifyOwner(ctx, requesterUserID, withdrawalID, "kode_otp_kantong_amal",
-		[]string{code, fmt.Sprintf("%.0f menit", otpValidityDuration.Minutes())})
+	// Item 8 revision-prompt-2.md (2026-09-01): OTP dikirim via email
+	// (sinkron, bukan lewat job queue WhatsApp — kirimdev.TemplateMessage
+	// "kode_otp_kantong_amal" kini dead template, lihat docs/DEPLOYMENT.md).
+	// Gagal kirim TETAP mengembalikan error ke caller (beda dari notifikasi
+	// best-effort lain di modul ini) — tanpa email terkirim, requester tidak
+	// akan pernah punya kode untuk diverifikasi sama sekali.
+	if err := s.mail.SendOtpEmail(otpEmail, code, fmt.Sprintf("%.0f menit", otpValidityDuration.Minutes())); err != nil {
+		log.Printf("[WITHDRAWAL] gagal kirim email OTP untuk withdrawalID=%d: %v", withdrawalID, err)
+		return apperror.Internal("Gagal mengirim kode OTP, silakan coba lagi")
+	}
 	return nil
 }
 
+// VerifySecurity memverifikasi password/OTP milik CALLER saat ini (aktor
+// yang menekan tombol proses) — bukan lagi harus pengaju asli withdrawal
+// (revisi 2026-09-01, withdrawal murni permission-gated), sehingga admin
+// manapun dengan akses boleh menindaklanjuti withdrawal siapapun.
 func (s *ServiceImpl) VerifySecurity(ctx context.Context, withdrawalID, requesterUserID int64, req withdrawal_dto.SecurityVerifyRequest) (withdrawal_dto.Response, error) {
 	w, err := s.repo.FindByID(ctx, withdrawalID)
-	if err != nil || w.RequestedByUserID != requesterUserID {
+	if err != nil {
 		return withdrawal_dto.Response{}, apperror.NotFound("Penarikan tidak ditemukan")
 	}
 	if w.Status != constants.WithdrawalStatusSecurityCheck {
@@ -395,15 +429,24 @@ func (s *ServiceImpl) VerifySecurity(ctx context.Context, withdrawalID, requeste
 		if err := s.repo.MarkOtpVerified(ctx, challenge.ChallengeID); err != nil {
 			return withdrawal_dto.Response{}, apperror.Internal("")
 		}
-		method := constants.WithdrawalSecurityMethodOtpWa
+		method := constants.WithdrawalSecurityMethodOtpEmail
 		params.SecurityVerifiedMethod = &method
 	}
 
+	// Revisi (2026-08-30): maker-checker approval dihapus — begitu verifikasi
+	// keamanan lolos, withdrawal langsung APPROVED (siap diproses lewat
+	// Process(), permission-gated, tanpa perlu orang lain mengklik approve
+	// terpisah). ApprovedByUserID di-set ke requester sendiri — kolom lama
+	// direuse untuk mencatat "siapa yang membuat status ini tercapai",
+	// bukan lagi "siapa yang menyetujui" (tidak ada aksi approve terpisah
+	// lagi, jadi tidak perlu migrasi skema baru).
+	//
 	// Tidak perlu dbretry di sini — transisi ini hanya mengunci baris
 	// withdrawal sendiri, tidak menyentuh ms_campaign (beda dari Request/
-	// Cancel/Reject yang lewat wallet_service dan bisa kontensi lintas-flow).
+	// Cancel yang lewat wallet_service dan bisa kontensi lintas-flow).
+	params.ApprovedByUserID = &requesterUserID
 	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusPendingApproval, params)
+		return s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusApproved, params)
 	}); err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("")
 	}
@@ -422,66 +465,6 @@ func (s *ServiceImpl) auditSecurityFailed(ctx context.Context, withdrawalID, req
 		ActorUserID: requesterUserID, Action: "withdrawal.security_failed", Entity: "withdrawal", EntityID: withdrawalID,
 		Metadata: map[string]string{"reason": reason},
 	})
-}
-
-func (s *ServiceImpl) Approve(ctx context.Context, withdrawalID, approverUserID int64) (withdrawal_dto.Response, error) {
-	w, err := s.repo.FindByID(ctx, withdrawalID)
-	if err != nil {
-		return withdrawal_dto.Response{}, apperror.NotFound("Penarikan tidak ditemukan")
-	}
-	if w.Status != constants.WithdrawalStatusPendingApproval {
-		return withdrawal_dto.Response{}, apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu persetujuan")
-	}
-	if w.RequestedByUserID == approverUserID {
-		return withdrawal_dto.Response{}, apperror.Forbidden("Approver tidak boleh sama dengan pengaju penarikan (maker-checker)")
-	}
-
-	approver := approverUserID
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusApproved, withdrawal_model.StatusUpdateParams{ApprovedByUserID: &approver})
-	})
-	if err != nil {
-		return withdrawal_dto.Response{}, apperror.Internal("")
-	}
-	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_disetujui", []string{formatRupiah(w.Amount)})
-	s.audit.LogFinance(ctx, auditlog.Entry{
-		ActorUserID: approverUserID, Action: "withdrawal.approved", Entity: "withdrawal", EntityID: withdrawalID,
-		Before: map[string]string{"status": w.Status}, After: map[string]string{"status": constants.WithdrawalStatusApproved},
-	})
-	return s.getResponse(ctx, withdrawalID)
-}
-
-func (s *ServiceImpl) Reject(ctx context.Context, withdrawalID, approverUserID int64, reason string) error {
-	w, err := s.repo.FindByID(ctx, withdrawalID)
-	if err != nil {
-		return apperror.NotFound("Penarikan tidak ditemukan")
-	}
-	if w.Status != constants.WithdrawalStatusPendingApproval {
-		return apperror.InvalidStatusTransition("Penarikan tidak dalam status menunggu persetujuan")
-	}
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		return apperror.BadRequest("Alasan penolakan wajib diisi")
-	}
-
-	err = dbretry.Do(func() error {
-		return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusRejected, withdrawal_model.StatusUpdateParams{RejectionReason: &reason}); err != nil {
-				return err
-			}
-			return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
-		})
-	})
-	if err != nil {
-		return err
-	}
-	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_gagal", []string{formatRupiah(w.Amount), reason})
-	s.audit.LogFinance(ctx, auditlog.Entry{
-		ActorUserID: approverUserID, Action: "withdrawal.rejected", Entity: "withdrawal", EntityID: withdrawalID,
-		Before: map[string]string{"status": w.Status}, After: map[string]string{"status": constants.WithdrawalStatusRejected},
-		Metadata: map[string]string{"reason": reason},
-	})
-	return nil
 }
 
 func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int64) (withdrawal_dto.Response, error) {
@@ -512,7 +495,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 				return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
 			})
 		})
-		s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_gagal", []string{formatRupiah(w.Amount), "Ditolak oleh gateway pencairan"})
+		s.notifyPic(ctx, w.CampaignID, withdrawalID, "withdrawal_gagal", []string{formatRupiah(w.Amount), "Ditolak oleh gateway pencairan"})
 		// "withdrawal.gateway_rejected" — bukan salah satu action literal di
 		// §16.1 techspec (yang hanya menyebut .rejected untuk penolakan
 		// admin/maker-checker), ditambahkan supaya audit trail tidak
@@ -543,7 +526,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 	}); err != nil {
 		return withdrawal_dto.Response{}, apperror.Internal("")
 	}
-	s.notifyOwner(ctx, w.RequestedByUserID, withdrawalID, "withdrawal_diproses", []string{formatRupiah(w.Amount), processingEtaText})
+	s.notifyPic(ctx, w.CampaignID, withdrawalID, "withdrawal_diproses", []string{formatRupiah(w.Amount), processingEtaText})
 	s.audit.LogFinance(ctx, auditlog.Entry{
 		ActorUserID: actorUserID, Action: "withdrawal.processing", Entity: "withdrawal", EntityID: withdrawalID,
 		Before: map[string]string{"status": w.Status}, After: map[string]string{"status": constants.WithdrawalStatusProcessing},
@@ -613,14 +596,14 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, stat
 	if shouldNotify {
 		w := notifyWithdrawal
 		if newStatus == constants.WithdrawalStatusSuccess {
-			s.notifyOwner(ctx, w.RequestedByUserID, w.WithdrawalID, "withdrawal_berhasil",
+			s.notifyPic(ctx, w.CampaignID, w.WithdrawalID, "withdrawal_berhasil",
 				[]string{formatRupiah(w.Amount), w.BeneficiaryBankCode + " " + w.BeneficiaryAccountNumber})
 			s.audit.LogFinance(ctx, auditlog.Entry{
 				Action: "withdrawal.callback.completed", Entity: "withdrawal", EntityID: w.WithdrawalID,
 				Before: map[string]string{"status": w.Status}, After: map[string]string{"status": constants.WithdrawalStatusSuccess},
 			})
 		} else if newStatus == constants.WithdrawalStatusFailed {
-			s.notifyOwner(ctx, w.RequestedByUserID, w.WithdrawalID, "withdrawal_gagal",
+			s.notifyPic(ctx, w.CampaignID, w.WithdrawalID, "withdrawal_gagal",
 				[]string{formatRupiah(w.Amount), "Gagal diproses oleh bank/gateway pencairan"})
 			s.audit.LogFinance(ctx, auditlog.Entry{
 				Action: "withdrawal.callback.failed", Entity: "withdrawal", EntityID: w.WithdrawalID,
@@ -696,16 +679,6 @@ func (s *ServiceImpl) RunReconcileScheduler() {
 	}
 }
 
-func (s *ServiceImpl) MyList(ctx context.Context, requesterUserID int64, q dto.ListQuery) ([]withdrawal_dto.Response, int, error) {
-	uid := requesterUserID
-	return s.list(ctx, withdrawal_dto.ListFilter{
-		RequestedByUserID: &uid,
-		Limit:             q.Limit,
-		Offset:            q.Offset(),
-		OrderBy:           q.OrderBy(sortColumns, "w.createdDate DESC"),
-	})
-}
-
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string) ([]withdrawal_dto.Response, int, error) {
 	return s.list(ctx, withdrawal_dto.ListFilter{
 		Status:  status,
@@ -768,7 +741,7 @@ func toResponse(w withdrawal_model.Withdrawal) withdrawal_dto.Response {
 // dibatalkan pengaju sendiri (§7.5 API design).
 func isCancellableStatus(status string) bool {
 	switch status {
-	case constants.WithdrawalStatusRequested, constants.WithdrawalStatusSecurityCheck, constants.WithdrawalStatusPendingApproval:
+	case constants.WithdrawalStatusRequested, constants.WithdrawalStatusSecurityCheck, constants.WithdrawalStatusApproved:
 		return true
 	}
 	return false

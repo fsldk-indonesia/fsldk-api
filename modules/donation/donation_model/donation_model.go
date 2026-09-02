@@ -28,6 +28,7 @@ type Donation struct {
 	TotalAmount           float64        `gorm:"column:totalAmount"`
 	PaymentStatus         string         `gorm:"column:paymentStatus"`
 	Gateway               string         `gorm:"column:gateway"`
+	PaymentMethod         sql.NullString `gorm:"column:paymentMethod"`
 	ExternalTransactionID sql.NullString `gorm:"column:externalTransactionID"`
 	IdempotencyKey        string         `gorm:"column:idempotencyKey"`
 	QrPayload             sql.NullString `gorm:"column:qrPayload"`
@@ -59,6 +60,43 @@ type CreateParams struct {
 	Gateway         string
 	IdempotencyKey  string
 	ExpiredDate     sql.NullTime
+}
+
+// AdminCreateParams menampung data membuat donasi manual/offline
+// (gateway="manual", tidak pernah menyentuh tr_wallet_ledger — lihat
+// constants.DonationGatewayManual) — dipakai admin mencatat donasi yang
+// tidak lewat Amdigipay/Bisatopup (item 1 revision-prompt-2.md).
+type AdminCreateParams struct {
+	PublicRef       string
+	CampaignID      int64
+	DonorName       string
+	DonorEmail      sql.NullString
+	DonorPhone      sql.NullString
+	DonorAge        sql.NullString
+	DonorDomicile   sql.NullString
+	DonorOccupation sql.NullString
+	IsAnonymous     bool
+	Message         sql.NullString
+	Amount          float64
+	PaymentMethod   sql.NullString
+	PaymentStatus   string
+	IdempotencyKey  string
+}
+
+// AdminUpdateParams menampung data mengedit donasi manual/offline — hanya
+// berlaku untuk baris gateway="manual" (divalidasi di donation_service).
+type AdminUpdateParams struct {
+	DonorName       string
+	DonorEmail      sql.NullString
+	DonorPhone      sql.NullString
+	DonorAge        sql.NullString
+	DonorDomicile   sql.NullString
+	DonorOccupation sql.NullString
+	IsAnonymous     bool
+	Message         sql.NullString
+	Amount          float64
+	PaymentMethod   sql.NullString
+	PaymentStatus   string
 }
 
 // GatewayResultParams menampung hasil CreateQRISTransaction untuk disimpan

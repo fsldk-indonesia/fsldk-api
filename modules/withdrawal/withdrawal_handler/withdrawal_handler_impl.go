@@ -51,16 +51,6 @@ func (h *HandlerImpl) Request(c *gin.Context) {
 	httphelper.Created(c, "Permintaan penarikan berhasil dibuat", data)
 }
 
-func (h *HandlerImpl) MyList(c *gin.Context) {
-	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.MyList(c.Request.Context(), appctx.UserID(c), q)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
-}
-
 func (h *HandlerImpl) Cancel(c *gin.Context) {
 	id, err := idParam(c)
 	if err != nil {
@@ -118,42 +108,6 @@ func (h *HandlerImpl) CMSList(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
-}
-
-func (h *HandlerImpl) Approve(c *gin.Context) {
-	id, err := idParam(c)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	data, err := h.svc.Approve(c.Request.Context(), id, appctx.UserID(c))
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Penarikan disetujui", data)
-}
-
-func (h *HandlerImpl) Reject(c *gin.Context) {
-	id, err := idParam(c)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	var req withdrawal_dto.RejectRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
-		return
-	}
-	if err := validation.Struct(req); err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	if err := h.svc.Reject(c.Request.Context(), id, appctx.UserID(c), req.Reason); err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Penarikan ditolak", nil)
 }
 
 func (h *HandlerImpl) Process(c *gin.Context) {

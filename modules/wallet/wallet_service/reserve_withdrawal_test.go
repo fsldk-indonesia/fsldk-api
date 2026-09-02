@@ -58,7 +58,7 @@ func (f *fakeRepository) ListLedger(ctx context.Context, campaignID int64, filte
 
 func TestReserveWithdrawal_RejectsWhenInsufficientBalance(t *testing.T) {
 	repo := &fakeRepository{balance: 50000}
-	svc := NewService(repo, nil, nil, nil)
+	svc := NewService(repo, nil, nil)
 
 	err := svc.ReserveWithdrawal(nil, 1, 1, 100000, 1, "test")
 	if err == nil {
@@ -75,7 +75,7 @@ func TestReserveWithdrawal_RejectsWhenInsufficientBalance(t *testing.T) {
 
 func TestReserveWithdrawal_SucceedsWhenBalanceSufficient(t *testing.T) {
 	repo := &fakeRepository{balance: 100000}
-	svc := NewService(repo, nil, nil, nil)
+	svc := NewService(repo, nil, nil)
 
 	err := svc.ReserveWithdrawal(nil, 1, 1, 60000, 1, "test")
 	if err != nil {
@@ -94,7 +94,7 @@ func TestReserveWithdrawal_SucceedsWhenBalanceSufficient(t *testing.T) {
 
 func TestReserveWithdrawal_AllowsExactBalance(t *testing.T) {
 	repo := &fakeRepository{balance: 50000}
-	svc := NewService(repo, nil, nil, nil)
+	svc := NewService(repo, nil, nil)
 
 	if err := svc.ReserveWithdrawal(nil, 1, 1, 50000, 1, "test"); err != nil {
 		t.Fatalf("expected success when amount == available balance, got error: %v", err)

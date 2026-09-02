@@ -1,4 +1,4 @@
-// Package campaign merangkai routing modul campaign (publik, milik-sendiri, CMS).
+// Package campaign merangkai routing modul campaign (publik & CMS).
 package campaign
 
 import (
@@ -16,29 +16,20 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h campaign_handler.Handler) {
 	pub.GET("/campaign-categories", h.Categories)
 }
 
-// RegisterMeRoutes mendaftarkan endpoint campaign milik pengguna sendiri (owner).
-func RegisterMeRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *middlewares.Middleware) {
-	g := rg.Group("/me/campaigns")
-	g.Use(mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermCampaignCreate))
-	{
-		g.GET("", h.MyList)
-		g.GET("/:id", h.MyGet)
-		g.POST("", h.Create)
-		g.PUT("/:id", h.Update)
-		g.PUT("/:id/beneficiary", h.UpdateBeneficiary)
-		g.POST("/:id/submit", h.Submit)
-	}
-}
-
-// RegisterCMSRoutes mendaftarkan endpoint CMS campaign (moderasi & monitoring).
+// RegisterCMSRoutes mendaftarkan endpoint CMS campaign — CRUD murni
+// permission gate per aksi, TIDAK ada lagi kepemilikan/self-service
+// (revisi 2026-09-01 — siapapun dengan permission terkait boleh mengelola
+// campaign manapun, mengikuti model celengan syahid ldksyahid-app).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/campaigns")
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
 		g.GET("", mw.RequirePermission(constants.PermCampaignView), h.CMSList)
+		g.GET("/lite", mw.RequirePermission(constants.PermCampaignView), h.CMSListLite)
 		g.GET("/:id", mw.RequirePermission(constants.PermCampaignView), h.CMSGet)
-		g.GET("/:id/review-history", mw.RequirePermission(constants.PermCampaignView), h.ReviewHistory)
-		g.POST("/:id/review", mw.RequirePermission(constants.PermCampaignReview), h.Review)
+		g.POST("", mw.RequirePermission(constants.PermCampaignCreate), h.Create)
+		g.PUT("/:id", mw.RequirePermission(constants.PermCampaignUpdate), h.Update)
+		g.DELETE("/:id", mw.RequirePermission(constants.PermCampaignDelete), h.Delete)
 		g.POST("/:id/publish", mw.RequirePermission(constants.PermCampaignPublish), h.Publish)
 		g.POST("/:id/pause", mw.RequirePermission(constants.PermCampaignModerate), h.Pause)
 		g.POST("/:id/resume", mw.RequirePermission(constants.PermCampaignModerate), h.Resume)

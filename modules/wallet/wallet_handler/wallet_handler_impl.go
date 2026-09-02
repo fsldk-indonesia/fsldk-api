@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"time"
 
-	"fsldk-api/base/appctx"
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/httphelper"
@@ -49,35 +48,6 @@ func ledgerFilter(c *gin.Context) wallet_dto.LedgerListFilter {
 	return f
 }
 
-func (h *HandlerImpl) MyBalance(c *gin.Context) {
-	campaignID, err := campaignIDParam(c)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	data, err := h.svc.GetBalanceForOwner(c.Request.Context(), campaignID, appctx.UserID(c))
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", data)
-}
-
-func (h *HandlerImpl) MyLedger(c *gin.Context) {
-	campaignID, err := campaignIDParam(c)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	f := ledgerFilter(c)
-	data, total, err := h.svc.ListLedgerForOwner(c.Request.Context(), campaignID, appctx.UserID(c), f)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", httphelper.BuildPagination(c, data, int(total), f.Page, f.Limit))
-}
-
 func (h *HandlerImpl) CMSBalance(c *gin.Context) {
 	campaignID, err := campaignIDParam(c)
 	if err != nil {
@@ -90,4 +60,19 @@ func (h *HandlerImpl) CMSBalance(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) CMSLedger(c *gin.Context) {
+	campaignID, err := campaignIDParam(c)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	f := ledgerFilter(c)
+	data, total, err := h.svc.ListLedger(c.Request.Context(), campaignID, f)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, int(total), f.Page, f.Limit))
 }

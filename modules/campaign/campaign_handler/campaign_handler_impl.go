@@ -69,30 +69,7 @@ func (h *HandlerImpl) Categories(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
-// ---------- Me ----------
-
-func (h *HandlerImpl) MyList(c *gin.Context) {
-	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.MyList(c.Request.Context(), callerScope(c), q)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
-}
-
-func (h *HandlerImpl) MyGet(c *gin.Context) {
-	id, ok := idParam(c)
-	if !ok {
-		return
-	}
-	data, err := h.svc.MyGet(c.Request.Context(), id, callerScope(c))
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", data)
-}
+// ---------- CMS ----------
 
 func (h *HandlerImpl) bindCreate(c *gin.Context) (campaign_dto.CreateRequest, bool) {
 	var req campaign_dto.CreateRequest
@@ -150,42 +127,17 @@ func (h *HandlerImpl) Update(c *gin.Context) {
 	httphelper.Success(c, "Campaign berhasil diperbarui", data)
 }
 
-func (h *HandlerImpl) UpdateBeneficiary(c *gin.Context) {
+func (h *HandlerImpl) Delete(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {
 		return
 	}
-	var req campaign_dto.UpdateBeneficiaryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
-		return
-	}
-	if err := validation.Struct(req); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		httphelper.Error(c, err)
 		return
 	}
-	data, err := h.svc.UpdateBeneficiary(c.Request.Context(), id, callerScope(c), req)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Rekening penerima berhasil diperbarui — berlaku setelah masa jeda keamanan 24 jam", data)
+	httphelper.Success(c, "Campaign berhasil dihapus", nil)
 }
-
-func (h *HandlerImpl) Submit(c *gin.Context) {
-	id, ok := idParam(c)
-	if !ok {
-		return
-	}
-	data, err := h.svc.Submit(c.Request.Context(), id, callerScope(c))
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Campaign berhasil diajukan untuk moderasi", data)
-}
-
-// ---------- CMS ----------
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
@@ -196,6 +148,15 @@ func (h *HandlerImpl) CMSList(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) CMSListLite(c *gin.Context) {
+	data, err := h.svc.ListLite(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
 }
 
 func (h *HandlerImpl) CMSGet(c *gin.Context) {
@@ -209,41 +170,6 @@ func (h *HandlerImpl) CMSGet(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "", data)
-}
-
-func (h *HandlerImpl) ReviewHistory(c *gin.Context) {
-	id, ok := idParam(c)
-	if !ok {
-		return
-	}
-	data, err := h.svc.ReviewHistory(c.Request.Context(), id)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "", data)
-}
-
-func (h *HandlerImpl) Review(c *gin.Context) {
-	id, ok := idParam(c)
-	if !ok {
-		return
-	}
-	var req campaign_dto.ReviewRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
-		return
-	}
-	if err := validation.Struct(req); err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	data, err := h.svc.Review(c.Request.Context(), id, callerScope(c), req)
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Review campaign berhasil disimpan", data)
 }
 
 func (h *HandlerImpl) Publish(c *gin.Context) {

@@ -10,7 +10,6 @@ import (
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/constants"
-	"fsldk-api/modules/campaign/campaign_repository"
 	"fsldk-api/modules/wallet/wallet_dto"
 	"fsldk-api/modules/wallet/wallet_model"
 	"fsldk-api/modules/wallet/wallet_repository"
@@ -18,14 +17,13 @@ import (
 )
 
 type ServiceImpl struct {
-	repo         wallet_repository.Repository
-	campaignRepo campaign_repository.Repository
-	audit        *auditlog.Logger
-	db           *gorm.DB // hanya dipakai AdjustBalance, yang membuka transaksinya sendiri
+	repo  wallet_repository.Repository
+	audit *auditlog.Logger
+	db    *gorm.DB // hanya dipakai AdjustBalance, yang membuka transaksinya sendiri
 }
 
-func NewService(repo wallet_repository.Repository, campaignRepo campaign_repository.Repository, audit *auditlog.Logger, db *gorm.DB) Service {
-	return &ServiceImpl{repo: repo, campaignRepo: campaignRepo, audit: audit, db: db}
+func NewService(repo wallet_repository.Repository, audit *auditlog.Logger, db *gorm.DB) Service {
+	return &ServiceImpl{repo: repo, audit: audit, db: db}
 }
 
 func (s *ServiceImpl) CreditDonation(tx *gorm.DB, campaignID, donationID int64, amount float64, note string) error {
@@ -207,30 +205,6 @@ func (s *ServiceImpl) ListLedger(ctx context.Context, campaignID int64, filter w
 		})
 	}
 	return items, total, nil
-}
-
-func (s *ServiceImpl) GetBalanceForOwner(ctx context.Context, campaignID, ownerUserID int64) (wallet_dto.BalanceResponse, error) {
-	if err := s.checkOwnership(ctx, campaignID, ownerUserID); err != nil {
-		return wallet_dto.BalanceResponse{}, err
-	}
-	return s.GetBalance(ctx, campaignID)
-}
-
-func (s *ServiceImpl) ListLedgerForOwner(ctx context.Context, campaignID, ownerUserID int64, filter wallet_dto.LedgerListFilter) ([]wallet_dto.LedgerListItem, int64, error) {
-	if err := s.checkOwnership(ctx, campaignID, ownerUserID); err != nil {
-		return nil, 0, err
-	}
-	return s.ListLedger(ctx, campaignID, filter)
-}
-
-// checkOwnership menolak akses dengan 404 (bukan 403) bila campaign bukan
-// milik ownerUserID — lihat komentar GetBalanceForOwner.
-func (s *ServiceImpl) checkOwnership(ctx context.Context, campaignID, ownerUserID int64) error {
-	camp, err := s.campaignRepo.FindByID(ctx, campaignID)
-	if err != nil || camp.OwnerUserID != ownerUserID {
-		return apperror.NotFound("Campaign tidak ditemukan")
-	}
-	return nil
 }
 
 // ignoreDuplicateLedgerEntry menerapkan idempotency ledger di level
