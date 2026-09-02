@@ -4,9 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 
 	"github.com/gin-gonic/gin"
 )
+
+// maxLoggedCallbackBodyBytes membatasi panjang body yang di-log saat parsing
+// gagal — cukup untuk mendiagnosis bentuk payload gateway pihak ketiga tanpa
+// membanjiri log dengan body yang sangat besar/tidak wajar.
+const maxLoggedCallbackBodyBytes = 1000
 
 // BindCallbackJSON mem-parse body JSON webhook callback pihak ketiga
 // (Bisatopup payment/disbursement), dengan toleransi khusus: body benar-benar
@@ -29,5 +35,19 @@ func BindCallbackJSON(c *gin.Context, obj interface{}) (isPing bool, err error) 
 	if len(bytes.TrimSpace(body)) == 0 {
 		return true, nil
 	}
-	return false, json.Unmarshal(body, obj)
+	if err := json.Unmarshal(body, obj); err != nil {
+		// Body non-kosong tapi gagal di-parse — kemungkinan gateway pihak
+		// ketiga mengirim bentuk payload yang belum kita duga (bukan JSON
+		// object, Content-Type bukan JSON, dsb). Di-log supaya bisa
+		// didiagnosis dari body mentahnya, bukan cuma pesan error generik
+		// "Format callback tidak valid" yang dilihat pengirimnya.
+		logged := body
+		if len(logged) > maxLoggedCallbackBodyBytes {
+			logged = logged[:maxLoggedCallbackBodyBytes]
+		}
+		log.Printf("[CALLBACK] gagal parse body dari %s %s: %v — body mentah (maks %d byte): %s",
+			c.Request.Method, c.Request.URL.Path, err, maxLoggedCallbackBodyBytes, string(logged))
+		return false, err
+	}
+	return false, nil
 }
