@@ -165,6 +165,9 @@ const (
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
+
+	PermContactView   = "contact.view"
+	PermContactDelete = "contact.delete"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The

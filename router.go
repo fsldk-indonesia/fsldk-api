@@ -114,6 +114,7 @@ import (
 	"fsldk-api/modules/zakat"
 	"fsldk-api/modules/structure"
 	"fsldk-api/modules/gallery"
+	"fsldk-api/modules/contact"
 	"fsldk-api/modules/zakat/zakat_handler"
 	"fsldk-api/modules/zakat/zakat_service"
 
@@ -378,6 +379,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	structure.RegisterRoutes(api, pub, db, mw)
 	gallery.RegisterRoutes(api, pub, db, uploader, mw)
+	contact.RegisterRoutes(api, pub, db, mw)
 
 	return engine
 }
