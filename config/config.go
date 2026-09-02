@@ -92,6 +92,13 @@ type AppConfig struct {
 	JobQueueDefaultMaxAttempts    int     `mapstructure:"JOBQUEUE_DEFAULT_MAX_ATTEMPTS"`
 	JobQueueBackoffScheduleRaw    string  `mapstructure:"JOBQUEUE_BACKOFF_SCHEDULE_SECONDS"` // comma-separated detik, mis. "15,30,60"
 	JobQueueWhatsAppRatePerMinute float64 `mapstructure:"JOBQUEUE_WHATSAPP_RATE_PER_MINUTE"`
+
+	// Zakat calculator gold-price proxy (pkg/goldprice + modules/zakat). No API
+	// key — the upstream is a public open-source provider with no SLA, hence
+	// the fallback and cache.
+	ZakatGoldPriceAPIURL       string `mapstructure:"ZAKAT_GOLD_PRICE_API_URL"`
+	ZakatGoldPriceFallback     int    `mapstructure:"ZAKAT_GOLD_PRICE_FALLBACK"`      // Rp/gram, served when upstream fails
+	ZakatGoldPriceCacheMinutes int    `mapstructure:"ZAKAT_GOLD_PRICE_CACHE_MINUTES"` // TTL of a successful upstream result
 }
 
 // JobQueueBackoffSchedule mem-parsing JOBQUEUE_BACKOFF_SCHEDULE_SECONDS
@@ -245,4 +252,8 @@ func setDefaults() {
 	viper.SetDefault("JOBQUEUE_DEFAULT_MAX_ATTEMPTS", 5)
 	viper.SetDefault("JOBQUEUE_BACKOFF_SCHEDULE_SECONDS", "15,30,60")
 	viper.SetDefault("JOBQUEUE_WHATSAPP_RATE_PER_MINUTE", 8)
+
+	viper.SetDefault("ZAKAT_GOLD_PRICE_API_URL", "https://logam-mulia-api.iamutaki.workers.dev/api/prices/logammulia")
+	viper.SetDefault("ZAKAT_GOLD_PRICE_FALLBACK", 2600000)
+	viper.SetDefault("ZAKAT_GOLD_PRICE_CACHE_MINUTES", 60)
 }

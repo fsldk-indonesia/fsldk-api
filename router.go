@@ -8,6 +8,7 @@ import (
 	"fsldk-api/base/token"
 	"fsldk-api/config"
 	"fsldk-api/middlewares"
+	"fsldk-api/pkg/goldprice"
 	"fsldk-api/pkg/googleauth"
 	"fsldk-api/pkg/kirimdev"
 	"fsldk-api/pkg/mailer"
@@ -62,10 +63,20 @@ import (
 	"fsldk-api/modules/catalogbook/catalogbook_repository"
 	"fsldk-api/modules/catalogbook/catalogbook_service"
 
+	"fsldk-api/modules/financeformat"
+	"fsldk-api/modules/financeformat/financeformat_handler"
+	"fsldk-api/modules/financeformat/financeformat_repository"
+	"fsldk-api/modules/financeformat/financeformat_service"
+
 	"fsldk-api/modules/event"
 	"fsldk-api/modules/event/event_handler"
 	"fsldk-api/modules/event/event_repository"
 	"fsldk-api/modules/event/event_service"
+
+	"fsldk-api/modules/schedule"
+	"fsldk-api/modules/schedule/schedule_handler"
+	"fsldk-api/modules/schedule/schedule_repository"
+	"fsldk-api/modules/schedule/schedule_service"
 
 	"fsldk-api/modules/comment"
 	"fsldk-api/modules/comment/comment_handler"
@@ -99,6 +110,10 @@ import (
 	"fsldk-api/modules/upload/upload_handler"
 	"fsldk-api/modules/upload/upload_service"
 	uploadpkg "fsldk-api/pkg/upload"
+
+	"fsldk-api/modules/zakat"
+	"fsldk-api/modules/zakat/zakat_handler"
+	"fsldk-api/modules/zakat/zakat_service"
 
 	"fsldk-api/modules/report"
 	"fsldk-api/modules/report/report_handler"
@@ -160,7 +175,9 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	catalogbookRepo := catalogbook_repository.NewRepository(db)
+	financeformatRepo := financeformat_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
+	scheduleRepo := schedule_repository.NewRepository(db)
 	dashRepo := dashboard_repository.NewRepository(db)
 	shortlinkRepo := shortlink_repository.NewRepository(db)
 	reportRepo := report_repository.NewRepository(db)
@@ -224,6 +241,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
 	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
 	go reportSvc.RunReconciliationScheduler()
+	// Zakat calculator — DB-less; the service wraps the in-memory-cached
+	// gold-price client (pkg/goldprice), no repository.
+	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
+	zakatSvc := zakat_service.NewService(goldClient)
 	// commentSvc dibuat sebelum newsSvc/articleSvc/catalogbookSvc/eventSvc:
 	// keempatnya menerimanya sebagai CommentCleaner untuk membersihkan
 	// komentar saat konten induknya dihapus (ms_comment tidak punya FK ke
@@ -233,6 +254,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
 	catalogbookSvc := catalogbook_service.NewService(catalogbookRepo, uploader, commentSvc)
 	eventSvc := event_service.NewService(eventRepo, commentSvc)
+	scheduleSvc := schedule_service.NewService(scheduleRepo)
+	// uploader satisfies FileDeleter; settingSvc satisfies SettingReader for
+	// the optional contact-person card on the public page.
+	financeformatSvc := financeformat_service.NewService(financeformatRepo, uploader, settingSvc)
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
@@ -245,12 +270,15 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
+	financeformatH := financeformat_handler.NewHandler(financeformatSvc)
 	eventH := event_handler.NewHandler(eventSvc)
+	scheduleH := schedule_handler.NewHandler(scheduleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
 	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
+	zakatH := zakat_handler.NewHandler(zakatSvc)
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
 	campaignH := campaign_handler.NewHandler(campaignSvc)
@@ -307,8 +335,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	article.RegisterCMSRoutes(api, articleH, mw)
 	catalogbook.RegisterPublicRoutes(pub, catalogbookH)
 	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
+	financeformat.RegisterPublicRoutes(pub, financeformatH)
+	financeformat.RegisterCMSRoutes(api, financeformatH, mw)
 	event.RegisterPublicRoutes(pub, eventH)
 	event.RegisterCMSRoutes(api, eventH, mw)
+	schedule.RegisterPublicRoutes(pub, scheduleH)
+	schedule.RegisterCMSRoutes(api, scheduleH, mw)
 
 	shortlink.RegisterCMSRoutes(api, shortlinkH, mw)
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
@@ -339,6 +371,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	withdrawal.RegisterCMSRoutes(api, withdrawalH, mw)
 	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
+
+	zakat.RegisterPublicRoutes(pub, zakatH)
 
 	return engine
 }

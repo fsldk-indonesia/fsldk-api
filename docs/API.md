@@ -234,6 +234,41 @@ Berbeda dari Berita: Artikel tidak punya `isFeatured`/`viewCount`, tapi punya ko
 
 ---
 
+## 6a. Format Keuangan (`/finance-formats`)
+
+Repositori publik template Excel (`.xlsx`) format laporan keuangan, dikelompokkan per **9 kategori tetap** (`lk_finance_format_type`, seed-only — tidak ada CRUD kategori). Berkas diunggah lewat `POST /uploads/document` bersama (§13); `financeformat_service` menambahkan validasi khusus: `fileURL` wajib berakhiran `.xlsx`.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/finance-formats` | Payload gabungan `{ formatTypes, formats, cpName, cpPhone }` — `formatTypes` = 9 kategori urut `sortOrder` (selalu lengkap, termasuk yang belum punya berkas), `formats` = seluruh berkas `isActive=true` urut `formatTypeID`, lalu `createdDate` DESC; frontend yang mengelompokkan. `cpName`/`cpPhone` dari App Settings grup `format_keuangan` (opsional — string kosong bila belum diisi) |
+| GET | `/public/finance-formats/:id/download[/:name]` | Unduh berkas `.xlsx` (hanya `isActive=true`). Disajikan dengan `Content-Disposition: attachment; filename="<fileName>.xlsx"` — nama unduhan **persis** `fileName` yang diinput admin (mis. field `Format RAB` → berkas tersimpan sebagai `Format RAB.xlsx`), `.xlsx` ditambahkan bila belum ada. Berkas fisik di disk tetap memakai nama token acak dari `fileURL`; admin tidak perlu me-rename berkas atau mengubah `fileURL`. Segmen `:name` opsional & hanya dekoratif (slug agar tautan yang disalin enak dibaca); nama berkas selalu diambil dari DB |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/finance-formats` | `financeformat.view` | Daftar seluruh format, aktif atau tidak (query: `page`, `limit`, `search` nama file, `formatTypeID`, `dateFrom`/`dateTo` `YYYY-MM-DD`, `sort` — whitelist `fileName`/`createdDate`) |
+| GET | `/finance-formats/types` | `financeformat.view` | 9 kategori format tetap (dropdown form) |
+| GET | `/finance-formats/:id` | `financeformat.view` | Detail untuk pengelolaan |
+| POST | `/finance-formats` | `financeformat.create` | Buat format baru |
+| PUT | `/finance-formats/:id` | `financeformat.update` | Perbarui — berkas lama dihapus dari disk (best-effort) bila `fileURL` berubah |
+| PATCH | `/finance-formats/:id/publish` | `financeformat.publish` | Body `{ "isActive": bool }` — toggle tampil di halaman publik |
+| DELETE | `/finance-formats/:id` | `financeformat.delete` | Hapus baris DB lalu berkas dari disk (best-effort) |
+
+**`POST /finance-formats`** (`PUT` memakai bentuk sama)
+```json
+{
+  "fileName": "Format Arus Kas 2026",
+  "fileURL": "http://localhost:8080/uploads/xxx.xlsx",
+  "formatTypeID": 1
+}
+```
+`fileURL` wajib hasil `POST /uploads/document` dan berakhiran `.xlsx` (ditolak `400` "Berkas wajib berformat Excel (.xlsx)" bila bukan) serta maks. **10MB** (ditolak `400` "Ukuran berkas melebihi 10MB" — batas khusus modul ini, lebih ketat dari limit dokumen bersama 20MB di §13). `formatTypeID` wajib salah satu dari 9 kategori seed. Diperbolehkan lebih dari satu berkas aktif per kategori (mis. revisi terbaru + arsip).
+
+---
+
 ## 7. Komentar (`/comments`)
 
 Dipakai bersama oleh Artikel, Berita, dan Event — `contentType` (`article`/`news`/`event`) + `contentID` menunjuk ke konten manapun tanpa foreign key (lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention)). Balasan dibatasi **1 level** (tidak bisa membalas balasan).
@@ -361,6 +396,23 @@ Seluruh field wajib diisi termasuk `requestedKey` & `note` (mengikuti perilaku f
 | POST | `/shortlink-requests/:id/reject` | `shortlink.approve` | Tolak — `{ "rejectionReason": "..." }` + notifikasi requester |
 
 Approve/Reject menolak (`409 Conflict`) bila permintaan sudah pernah diproses (`status != pending`) — berlaku untuk KEDUA jalur (CMS maupun balasan WhatsApp, Arsitektur §12), bukan cuma jalur CMS. Response `Response` juga menyertakan `reviewedVia` (`"cms"` | `"whatsapp"`) untuk membedakan jalur mana yang menyelesaikan permintaan.
+
+---
+
+## 8b. Kalkulator Zakat (`/zakat`)
+
+Halaman publik `/kalkulator-zakat` di frontend menghitung 7 jenis zakat sepenuhnya di browser (data & rumus hardcoded). Satu-satunya endpoint backend adalah proxy harga emas Antam ber-cache — tanpa tabel DB, permission, atau menu CMS.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate limit | Deskripsi |
+|---|---|---|---|
+| GET | `/public/zakat/gold-price` | `30x / menit / IP` (burst 10) | Harga emas batangan 1 gr (Antam). Query opsional `refresh=1` memaksa fetch ulang ke upstream (dipakai tombol "Perbarui") |
+
+Response `result`: `{ "success": true, "price": 2750000, "source": "antam-live", "cachedAt": "2026-08-31 10:00:00" }`.
+
+- **Selalu `200 OK`** — bahkan saat upstream (`logam-mulia-api`, proyek pihak ketiga tanpa SLA) gagal: `success` menjadi `false`, `price` berisi nilai fallback (`ZAKAT_GOLD_PRICE_FALLBACK`, default `2600000`), `source` menjadi `"fallback"`. Frontend membedakan lewat `success`, bukan status HTTP.
+- Hasil sukses di-cache in-memory selama `ZAKAT_GOLD_PRICE_CACHE_MINUTES` (default 60) — satu pemanggilan upstream per jam untuk semua pengunjung. Hasil fallback **tidak** di-cache sebagai "segar": permintaan berikutnya langsung mencoba upstream lagi begitu provider pulih.
 
 ---
 
@@ -532,6 +584,7 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
 | `shortlink.view/create/update/delete/approve` | Shortlink (+ Permintaan Shortlink) | `event.view/create/update/delete` | Event |
+| `financeformat.view/create/update/delete/publish` | Format Keuangan | | |
 | `comment.view/update/delete` | Komentar | `setting.view/update` | App Settings |
 | `jobqueue.view/retry/delete` | Job Queue | `organization.create/profile.manage/deactivate` | Organisasi |
 | `organization.ldk.list/ldk.list.national/puskomda.list` | Organisasi (daftar) | `submission_form.view/manage` | Form Builder |
@@ -544,7 +597,7 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 
 `shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§14a/§14b) — keduanya modul operasional platform, bukan konten editorial.
 
-Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event penuh termasuk `shortlink.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), dan [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql).
+Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event/financeformat penuh termasuk `shortlink.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), dan [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql).
 
 Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per akun, tanpa multi-role:
 
