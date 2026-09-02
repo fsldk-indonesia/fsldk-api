@@ -12,6 +12,29 @@ import (
 	"time"
 )
 
+// TestTransaction_TransactionTotalAcceptsNumberOrString memastikan
+// json.Unmarshal tidak gagal ketika Bisabiller mengembalikan transaction_total
+// sebagai angka JSON mentah (diamati langsung di response live
+// /api/payment/transaction, "transaction_total":10152 bukan "10152") maupun
+// sebagai string berkutip.
+func TestTransaction_TransactionTotalAcceptsNumberOrString(t *testing.T) {
+	var withNumber Transaction
+	if err := json.Unmarshal([]byte(`{"transaction_total":10152}`), &withNumber); err != nil {
+		t.Fatalf("expected numeric transaction_total to unmarshal, got error: %v", err)
+	}
+	if withNumber.TransactionTotal != "10152" {
+		t.Fatalf("expected \"10152\", got %q", withNumber.TransactionTotal)
+	}
+
+	var withString Transaction
+	if err := json.Unmarshal([]byte(`{"transaction_total":"10152"}`), &withString); err != nil {
+		t.Fatalf("expected string transaction_total to unmarshal, got error: %v", err)
+	}
+	if withString.TransactionTotal != "10152" {
+		t.Fatalf("expected \"10152\", got %q", withString.TransactionTotal)
+	}
+}
+
 func TestBuildAndVerifySignature(t *testing.T) {
 	sig := BuildSignature("mitra-x", "TXN-1")
 	if !VerifySignature("mitra-x", "TXN-1", sig) {

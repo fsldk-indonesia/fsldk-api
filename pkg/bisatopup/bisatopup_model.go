@@ -4,7 +4,31 @@
 // wire JSON internal); logika HTTP ada di bisatopup.go.
 package bisatopup
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
+
+// flexString menerima nilai JSON angka ATAU string dan menyimpannya sebagai
+// string biasa. Bisabiller tidak konsisten: transaction_total pada response
+// create-transaction datang sebagai angka JSON mentah (10152), padahal field
+// bertipe sama di body lain (mis. callback) selalu string berkutip — tanpa
+// toleransi ini json.Unmarshal gagal walau transaksi di sisi gateway sudah
+// sukses dibuat (lihat log "[DONATION] gateway create transaction gagal").
+type flexString string
+
+func (f *flexString) UnmarshalJSON(b []byte) error {
+	if len(b) >= 2 && b[0] == '"' {
+		var s string
+		if err := json.Unmarshal(b, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	*f = flexString(b)
+	return nil
+}
 
 // Config menampung kredensial dan pengaturan klien BisaTopup/Bisabiller.
 type Config struct {
@@ -43,8 +67,8 @@ type Transaction struct {
 	PaymentName      string `json:"payment_name"`
 	StatusID         int    `json:"status_id"`
 	Status           string `json:"status"`
-	TransactionID    string `json:"transaction_id"`
-	TransactionTotal string `json:"transaction_total"`
+	TransactionID    string     `json:"transaction_id"`
+	TransactionTotal flexString `json:"transaction_total"`
 	ExpiredDate      string `json:"expired_date"`
 	PaymentLinks     string `json:"payment_links"`
 	PaymentCode      string `json:"payment_code"`
