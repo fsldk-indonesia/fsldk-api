@@ -1,6 +1,6 @@
 # Panduan Instalasi — FSLDK API
 
-[← Kembali ke README](../README.md) · [Lihat Arsitektur & Alur Sistem →](./ARCHITECTURE.md)
+[← Kembali ke README](../README.md) · [Lihat Arsitektur & Alur Sistem →](./ARCHITECTURE.md) · [Panduan Deployment Kantong Amal →](./DEPLOYMENT.md)
 
 Panduan ini menjelaskan langkah lengkap menyiapkan dan menjalankan `fsldk-api` dari nol, mulai dari prasyarat hingga verifikasi server berjalan.
 
@@ -196,4 +196,4 @@ make build
 
 ---
 
-[← Kembali ke README](../README.md) · [Lihat Arsitektur & Alur Sistem →](./ARCHITECTURE.md)
+[← Kembali ke README](../README.md) · [Lihat Arsitektur & Alur Sistem →](./ARCHITECTURE.md) · [Panduan Deployment Kantong Amal →](./DEPLOYMENT.md)

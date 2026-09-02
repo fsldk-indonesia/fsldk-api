@@ -102,6 +102,61 @@ func InvalidStatusTransition(message string) *AppError {
 	return New(http.StatusUnprocessableEntity, constants.CodeInvalidStatusTransition, message)
 }
 
+// InsufficientBalance membuat error 422 dengan kode khusus INSUFFICIENT_BALANCE.
+func InsufficientBalance(message string) *AppError {
+	if message == "" {
+		message = "Saldo tidak mencukupi untuk melakukan aksi ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeInsufficientBalance, message)
+}
+
+// DuplicateRequest membuat error 409 dengan kode khusus DUPLICATE_REQUEST.
+func DuplicateRequest(message string) *AppError {
+	if message == "" {
+		message = "Permintaan yang sama sudah pernah diproses"
+	}
+	return New(http.StatusConflict, constants.CodeDuplicateRequest, message)
+}
+
+// PaymentFailed membuat error 422 dengan kode khusus PAYMENT_FAILED —
+// dipicu saat gateway pembayaran merespons sukses secara HTTP namun
+// menolak permintaan (beda dari kegagalan jaringan/5xx, lihat ProviderError).
+func PaymentFailed(message string) *AppError {
+	if message == "" {
+		message = "Gateway pembayaran menolak permintaan ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodePaymentFailed, message)
+}
+
+// ProviderError membuat error 502 dengan kode khusus PROVIDER_ERROR —
+// dipicu saat penyedia pihak ketiga (BisaTopup/Kirimdev) tidak dapat
+// dihubungi atau mengembalikan error 5xx.
+func ProviderError(message string) *AppError {
+	if message == "" {
+		message = "Gagal menghubungi penyedia layanan, silakan coba lagi"
+	}
+	return New(http.StatusBadGateway, constants.CodeProviderError, message)
+}
+
+// WithdrawalFailed membuat error 422 dengan kode khusus WITHDRAWAL_FAILED —
+// dipicu saat gateway disbursement menolak permintaan transfer secara eksplisit.
+func WithdrawalFailed(message string) *AppError {
+	if message == "" {
+		message = "Gateway pencairan menolak permintaan ini"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeWithdrawalFailed, message)
+}
+
+// SecurityVerificationRequired membuat error 422 dengan kode khusus
+// SECURITY_VERIFICATION_REQUIRED — dipicu saat aksi withdrawal dicoba
+// sebelum step security-verify selesai.
+func SecurityVerificationRequired(message string) *AppError {
+	if message == "" {
+		message = "Verifikasi keamanan penarikan belum selesai"
+	}
+	return New(http.StatusUnprocessableEntity, constants.CodeSecurityVerificationRequired, message)
+}
+
 // TooManyRequests membuat error 429.
 func TooManyRequests(message string) *AppError {
 	if message == "" {

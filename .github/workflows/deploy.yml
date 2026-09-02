@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: http://187.124.137.178/api/v1/public/news
+      url: https://fsldk.or.id/api/v1/public/news
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -35,5 +35,5 @@ jobs:
 
       - name: Health check
         run: |
-          curl -sf http://${{ secrets.SSH_HOST }}/api/v1/public/news -o /dev/null
+          curl -sf https://fsldk.or.id/api/v1/public/news -o /dev/null
           echo "API OK"
