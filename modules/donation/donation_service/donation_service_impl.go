@@ -684,9 +684,6 @@ func isFinalDonationStatus(status string) bool {
 	return false
 }
 
-// isTestCallback mendeteksi ping tombol "Test" dashboard Bisabiller —
-// pengecualian sempit (env=dev + signature literal "testing") dari
-// signature check normal, bukan bypass umum berdasarkan payload kosong.
 // isTestCallback mendeteksi ping "Test" dari tombol Url Callback di
 // dashboard Bisatopup — dikirim di environment APAPUN (dev maupun live,
 // dashboard mereka tidak tahu env kita), jadi TIDAK boleh digerbang oleh
