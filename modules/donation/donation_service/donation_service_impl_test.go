@@ -517,15 +517,23 @@ func TestIsFinalDonationStatus(t *testing.T) {
 	}
 }
 
+// Kriteria & catatan cakupan lihat komentar isTestCallback — sengaja BUKAN
+// digerbang oleh environment (dev/live) lagi: dashboard Bisatopup mengirim
+// ping "Test" yang sama persis baik saat URL callback yang diuji itu live
+// maupun dev, jadi harus dikenali di kedua env (bug sebelumnya: hanya
+// dikenali di dev, jadi ping ke URL production selalu gagal).
 func TestIsTestCallback(t *testing.T) {
-	if !isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "dev") {
-		t.Fatal("expected dev + signature=testing to be recognised as a test callback")
+	if !isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}) {
+		t.Fatal("signature=testing must be recognised as a test callback in any environment")
 	}
-	if isTestCallback(donation_dto.CallbackRequest{Signature: "testing"}, "live") {
-		t.Fatal("test callback bypass must never apply in live environment")
+	if !isTestCallback(donation_dto.CallbackRequest{TransactionID: "TEST-abc123", Signature: "abc"}) {
+		t.Fatal("transaction_id starting with TEST- must be recognised as a test callback")
 	}
-	if isTestCallback(donation_dto.CallbackRequest{Signature: "abc123"}, "dev") {
-		t.Fatal("a real signature must not be treated as a test callback just because env=dev")
+	if !isTestCallback(donation_dto.CallbackRequest{}) {
+		t.Fatal("empty transaction_id (general connectivity ping) must be recognised as a test callback")
+	}
+	if isTestCallback(donation_dto.CallbackRequest{TransactionID: "REAL-TXN-001", Signature: "abc123"}) {
+		t.Fatal("a real transaction_id with a real-looking signature must not be treated as a test callback")
 	}
 }
 
