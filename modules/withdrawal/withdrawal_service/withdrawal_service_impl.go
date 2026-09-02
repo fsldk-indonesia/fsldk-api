@@ -563,7 +563,15 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, stat
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		w, err := s.repo.FindByRefForUpdate(tx, reffID)
 		if err != nil {
-			return apperror.NotFound("Penarikan tidak ditemukan")
+			// Ack (200), bukan error — reffID tak dikenal paling sering
+			// terjadi karena ping "Test" dari dashboard Bisatopup (mereka
+			// kirim reff_id palsu/placeholder, bukan reff_id withdrawal
+			// sungguhan), persis pola ldksyahid-app WithdrawalController::
+			// callback() yang membalas {"status":"ignored"} 200 untuk kasus
+			// ini, bukan 404. Tetap di-log supaya kasus reff_id genuinely
+			// salah (bukan test) masih terlihat di server log.
+			log.Printf("[BISATOPUP:WITHDRAWAL_CALLBACK] reffID tidak ditemukan, diabaikan (kemungkinan ping test), reffID=%s", reffID)
+			return nil
 		}
 		if isFinalWithdrawalStatus(w.Status) {
 			// Idempotent ack — status final tidak pernah ditimpa ulang.
