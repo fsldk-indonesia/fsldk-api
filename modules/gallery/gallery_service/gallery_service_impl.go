@@ -45,13 +45,24 @@ func parseEventDate(input *string) *time.Time {
 	}
 	s := strings.TrimSpace(*input)
 	formats := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
 		"2006-01-02T15:04",
 		"2006-01-02 15:04",
 		"2006-01-02",
 		time.RFC3339,
+		time.RFC3339Nano,
 	}
 	for _, f := range formats {
+		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
+			return &t
+		}
 		if t, err := time.Parse(f, s); err == nil {
+			return &t
+		}
+	}
+	if len(s) >= 10 {
+		if t, err := time.ParseInLocation("2006-01-02", s[:10], time.Local); err == nil {
 			return &t
 		}
 	}

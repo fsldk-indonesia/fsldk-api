@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"fsldk-api/modules/gallery/gallery_dto"
 	"fsldk-api/modules/gallery/gallery_model"
@@ -107,6 +108,7 @@ func (r *repositoryImpl) Create(ctx context.Context, g gallery_model.Gallery, ph
 }
 
 func (r *repositoryImpl) Update(ctx context.Context, id int64, g gallery_model.Gallery, updatedBy int64) error {
+	now := time.Now()
 	updates := map[string]interface{}{
 		"eventName":        g.EventName,
 		"eventTheme":       g.EventTheme,
@@ -115,10 +117,11 @@ func (r *repositoryImpl) Update(ctx context.Context, id int64, g gallery_model.G
 		"coverImage":       g.CoverImage,
 		"youtubeVideoID":   g.YoutubeVideoID,
 		"documentLink":     g.DocumentLink,
+		"updatedDate":      &now,
 		"updatedBy":        updatedBy,
 	}
 
-	res := r.db.WithContext(ctx).Model(&gallery_model.Gallery{}).Where("galleryID = ?", id).Updates(updates)
+	res := r.db.WithContext(ctx).Table("ms_gallery").Where("galleryID = ?", id).Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}
