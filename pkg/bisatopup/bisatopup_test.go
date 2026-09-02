@@ -29,7 +29,7 @@ func TestBuildAndVerifySignature(t *testing.T) {
 // diberikan, menghitung jumlah pemanggilan /login untuk menguji cache token.
 func newTestServer(t *testing.T, loginCalls *int32, extra map[string]http.HandlerFunc) *httptest.Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/login", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(loginCalls, 1)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"error":   false,
@@ -46,7 +46,7 @@ func newTestServer(t *testing.T, loginCalls *int32, extra map[string]http.Handle
 func TestCreateQRISTransaction_Success(t *testing.T) {
 	var loginCalls int32
 	srv := newTestServer(t, &loginCalls, map[string]http.HandlerFunc{
-		"/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
+		"/api/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
 			if auth := r.Header.Get("Authorization"); auth != "Bearer test-token" {
 				t.Errorf("expected Bearer test-token, got %q", auth)
 			}
@@ -89,7 +89,7 @@ func TestCreateQRISTransaction_Success(t *testing.T) {
 func TestCreateQRISTransaction_GatewayRejected(t *testing.T) {
 	var loginCalls int32
 	srv := newTestServer(t, &loginCalls, map[string]http.HandlerFunc{
-		"/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
+		"/api/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": true, "message": "nominal invalid"})
 		},
 	})
@@ -108,7 +108,7 @@ func TestCreateQRISTransaction_NetworkFailureIsNotGatewayRejected(t *testing.T) 
 	// tidak match) agar caller memetakan ke ProviderError, bukan PaymentFailed.
 	var loginCalls int32
 	srv := newTestServer(t, &loginCalls, map[string]http.HandlerFunc{
-		"/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
+		"/api/payment/transaction": func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte("internal error"))
 		},
@@ -129,7 +129,7 @@ func TestWalletBalance_RetriesOnFailureThenSucceeds(t *testing.T) {
 	var loginCalls int32
 	var attempts int32
 	srv := newTestServer(t, &loginCalls, map[string]http.HandlerFunc{
-		"/account-info": func(w http.ResponseWriter, r *http.Request) {
+		"/api/account-info": func(w http.ResponseWriter, r *http.Request) {
 			if atomic.AddInt32(&attempts, 1) < 2 {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
