@@ -156,11 +156,17 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		CustomerName:    req.DonorName,
 		CustomerEmail:   req.DonorEmail,
 		CustomerNumber:  req.DonorPhone,
+		ItemID:          camp.CampaignID,
+		ItemName:        truncateNoEllipsis(camp.Title, 49),
 	})
 	if gerr != nil {
 		// Tidak ada retry otomatis di sini (lihat pkg/bisatopup) — retry
 		// create-transaction berisiko membuat transaksi duplikat di sisi
 		// gateway. User diminta mengulang secara eksplisit (donasi baru).
+		// Alasan penolakan asli dari gateway di-log di sini (bukan
+		// dikembalikan ke client) supaya bisa didiagnosis dari server tanpa
+		// membocorkan detail internal gateway ke publik.
+		log.Printf("[DONATION] gateway create transaction gagal, transactionID=%s nominal=%d: %v", transactionID, grossTotal, gerr)
 		_ = s.repo.MarkGatewayFailed(ctx, id)
 		if errors.Is(gerr, bisatopup.ErrGatewayRejected) {
 			return donation_dto.Response{}, apperror.PaymentFailed("")

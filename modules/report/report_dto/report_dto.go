@@ -150,7 +150,7 @@ type ReconciliationSnapshotResponse struct {
 	SettlementPendingAmount      float64       `gorm:"column:settlementPendingAmount" json:"settlementPendingAmount"`
 	SettlementMinutes            int           `gorm:"column:settlementMinutes" json:"settlementMinutes"`
 	HasAnomaly                   bool          `gorm:"column:hasAnomaly" json:"hasAnomaly"`
-	GatewayError                 sql.NullString `gorm:"column:gatewayError" json:"gatewayError,omitempty"`
+	GatewayError                 *string        `gorm:"column:gatewayError" json:"gatewayError,omitempty"`
 	CreatedDate                  time.Time     `gorm:"column:createdDate" json:"createdDate"`
 }
 

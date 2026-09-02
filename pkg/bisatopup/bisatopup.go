@@ -226,6 +226,13 @@ func (c *client) CreateQRISTransaction(ctx context.Context, p CreateQRISTransact
 		"customer_number":   p.CustomerNumber,
 		"customer_name":     p.CustomerName,
 		"customer_email":    p.CustomerEmail,
+		"item_details": []map[string]interface{}{{
+			"item_id":          p.ItemID,
+			"item_name":        p.ItemName,
+			"item_price":       p.Nominal,
+			"item_total_price": p.Nominal,
+			"item_quantity":    1,
+		}},
 	}
 	var out transactionResponse
 	if err := c.authedJSON(ctx, http.MethodPost, "/payment/transaction", payload, &out); err != nil {
