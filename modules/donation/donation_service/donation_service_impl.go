@@ -241,7 +241,7 @@ func formatRupiah(amount float64) string {
 
 // ProcessCallback menangani webhook payment callback Bisabiller.
 func (s *ServiceImpl) ProcessCallback(ctx context.Context, req donation_dto.CallbackRequest) error {
-	if isTestCallback(req, s.cfg.BisatopupEnvCrowdfunding) {
+	if isTestCallback(req) {
 		log.Printf("[BISATOPUP:CALLBACK] test event acknowledged, transactionID=%s", req.TransactionID)
 		return nil
 	}
@@ -687,8 +687,18 @@ func isFinalDonationStatus(status string) bool {
 // isTestCallback mendeteksi ping tombol "Test" dashboard Bisabiller —
 // pengecualian sempit (env=dev + signature literal "testing") dari
 // signature check normal, bukan bypass umum berdasarkan payload kosong.
-func isTestCallback(req donation_dto.CallbackRequest, env string) bool {
-	return env == "dev" && req.Signature == "testing"
+// isTestCallback mendeteksi ping "Test" dari tombol Url Callback di
+// dashboard Bisatopup — dikirim di environment APAPUN (dev maupun live,
+// dashboard mereka tidak tahu env kita), jadi TIDAK boleh digerbang oleh
+// s.cfg.BisatopupEnvCrowdfunding seperti sebelumnya (itu bug: di live,
+// isTestCallback selalu false, jadi ping selalu gagal di signature
+// verification/lookup transaksi, bukan di-ack). Kriteria persis pola
+// ldksyahid-app (PublicController::callbackDonation) — transaction_id
+// kosong, berawalan "TEST-", atau signature "testing".
+func isTestCallback(req donation_dto.CallbackRequest) bool {
+	return req.TransactionID == "" ||
+		strings.HasPrefix(req.TransactionID, "TEST-") ||
+		req.Signature == "testing"
 }
 
 // donationDesc mengembalikan pesan donatur sebagai transaction_desc, atau
