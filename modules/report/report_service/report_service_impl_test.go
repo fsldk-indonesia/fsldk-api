@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"fsldk-api/base/dto"
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
@@ -27,8 +26,6 @@ type fakeReportRepository struct {
 	donationPaidAmount float64
 	withdrawalCount    int64
 	withdrawalAmount   float64
-
-	createdSnapshot report_dto.ReconciliationSnapshotParams
 }
 
 func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error) {
@@ -70,13 +67,6 @@ func (f *fakeReportRepository) WithdrawalSuccessTotals(ctx context.Context) (int
 func (f *fakeReportRepository) LedgerTotalByType(ctx context.Context, entryType string) (float64, error) {
 	return f.ledgerSums[entryType], nil
 }
-func (f *fakeReportRepository) CreateReconciliationSnapshot(ctx context.Context, p report_dto.ReconciliationSnapshotParams) (int64, error) {
-	f.createdSnapshot = p
-	return 1, nil
-}
-func (f *fakeReportRepository) ListReconciliationSnapshots(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int64, error) {
-	return nil, 0, nil
-}
 func (f *fakeReportRepository) ListFinanceAuditLog(ctx context.Context, filt report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int64, error) {
 	return nil, 0, nil
 }
@@ -91,7 +81,7 @@ func (f *fakeReportRepository) DonorAgeBands(ctx context.Context, campaignID int
 }
 
 // fakeGateway adalah implementasi bisatopup.Gateway minimal — hanya
-// WalletBalance yang berperilaku bermakna (dipakai RunReconciliation).
+// WalletBalance yang berperilaku bermakna (dipakai GetReconciliation).
 type fakeGateway struct {
 	walletBalance int64
 	walletErr     error
@@ -124,7 +114,7 @@ func (f *fakeGateway) BankList(ctx context.Context) ([]bisatopup.BankListItem, e
 
 // audit di-nil-kan di seluruh test file ini — report_service memakai
 // concrete *auditlog.Logger, dan method yang diuji (GetBalanceReport/
-// RunReconciliation) tidak pernah memanggil LogExport/LogFinance.
+// GetReconciliation) tidak pernah memanggil LogExport/LogFinance.
 
 func testReportConfig(settlementMinutes int) config.AppConfig {
 	return config.AppConfig{BisatopupSettlementMinutesCrowdfunding: settlementMinutes}
@@ -172,7 +162,7 @@ func TestGetBalanceReport_FlagsMismatchAsNotBalanced(t *testing.T) {
 	}
 }
 
-func TestRunReconciliation_NoAnomalyWithinThreshold(t *testing.T) {
+func TestGetReconciliation_NoAnomalyWithinThreshold(t *testing.T) {
 	repo := &fakeReportRepository{
 		donationPaidCount: 5, donationPaidAmount: 500_000,
 		withdrawalCount: 1, withdrawalAmount: 100_000,
@@ -183,7 +173,7 @@ func TestRunReconciliation_NoAnomalyWithinThreshold(t *testing.T) {
 	gw := &fakeGateway{walletBalance: 430_000}
 	svc := NewService(repo, nil, nil, nil, gw, testReportConfig(15))
 
-	snap, err := svc.RunReconciliation(context.Background())
+	snap, err := svc.GetReconciliation(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +182,7 @@ func TestRunReconciliation_NoAnomalyWithinThreshold(t *testing.T) {
 	}
 }
 
-func TestRunReconciliation_FlagsAnomalyBeyondThreshold(t *testing.T) {
+func TestGetReconciliation_FlagsAnomalyBeyondThreshold(t *testing.T) {
 	repo := &fakeReportRepository{
 		donationPaidCount: 5, donationPaidAmount: 500_000,
 		withdrawalCount: 1, withdrawalAmount: 100_000,
@@ -203,7 +193,7 @@ func TestRunReconciliation_FlagsAnomalyBeyondThreshold(t *testing.T) {
 	gw := &fakeGateway{walletBalance: 900_000}
 	svc := NewService(repo, nil, nil, nil, gw, testReportConfig(15))
 
-	snap, err := svc.RunReconciliation(context.Background())
+	snap, err := svc.GetReconciliation(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,12 +202,12 @@ func TestRunReconciliation_FlagsAnomalyBeyondThreshold(t *testing.T) {
 	}
 }
 
-func TestRunReconciliation_GatewayErrorDoesNotFlagAnomaly(t *testing.T) {
+func TestGetReconciliation_GatewayErrorDoesNotFlagAnomaly(t *testing.T) {
 	repo := &fakeReportRepository{balanceAsOf: 400_000}
 	gw := &fakeGateway{walletErr: bisatopup.ErrGatewayRejected}
 	svc := NewService(repo, nil, nil, nil, gw, testReportConfig(15))
 
-	snap, err := svc.RunReconciliation(context.Background())
+	snap, err := svc.GetReconciliation(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

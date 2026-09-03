@@ -239,8 +239,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
-	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
-	go reportSvc.RunReconciliationScheduler()
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached
 	// gold-price client (pkg/goldprice), no repository.
 	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
