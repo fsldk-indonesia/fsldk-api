@@ -111,8 +111,9 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	adminFee := bisatopup.CalculateAdminFee(grossTotal, s.cfg.BisatopupQrisMdrPercentCrowdfunding)
 	expiredAt := now.Add(time.Duration(s.cfg.BisatopupQrisExpiryHoursCrowdfunding) * time.Hour)
 
+	publicRef := idgen.NewUUIDv4()
 	id, err := s.repo.Create(ctx, donation_model.CreateParams{
-		PublicRef:       idgen.NewUUIDv4(),
+		PublicRef:       publicRef,
 		CampaignID:      camp.CampaignID,
 		DonorUserID:     nullInt64FromPtr(donorUserID),
 		DonorName:       req.DonorName,
@@ -183,8 +184,16 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		return donation_dto.Response{}, apperror.Internal("")
 	}
 
+	// qris.PaymentLinks SELALU kosong untuk transaksi QRIS (field itu dipakai
+	// gateway untuk metode pembayaran lain yang redirect ke URL, bukan QRIS) —
+	// mengirimnya sebagai parameter template WhatsApp membuat WhatsApp Cloud
+	// API menolak kirim dengan "(#100) Invalid parameter" (body param kosong
+	// tidak diizinkan). Dipakai link halaman status donasi kita sendiri
+	// (selalu terisi, dan memang berisi QR code-nya), sama seperti receiptURL
+	// di notifyDonationPaid.
+	statusURL := fmt.Sprintf("%s/kantong-amal/donasi/%s/status", strings.TrimRight(s.cfg.FrontendURL, "/"), publicRef)
 	s.notify(ctx, req.DonorPhone, "invoice_donasi_kantong_amal",
-		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, qris.PaymentLinks},
+		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, statusURL},
 		id)
 	// Email pertama dari dua email donasi (item 2 revision-prompt-2.md) —
 	// konfirmasi/tagihan segera setelah donasi dibuat, sebelum dibayar.

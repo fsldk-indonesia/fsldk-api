@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"fsldk-api/base/apperror"
-	"fsldk-api/base/dto"
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
@@ -27,10 +26,6 @@ import (
 // gateway yang dianggap wajar sebelum di-flag anomali — keputusan final
 // OQ-22 (reuse ldksyahid-app): Rp50.000.
 const reconciliationDiscrepancyThreshold = 50_000
-
-// reconciliationCheckInterval — job terjadwal internal `finance.daily_reconciliation`
-// (§13.4 techspec: goroutine time.Ticker langsung, bukan event-driven).
-const reconciliationCheckInterval = 24 * time.Hour
 
 var reportColumns = []string{"Nama Organisasi", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
 
@@ -382,46 +377,49 @@ func (s *ServiceImpl) ExportWithdrawalReport(ctx context.Context, actorUserID in
 	return report_dto.ExportResult{FileName: fileName, ContentType: xlsxContentType, Data: data}, nil
 }
 
-// RunReconciliation membandingkan ledger internal terhadap saldo wallet
-// gateway sungguhan (§15.1/§15.5) dan menyimpannya sebagai snapshot baru.
-// Perbandingan transaksi gateway satu-per-satu (ListTransactions/
-// DetailTransaction tiap donasi) TIDAK diimplementasikan di sini — di luar
-// scope Phase 9, dicatat di Notes phase summary; yang diimplementasikan
-// adalah rekonsiliasi level-wallet konkret dengan threshold eksplisit §15.1.
-func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.ReconciliationSnapshotResponse, error) {
+// GetReconciliation membandingkan ledger internal terhadap saldo wallet
+// gateway sungguhan (§15.1/§15.5) secara LIVE — dihitung ulang setiap
+// dipanggil, tidak lagi disimpan sebagai snapshot histori (Balance Report
+// real-time, revision-prompt-4.md). Perbandingan transaksi gateway
+// satu-per-satu (ListTransactions/DetailTransaction tiap donasi) TIDAK
+// diimplementasikan di sini — di luar scope Phase 9, dicatat di Notes phase
+// summary; yang diimplementasikan adalah rekonsiliasi level-wallet konkret
+// dengan threshold eksplisit §15.1.
+func (s *ServiceImpl) GetReconciliation(ctx context.Context) (report_dto.ReconciliationResponse, error) {
 	now := time.Now()
 
 	donationCount, donationAmount, err := s.repo.DonationPaidTotals(ctx)
 	if err != nil {
-		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
+		return report_dto.ReconciliationResponse{}, apperror.Internal("")
 	}
 	ledgerDonationCredit, err := s.repo.LedgerTotalByType(ctx, constants.LedgerEntryDonationCredit)
 	if err != nil {
-		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
+		return report_dto.ReconciliationResponse{}, apperror.Internal("")
 	}
 	withdrawalCount, withdrawalAmount, err := s.repo.WithdrawalSuccessTotals(ctx)
 	if err != nil {
-		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
+		return report_dto.ReconciliationResponse{}, apperror.Internal("")
 	}
 	expectedBalance, err := s.repo.BalanceAsOf(ctx, 0, now)
 	if err != nil {
-		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
+		return report_dto.ReconciliationResponse{}, apperror.Internal("")
 	}
 
 	// recentlyPaid = donasi PAID dalam settlementWindow menit terakhir — belum
-	// tentu sudah settle penuh di wallet gateway saat snapshot ini diambil.
-	// Dihitung selalu (bukan cuma saat gateway sukses) supaya nilainya tetap
-	// tersimpan & bisa ditampilkan di histori walau gatewayBalance gagal diambil.
+	// tentu sudah settle penuh di wallet gateway saat pemeriksaan ini
+	// dijalankan. Dihitung selalu (bukan cuma saat gateway sukses) supaya
+	// nilainya tetap bisa ditampilkan walau gatewayBalance gagal diambil.
 	settlementMinutes := s.cfg.BisatopupSettlementMinutesCrowdfunding
 	settlementWindow := time.Duration(settlementMinutes) * time.Minute
 	recentlyPaid, _ := s.repo.LedgerSumByType(ctx, 0, constants.LedgerEntryDonationCredit, now.Add(-settlementWindow), now)
 
 	var gatewayBalance float64
-	var gatewayErrMsg string
+	var gatewayErrMsg *string
 	hasAnomaly := false
 	walletRes, gerr := s.gateway.WalletBalance(ctx)
 	if gerr != nil {
-		gatewayErrMsg = gerr.Error()
+		msg := gerr.Error()
+		gatewayErrMsg = &msg
 		log.Printf("[REPORT] reconciliation: gagal ambil wallet balance gateway: %v", gerr)
 	} else {
 		gatewayBalance = float64(walletRes.Amount)
@@ -434,41 +432,19 @@ func (s *ServiceImpl) RunReconciliation(ctx context.Context) (report_dto.Reconci
 		allowedGap := reconciliationDiscrepancyThreshold + recentlyPaid
 		hasAnomaly = math.Abs(discrepancy) > allowedGap
 	}
-
-	params := report_dto.ReconciliationSnapshotParams{
-		SnapshotDate: now, DonationPaidCount: donationCount, DonationPaidAmount: donationAmount,
-		LedgerDonationCreditAmount: ledgerDonationCredit, WithdrawalSuccessCount: withdrawalCount,
-		WithdrawalSuccessAmount: withdrawalAmount, ExpectedBalance: expectedBalance,
-		GatewayWalletBalance: gatewayBalance, DiscrepancyAmount: discrepancy,
-		SettlementPendingAmount: recentlyPaid, SettlementMinutes: settlementMinutes,
-		HasAnomaly: hasAnomaly, GatewayError: gatewayErrMsg,
-	}
-	id, err := s.repo.CreateReconciliationSnapshot(ctx, params)
-	if err != nil {
-		return report_dto.ReconciliationSnapshotResponse{}, apperror.Internal("")
-	}
 	if hasAnomaly {
-		log.Printf("[REPORT] reconciliation: ANOMALI terdeteksi, discrepancy=%.2f (ambang %.2f), snapshotID=%d", discrepancy, float64(reconciliationDiscrepancyThreshold), id)
+		log.Printf("[REPORT] reconciliation: ANOMALI terdeteksi, discrepancy=%.2f (ambang %.2f)", discrepancy, float64(reconciliationDiscrepancyThreshold))
 	}
 
-	return report_dto.ReconciliationSnapshotResponse{
-		SnapshotID: id, SnapshotDate: params.SnapshotDate,
-		DonationPaidCount: params.DonationPaidCount, DonationPaidAmount: params.DonationPaidAmount,
-		LedgerDonationCreditAmount: params.LedgerDonationCreditAmount,
-		WithdrawalSuccessCount:     params.WithdrawalSuccessCount, WithdrawalSuccessAmount: params.WithdrawalSuccessAmount,
-		ExpectedBalance: params.ExpectedBalance, GatewayWalletBalance: params.GatewayWalletBalance,
-		DiscrepancyAmount: params.DiscrepancyAmount,
-		SettlementPendingAmount: params.SettlementPendingAmount, SettlementMinutes: params.SettlementMinutes,
-		HasAnomaly: params.HasAnomaly, CreatedDate: now,
+	return report_dto.ReconciliationResponse{
+		DonationPaidCount: donationCount, DonationPaidAmount: donationAmount,
+		LedgerDonationCreditAmount: ledgerDonationCredit,
+		WithdrawalSuccessCount:     withdrawalCount, WithdrawalSuccessAmount: withdrawalAmount,
+		ExpectedBalance: expectedBalance, GatewayWalletBalance: gatewayBalance,
+		DiscrepancyAmount:       discrepancy,
+		SettlementPendingAmount: recentlyPaid, SettlementMinutes: settlementMinutes,
+		HasAnomaly: hasAnomaly, GatewayError: gatewayErrMsg, CheckedDate: now,
 	}, nil
-}
-
-func (s *ServiceImpl) ListReconciliationHistory(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int, error) {
-	rows, total, err := s.repo.ListReconciliationSnapshots(ctx, q)
-	if err != nil {
-		return nil, 0, apperror.Internal("")
-	}
-	return rows, int(total), nil
 }
 
 func (s *ServiceImpl) ListGlobalLedger(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int, error) {
@@ -501,19 +477,6 @@ func (s *ServiceImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.Fina
 		return nil, 0, apperror.Internal("")
 	}
 	return rows, int(total), nil
-}
-
-// RunReconciliationScheduler menjalankan RunReconciliation tiap
-// reconciliationCheckInterval sampai proses berhenti — pola sama
-// donation_service.RunExpireScheduler/withdrawal_service.RunReconcileScheduler.
-func (s *ServiceImpl) RunReconciliationScheduler() {
-	ticker := time.NewTicker(reconciliationCheckInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		if _, err := s.RunReconciliation(context.Background()); err != nil {
-			log.Printf("[REPORT] daily_reconciliation: gagal jalan: %v", err)
-		}
-	}
 }
 
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

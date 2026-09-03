@@ -316,8 +316,6 @@ const (
 	TableQueueJob         = "tr_queue_job"
 	TableQueueJobLog      = "tr_queue_job_log"
 	TableFinanceAuditLog  = "tr_finance_audit_log"
-
-	TableFinanceReconciliationSnapshot = "tr_finance_reconciliation_snapshot"
 )
 
 // Tipe entry tr_wallet_ledger (Kantong Amal).

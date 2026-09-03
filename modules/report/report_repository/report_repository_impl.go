@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"time"
 
-	"fsldk-api/base/dto"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
 
@@ -280,46 +279,6 @@ func (r *RepositoryImpl) LedgerTotalByType(ctx context.Context, entryType string
 		Select("SUM(amount) AS total").
 		Where("entryType = ?", entryType).Find(&row).Error
 	return row.Total.Float64, err
-}
-
-func (r *RepositoryImpl) CreateReconciliationSnapshot(ctx context.Context, p report_dto.ReconciliationSnapshotParams) (int64, error) {
-	values := map[string]interface{}{
-		"snapshotDate":               p.SnapshotDate,
-		"donationPaidCount":          p.DonationPaidCount,
-		"donationPaidAmount":         p.DonationPaidAmount,
-		"ledgerDonationCreditAmount": p.LedgerDonationCreditAmount,
-		"withdrawalSuccessCount":     p.WithdrawalSuccessCount,
-		"withdrawalSuccessAmount":    p.WithdrawalSuccessAmount,
-		"expectedBalance":            p.ExpectedBalance,
-		"gatewayWalletBalance":       p.GatewayWalletBalance,
-		"discrepancyAmount":          p.DiscrepancyAmount,
-		"settlementPendingAmount":    p.SettlementPendingAmount,
-		"settlementMinutes":          p.SettlementMinutes,
-		"hasAnomaly":                 p.HasAnomaly,
-		"createdDate":                time.Now(),
-	}
-	if p.GatewayError != "" {
-		values["gatewayError"] = p.GatewayError
-	}
-	if err := r.db.WithContext(ctx).Table(constants.TableFinanceReconciliationSnapshot).Create(values).Error; err != nil {
-		return 0, err
-	}
-	var newID int64
-	err := r.db.WithContext(ctx).Raw("SELECT LAST_INSERT_ID()").Scan(&newID).Error
-	return newID, err
-}
-
-func (r *RepositoryImpl) ListReconciliationSnapshots(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int64, error) {
-	base := r.db.WithContext(ctx).Table(constants.TableFinanceReconciliationSnapshot).Session(&gorm.Session{})
-
-	var total int64
-	if err := base.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	var out []report_dto.ReconciliationSnapshotResponse
-	err := base.Order("snapshotID DESC").Offset(q.Offset()).Limit(q.Limit).Find(&out).Error
-	return out, total, err
 }
 
 func (r *RepositoryImpl) GlobalLedgerRows(ctx context.Context, f report_dto.GlobalLedgerFilter) ([]report_dto.GlobalLedgerRow, int64, error) {

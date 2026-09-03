@@ -209,7 +209,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
 	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
 	jobqueueRepo := jobqueue_repository.NewRepository(db)
-	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg, settingSvc)
 	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
 	workerCount := cfg.JobQueueWorkerCount
 	if workerCount <= 0 {
@@ -239,8 +239,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
-	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
-	go reportSvc.RunReconciliationScheduler()
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached
 	// gold-price client (pkg/goldprice), no repository.
 	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
