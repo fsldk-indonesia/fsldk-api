@@ -202,6 +202,48 @@ func TestGetReconciliation_FlagsAnomalyBeyondThreshold(t *testing.T) {
 	}
 }
 
+// TestGetReconciliation_SettlementPendingClearsOnceSettled mengunci
+// perbaikan: badge "Settlement Pending" harus otomatis hilang begitu saldo
+// gateway sudah menyamai ekspektasi (discrepancy 0), bukan tetap menampilkan
+// seluruh nominal donasi yang baru PAID dalam jendela waktu meski uangnya
+// sudah benar-benar sampai.
+func TestGetReconciliation_SettlementPendingClearsOnceSettled(t *testing.T) {
+	repo := &fakeReportRepository{
+		balanceAsOf: 1_000_000,
+		ledgerSums:  map[string]float64{constants.LedgerEntryDonationCredit: 300_000},
+	}
+	gw := &fakeGateway{walletBalance: 1_000_000} // sudah sama persis dengan ekspektasi
+	svc := NewService(repo, nil, nil, nil, gw, testReportConfig(15))
+
+	resp, err := svc.GetReconciliation(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.SettlementPendingAmount != 0 {
+		t.Fatalf("expected settlement pending to clear once discrepancy is 0, got %.2f", resp.SettlementPendingAmount)
+	}
+}
+
+// TestGetReconciliation_SettlementPendingCappedToActualGap memastikan saat
+// masih ada gap sungguhan, angka yang ditampilkan dibatasi sebesar gap
+// tersebut (bukan seluruh donasi baru masuk dalam jendela waktu).
+func TestGetReconciliation_SettlementPendingCappedToActualGap(t *testing.T) {
+	repo := &fakeReportRepository{
+		balanceAsOf: 1_000_000,
+		ledgerSums:  map[string]float64{constants.LedgerEntryDonationCredit: 300_000},
+	}
+	gw := &fakeGateway{walletBalance: 900_000} // masih kurang 100rb dari ekspektasi
+	svc := NewService(repo, nil, nil, nil, gw, testReportConfig(15))
+
+	resp, err := svc.GetReconciliation(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.SettlementPendingAmount != 100_000 {
+		t.Fatalf("expected settlement pending capped to the actual 100.000 gap, got %.2f", resp.SettlementPendingAmount)
+	}
+}
+
 func TestGetReconciliation_GatewayErrorDoesNotFlagAnomaly(t *testing.T) {
 	repo := &fakeReportRepository{balanceAsOf: 400_000}
 	gw := &fakeGateway{walletErr: bisatopup.ErrGatewayRejected}
