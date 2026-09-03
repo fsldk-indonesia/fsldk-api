@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"time"
 
 	"fsldk-api/base/token"
 	"fsldk-api/config"
+	"fsldk-api/constants"
 	"fsldk-api/middlewares"
 	"fsldk-api/pkg/goldprice"
 	"fsldk-api/pkg/googleauth"
@@ -62,6 +64,12 @@ import (
 	"fsldk-api/modules/catalogbook/catalogbook_handler"
 	"fsldk-api/modules/catalogbook/catalogbook_repository"
 	"fsldk-api/modules/catalogbook/catalogbook_service"
+
+	"fsldk-api/modules/dynamicform"
+	"fsldk-api/modules/dynamicform/dynamicform_handler"
+	"fsldk-api/modules/dynamicform/dynamicform_repository"
+	"fsldk-api/modules/dynamicform/dynamicform_service"
+	"fsldk-api/pkg/gsheet"
 
 	"fsldk-api/modules/financeformat"
 	"fsldk-api/modules/financeformat/financeformat_handler"
@@ -181,10 +189,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	if workerCount <= 0 {
 		workerCount = 2
 	}
-	for i := 0; i < workerCount; i++ {
-		go jobqueueSvc.RunWorker(i)
-	}
-	go jobqueueSvc.RunStuckSweeper()
+	// Workers are started later (see below) so every RegisterHandler call —
+	// e.g. the dynamicform Google Sheets mirror — is in place first.
 
 	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
@@ -209,6 +215,28 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// the optional contact-person card on the public page.
 	financeformatSvc := financeformat_service.NewService(financeformatRepo, uploader, settingSvc)
 
+	// Dynamic form (Google-Forms-style public form builder). gsheet.New returns
+	// a disabled no-op client unless GSHEET_SYNC_ENABLED and credentials are set.
+	gsheetClient := gsheet.New(cfg)
+	dynamicFormRepo := dynamicform_repository.NewRepository(db)
+	dynamicFormSvc := dynamicform_service.NewService(
+		dynamicFormRepo, uploader, mail, audit, gsheetClient, jobqueueSvc,
+		cfg.FrontendURL, cfg.GSheetRootFolderID,
+	)
+	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetAppend, dynamicFormSvc.HandleGSheetAppendJob)
+	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetUpdate, dynamicFormSvc.HandleGSheetUpdateJob)
+	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetDelete, dynamicFormSvc.HandleGSheetDeleteJob)
+	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetHeader, dynamicFormSvc.HandleGSheetHeaderJob)
+	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetRebuild, dynamicFormSvc.HandleGSheetRebuildJob)
+
+	// Now that every job handler is registered, start the queue workers.
+	for i := 0; i < workerCount; i++ {
+		go jobqueueSvc.RunWorker(i)
+	}
+	go jobqueueSvc.RunStuckSweeper()
+	// One-shot draft/upload sweep on boot (idempotent).
+	go func() { _ = dynamicFormSvc.SweepStaleDrafts(context.Background()) }()
+
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)
 	permH := permission_handler.NewHandler(permSvc)
@@ -220,6 +248,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
+	dynamicFormH := dynamicform_handler.NewHandler(dynamicFormSvc)
 	financeformatH := financeformat_handler.NewHandler(financeformatSvc)
 	eventH := event_handler.NewHandler(eventSvc)
 	scheduleH := schedule_handler.NewHandler(scheduleSvc)
@@ -281,6 +310,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	article.RegisterCMSRoutes(api, articleH, mw)
 	catalogbook.RegisterPublicRoutes(pub, catalogbookH)
 	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
+	dynamicform.RegisterPublicRoutes(pub, dynamicFormH, mw)
+	dynamicform.RegisterCMSRoutes(api, dynamicFormH, mw)
 	financeformat.RegisterPublicRoutes(pub, financeformatH)
 	financeformat.RegisterCMSRoutes(api, financeformatH, mw)
 	event.RegisterPublicRoutes(pub, eventH)

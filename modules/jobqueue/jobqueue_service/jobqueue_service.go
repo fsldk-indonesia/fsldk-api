@@ -13,6 +13,10 @@ type Service interface {
 	// Enqueue dipakai modul lain (mis. shortlinkrequest_service) untuk
 	// memasukkan job baru.
 	Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error)
+	// RegisterHandler mendaftarkan callback untuk sebuah jobType pada queue
+	// "default" (mis. dynamicform_service mendaftarkan handler sinkronisasi
+	// Google Sheets). Dipanggil dari root router.go sebelum worker dimulai.
+	RegisterHandler(jobType string, fn func(ctx context.Context, payload string) error)
 	// ResolveCorrelation & FindRecentByPhone dipakai resolusi balasan
 	// WhatsApp (§1a.5 techspec) — WhatsAppMessageResolver di shortlinkrequest_service.
 	ResolveCorrelation(ctx context.Context, waMessageID string) (correlationType string, correlationID int64, found bool, err error)

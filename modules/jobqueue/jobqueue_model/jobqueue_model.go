@@ -29,6 +29,10 @@ type Job struct {
 const (
 	QueueWhatsApp = "whatsapp"
 	QueueEmail    = "email"
+	// QueueDefault carries generic background jobs handled by callbacks other
+	// modules register via jobqueue_service.RegisterHandler (e.g. the
+	// dynamicform Google Sheets mirror). It has no rate limiter.
+	QueueDefault = "default"
 
 	JobTypeWhatsAppTemplate       = "whatsapp_template"
 	JobTypeEmailShortlinkApproved = "email_shortlink_approved"

@@ -133,6 +133,13 @@ const (
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
+
+	PermDynamicFormView      = "dynamicform.view"
+	PermDynamicFormCreate    = "dynamicform.create"
+	PermDynamicFormUpdate    = "dynamicform.update"
+	PermDynamicFormDelete    = "dynamicform.delete"
+	PermDynamicFormPublish   = "dynamicform.publish"
+	PermDynamicFormManageAll = "dynamicform.manage.all"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The
@@ -271,6 +278,49 @@ const (
 	TableSetting            = "ms_setting"
 	TableJobQueue           = "tr_job_queue"
 	TableWhatsAppMessageLog = "tr_whatsapp_message_log"
+
+	TableDynamicForm             = "ms_dynamic_form"
+	TableDynamicFormSection      = "ms_dynamic_form_section"
+	TableDynamicFormField        = "ms_dynamic_form_field"
+	TableDynamicFormSubmission   = "tr_dynamic_form_submission"
+	TableDynamicFormAnswer       = "tr_dynamic_form_answer"
+	TableDynamicFormFile         = "tr_dynamic_form_file"
+	TableDynamicFormDraft        = "tr_dynamic_form_draft"
+	TableDynamicFormCollaborator = "map_dynamic_form_collaborator"
+)
+
+// Dynamic form lifecycle status (dynamicform module — distinct from the
+// submission_form engine's DRAFT/PUBLISHED/ARCHIVED).
+const (
+	DynamicFormStatusDraft     = "draft"
+	DynamicFormStatusPublished = "published"
+	DynamicFormStatusClosed    = "closed"
+	DynamicFormStatusArchived  = "archived"
+)
+
+// DynamicFormFieldTypes are the validated field-type slugs (used by the DTO
+// `oneof` tag and a service re-check). Display elements (no input):
+// section_break, paragraph, image.
+var DynamicFormFieldTypes = []string{
+	"short_text", "long_text", "email", "number", "phone", "url",
+	"date", "time", "datetime",
+	"dropdown", "radio", "checkbox", "linear_scale", "rating",
+	"file",
+	"section_break", "paragraph", "image",
+}
+
+// DynamicFormDisplayFieldTypes are the display-only elements (skipped by
+// validation, excluded from CSV columns).
+var DynamicFormDisplayFieldTypes = []string{"section_break", "paragraph", "image"}
+
+// Job types for the Google Sheets mirror (run through modules/jobqueue on the
+// "default" queue via a registered handler).
+const (
+	JobDynamicFormGSheetAppend  = "dynamicform.gsheet.append"  // payload: {submissionID}
+	JobDynamicFormGSheetUpdate  = "dynamicform.gsheet.update"  // payload: {submissionID}
+	JobDynamicFormGSheetDelete  = "dynamicform.gsheet.delete"  // payload: {formID, submissionID, gsheetRowIndex}
+	JobDynamicFormGSheetHeader  = "dynamicform.gsheet.header"  // payload: {formID}
+	JobDynamicFormGSheetRebuild = "dynamicform.gsheet.rebuild" // payload: {formID}
 )
 
 // Keys stored on gin.Context by the authentication middleware.

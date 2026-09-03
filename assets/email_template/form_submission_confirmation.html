@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="id">
+<body style="margin:0; background:#f2f5f3; font-family:Arial,Helvetica,sans-serif; color:#14171a;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f5f3; padding:32px 0;">
+    <tr>
+      <td align="center">
+
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:18px; overflow:hidden; max-width:580px; width:100%; box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color:#00712e; background-image:linear-gradient(135deg,#00a744,#00611f); padding:40px 32px 32px; text-align:center;">
+              <table role="presentation" align="center" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="background:#ffffff; border-radius:16px; padding:12px;">
+                    <img src="cid:{{.LogoCID}}" alt="FSLDK Indonesia" width="40" height="40" style="display:block;">
+                  </td>
+                </tr>
+              </table>
+              <div style="color:#ffffff; font-size:19px; font-weight:700; letter-spacing:.2px; margin-top:14px;">
+                FSLDK Indonesia
+              </div>
+              <div style="color:#d7f3e2; font-size:12px; margin-top:4px;">
+                Forum Silaturahmi Lembaga Dakwah Kampus
+              </div>
+            </td>
+          </tr>
+
+          <!-- Status band -->
+          <tr>
+            <td style="background:#e1f5e9; padding:16px 32px; text-align:center;">
+              <span style="display:inline-block; background:#00933b; color:#ffffff; font-size:11px; font-weight:700; letter-spacing:.3px; padding:7px 18px; border-radius:999px;">
+                FORMULIR DITERIMA ✅
+              </span>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:36px 36px 8px;">
+
+              <h1 style="font-size:22px; font-weight:600; margin:0 0 16px; color:#1a3d29; text-align:center;">
+                Jazakallah khair, {{.Name}}! 🤍
+              </h1>
+
+              <p style="font-size:15px; line-height:1.75; color:#5b6168; margin:0 0 24px; text-align:center;">
+                Pengisian formulir <strong>{{.FormTitle}}</strong> telah kami terima pada
+                {{.SubmittedAt}} WIB. Berikut salinan jawaban Anda.
+              </p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                     style="border:1px solid #eef0ee; border-radius:12px; overflow:hidden; margin:0 0 24px;">
+                {{range .Answers}}
+                <tr>
+                  <td style="padding:12px 16px; background:#f6faf7; font-size:13px; font-weight:600; color:#1a3d29; width:40%; border-bottom:1px solid #eef0ee; vertical-align:top;">
+                    {{.Label}}
+                  </td>
+                  <td style="padding:12px 16px; font-size:13px; color:#5b6168; border-bottom:1px solid #eef0ee; word-break:break-word;">
+                    {{.Value}}
+                  </td>
+                </tr>
+                {{end}}
+              </table>
+
+              <p style="font-size:13px; line-height:1.7; color:#9aa1a8; margin:0 0 8px; padding-top:20px; border-top:1px solid #eef0ee; text-align:center;">
+                Simpan email ini sebagai bukti pengisian. Anda tidak perlu membalas email ini.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:26px 36px; background:#f6faf7; text-align:center;">
+              <p style="margin:0 0 4px; font-size:14px; font-weight:600; color:#1a3d29;">
+                Wassalamu'alaikum Warahmatullahi Wabarakatuh 🤍
+              </p>
+              <p style="margin:0 0 2px; font-size:12px; color:#5b6168;">
+                Tim FSLDK Indonesia
+              </p>
+              <p style="margin:0; font-size:11px; color:#00933b; font-weight:700; letter-spacing:.2px;">
+                #SatuLangkahDakwah
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0" style="max-width:580px; width:100%;">
+          <tr>
+            <td align="center" style="padding-top:16px; font-size:11px; color:#9aa1a8; line-height:1.6;">
+              Email ini dikirim otomatis oleh sistem FSLDK Indonesia.<br>
+              &copy; FSLDK Indonesia — Menyatukan Langkah Dakwah Kampus se-Indonesia.
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

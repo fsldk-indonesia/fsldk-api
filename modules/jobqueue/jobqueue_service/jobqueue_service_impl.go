@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 
 	"fsldk-api/base/apperror"
@@ -35,6 +36,9 @@ type ServiceImpl struct {
 	mailer   mailer.Mailer
 	cfg      config.AppConfig
 	limiters map[string]*rate.Limiter
+
+	handlersMu sync.RWMutex
+	handlers   map[string]func(context.Context, string) error
 }
 
 // NewService membuat Service job queue.
@@ -49,6 +53,7 @@ func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Cl
 	}
 	return &ServiceImpl{
 		repo: repo, kirimdev: kirimdevClient, mailer: mail, cfg: cfg,
+		handlers: map[string]func(context.Context, string) error{},
 		limiters: map[string]*rate.Limiter{
 			// Inf: queue "email" tanpa batas — burst 0 tetap mengizinkan semua
 			// event karena limiter Inf tidak pernah membatasi (lihat dok x/time/rate).
@@ -56,6 +61,20 @@ func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Cl
 			jobqueue_model.QueueEmail:    rate.NewLimiter(rate.Inf, 0),
 		},
 	}
+}
+
+// RegisterHandler mendaftarkan callback untuk jobType pada queue "default".
+func (s *ServiceImpl) RegisterHandler(jobType string, fn func(context.Context, string) error) {
+	s.handlersMu.Lock()
+	s.handlers[jobType] = fn
+	s.handlersMu.Unlock()
+}
+
+func (s *ServiceImpl) lookupHandler(jobType string) (func(context.Context, string) error, bool) {
+	s.handlersMu.RLock()
+	fn, ok := s.handlers[jobType]
+	s.handlersMu.RUnlock()
+	return fn, ok
 }
 
 func (s *ServiceImpl) Enqueue(ctx context.Context, in jobqueue_dto.EnqueueInput) (int64, error) {
@@ -217,7 +236,7 @@ func (s *ServiceImpl) RunWorker(workerID int) {
 	if interval <= 0 {
 		interval = 1500 * time.Millisecond
 	}
-	queues := []string{jobqueue_model.QueueWhatsApp, jobqueue_model.QueueEmail}
+	queues := []string{jobqueue_model.QueueWhatsApp, jobqueue_model.QueueEmail, jobqueue_model.QueueDefault}
 
 	for {
 		claimedAny := false
@@ -262,7 +281,11 @@ func (s *ServiceImpl) executeJob(ctx context.Context, job jobqueue_model.Job) {
 			err = s.mailer.SendShortlinkRejectedEmail(p.ToEmail, p.ToName, p.Reason)
 		}
 	default:
-		err = fmt.Errorf("jobqueue: jobType tidak dikenal %q", job.JobType)
+		if fn, ok := s.lookupHandler(job.JobType); ok {
+			err = fn(ctx, job.Payload)
+		} else {
+			err = fmt.Errorf("jobqueue: jobType tidak dikenal %q", job.JobType)
+		}
 	}
 
 	if err != nil {
