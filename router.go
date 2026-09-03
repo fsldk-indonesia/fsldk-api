@@ -209,7 +209,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
 	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
 	jobqueueRepo := jobqueue_repository.NewRepository(db)
-	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg, settingSvc)
 	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
 	workerCount := cfg.JobQueueWorkerCount
 	if workerCount <= 0 {

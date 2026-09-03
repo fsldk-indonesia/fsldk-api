@@ -15,6 +15,8 @@ import (
 	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_model"
 	"fsldk-api/modules/jobqueue/jobqueue_repository"
+	"fsldk-api/modules/setting/setting_model"
+	"fsldk-api/modules/setting/setting_service"
 	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/kirimdev"
 	"fsldk-api/pkg/mailer"
@@ -47,11 +49,12 @@ type ServiceImpl struct {
 	mailer   mailer.Mailer
 	audit    *auditlog.Logger
 	cfg      config.AppConfig
+	setting  setting_service.Service
 	limiters map[string]*rate.Limiter
 }
 
 // NewService membuat Service job queue.
-func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Client, mail mailer.Mailer, audit *auditlog.Logger, cfg config.AppConfig) Service {
+func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Client, mail mailer.Mailer, audit *auditlog.Logger, cfg config.AppConfig, settingSvc setting_service.Service) Service {
 	// int(...) pada rate < 1/menit akan terpotong jadi burst=0, yang membuat
 	// rate.Limiter.Allow() SELALU false (tidak pernah mengisi ulang) — WA
 	// akan macet permanen kalau config di-set sub-1/menit. Minimal 1 supaya
@@ -61,7 +64,7 @@ func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Cl
 		whatsappBurst = 1
 	}
 	return &ServiceImpl{
-		repo: repo, kirimdev: kirimdevClient, mailer: mail, audit: audit, cfg: cfg,
+		repo: repo, kirimdev: kirimdevClient, mailer: mail, audit: audit, cfg: cfg, setting: settingSvc,
 		limiters: map[string]*rate.Limiter{
 			// Inf: queue "email" tanpa batas — burst 0 tetap mengizinkan semua
 			// event karena limiter Inf tidak pernah membatasi (lihat dok x/time/rate).
@@ -308,6 +311,15 @@ func (s *ServiceImpl) executeWhatsAppTemplate(ctx context.Context, job jobqueue_
 	var msg kirimdev.TemplateMessage
 	if err := json.Unmarshal([]byte(job.Payload), &msg); err != nil {
 		return err
+	}
+	// Saklar global (App Settings > Aktifkan Notifikasi WhatsApp) — satu titik
+	// gate untuk SEMUA pengiriman WhatsApp platform (donasi, withdrawal OTP,
+	// balasan shortlink request, dst), bukan dicek berulang di tiap pemanggil
+	// Enqueue. Default "true" bila setting belum ada/gagal dibaca — nyala
+	// tanpa perlu dikonfigurasi eksplisit dulu (perilaku sebelum toggle ini ada).
+	if v, _ := s.setting.GetValue(ctx, setting_model.GroupNotifikasi, setting_model.KeyWhatsAppEnabled); v == "false" {
+		log.Printf("[JOBQUEUE] job %d: notifikasi WhatsApp dinonaktifkan (App Settings), dilewati", job.JobID)
+		return nil
 	}
 	result, err := s.kirimdev.SendTemplate(ctx, msg)
 	if err != nil {
