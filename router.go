@@ -129,6 +129,27 @@ import (
 	"fsldk-api/modules/report/report_service"
 	"fsldk-api/pkg/auditlog"
 
+	"fsldk-api/modules/campaign"
+	"fsldk-api/modules/campaign/campaign_handler"
+	"fsldk-api/modules/campaign/campaign_repository"
+	"fsldk-api/modules/campaign/campaign_service"
+
+	"fsldk-api/modules/donation"
+	"fsldk-api/modules/donation/donation_handler"
+	"fsldk-api/modules/donation/donation_repository"
+	"fsldk-api/modules/donation/donation_service"
+	"fsldk-api/pkg/bisatopup"
+
+	"fsldk-api/modules/wallet"
+	"fsldk-api/modules/wallet/wallet_handler"
+	"fsldk-api/modules/wallet/wallet_repository"
+	"fsldk-api/modules/wallet/wallet_service"
+
+	"fsldk-api/modules/withdrawal"
+	"fsldk-api/modules/withdrawal/withdrawal_handler"
+	"fsldk-api/modules/withdrawal/withdrawal_repository"
+	"fsldk-api/modules/withdrawal/withdrawal_service"
+
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -143,6 +164,14 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	gverify := googleauth.NewVerifier(cfg.GoogleClientID, cfg.GoogleTokenInfoURL)
 	uploader := uploadpkg.NewUploader("assets/uploads", cfg.AppURL)
 	audit := auditlog.New(db)
+	bisatopupClient := bisatopup.NewClient(bisatopup.Config{
+		Username:      cfg.BisatopupUsernameCrowdfunding,
+		PasswordAPI:   cfg.BisatopupPasswordApiCrowdfunding,
+		Env:           cfg.BisatopupEnvCrowdfunding,
+		BaseURLLive:   cfg.BisatopupBaseURLLiveCrowdfunding,
+		BaseURLDev:    cfg.BisatopupBaseURLDevCrowdfunding,
+		QrisPaymentID: cfg.BisatopupQrisPaymentIDCrowdfunding,
+	})
 
 	// Repository (lapisan akses data)
 	permRepo := permission_repository.NewRepository(db)
@@ -164,10 +193,15 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	settingRepo := setting_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
+	campaignRepo := campaign_repository.NewRepository(db)
+	donationRepo := donation_repository.NewRepository(db)
+	walletRepo := wallet_repository.NewRepository(db)
+	withdrawalRepo := withdrawal_repository.NewRepository(db)
 
 	// Service (logika bisnis)
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
+	walletSvc := wallet_service.NewService(walletRepo, audit, db)
 	formSvc := submission_form_service.NewService(formRepo, audit)
 	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
@@ -183,7 +217,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
 	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
 	jobqueueRepo := jobqueue_repository.NewRepository(db)
-	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, cfg)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg)
 	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
 	workerCount := cfg.JobQueueWorkerCount
 	if workerCount <= 0 {
@@ -192,11 +226,27 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Workers are started later (see below) so every RegisterHandler call —
 	// e.g. the dynamicform Google Sheets mirror — is in place first.
 
+	// campaignSvc/donationSvc/withdrawalSvc di-inject jobqueueSvc sebagai
+	// JobEnqueuer untuk notifikasi WhatsApp async (Phase 8, §14 techspec) —
+	// makanya baru dibuat di sini, setelah jobqueueSvc siap, bukan lagi di
+	// blok service awal.
+	campaignSvc := campaign_service.NewService(campaignRepo, orgSvc, audit, donationRepo, withdrawalRepo, walletSvc)
+	donationSvc := donation_service.NewService(donationRepo, campaignRepo, walletSvc, bisatopupClient, jobqueueSvc, audit, mail, db, cfg)
+	withdrawalSvc := withdrawal_service.NewService(withdrawalRepo, campaignRepo, userRepo, walletSvc, bisatopupClient, jobqueueSvc, audit, mail, settingRepo, db, cfg)
+	// Job terjadwal internal (§13.4 techspec) — goroutine time.Ticker
+	// langsung, bukan lewat job queue: donation.expire_check,
+	// withdrawal.reconcile_check. Kantong Amal selalu aktif sejak revisi
+	// 2026-09-01 (item 9 revision-prompt-2.md — KANTONG_AMAL_ENABLED dihapus).
+	go donationSvc.RunExpireScheduler()
+	go withdrawalSvc.RunReconcileScheduler()
+
 	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
-	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit)
+	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
+	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
+	go reportSvc.RunReconciliationScheduler()
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached
 	// gold-price client (pkg/goldprice), no repository.
 	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
@@ -260,6 +310,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	zakatH := zakat_handler.NewHandler(zakatSvc)
 	reportH := report_handler.NewHandler(reportSvc)
 	commentH := comment_handler.NewHandler(commentSvc)
+	campaignH := campaign_handler.NewHandler(campaignSvc)
+	donationH := donation_handler.NewHandler(donationSvc)
+	walletH := wallet_handler.NewHandler(walletSvc)
+	withdrawalH := withdrawal_handler.NewHandler(withdrawalSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
 	// memenuhi kontrak OrgScopeLoader)
@@ -331,6 +385,23 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	comment.RegisterPublicRoutes(pub, commentH, mw)
 	comment.RegisterCMSRoutes(api, commentH, mw)
+
+	// Kantong Amal — selalu aktif sejak revisi 2026-09-01 (item 9
+	// revision-prompt-2.md, menggantikan feature flag KANTONG_AMAL_ENABLED
+	// Phase 14 yang kini dihapus). Campaign/withdrawal murni CRUD/
+	// permission-gated (tidak ada lagi endpoint milik-sendiri "/me/...").
+	campaign.RegisterPublicRoutes(pub, campaignH)
+	campaign.RegisterCMSRoutes(api, campaignH, mw)
+
+	donation.RegisterPublicRoutes(pub, donationH, mw)
+	donation.RegisterCallbackRoutes(api, donationH, mw)
+	donation.RegisterMeRoutes(api, donationH, mw)
+	donation.RegisterCMSRoutes(api, donationH, mw)
+
+	wallet.RegisterCMSRoutes(api, walletH, mw)
+
+	withdrawal.RegisterCMSRoutes(api, withdrawalH, mw)
+	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
 
 	zakat.RegisterPublicRoutes(pub, zakatH)
 

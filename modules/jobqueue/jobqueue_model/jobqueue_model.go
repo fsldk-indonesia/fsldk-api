@@ -44,4 +44,9 @@ const (
 	StatusFailed     = "failed"
 
 	CorrelationTypeShortlinkRequest = "shortlink_request"
+
+	// Kantong Amal (Phase 8) — notifikasi WhatsApp donasi/campaign/withdrawal.
+	CorrelationTypeDonation   = "donation"
+	CorrelationTypeCampaign   = "campaign"
+	CorrelationTypeWithdrawal = "withdrawal"
 )

@@ -54,6 +54,29 @@ type AppConfig struct {
 
 	GiphyAPIKey string `mapstructure:"GIPHY_API_KEY"` // GIF/sticker picker for comment_service; empty = feature returns empty results, not an error
 
+	// Kantong Amal — formula MDR & masa berlaku QRIS (Phase 3), kredensial
+	// dan pengaturan klien BisaTopup/Bisabiller (Phase 4). WIDGET_KEY dan
+	// ADMIN_FEE_PERCENT dari dokumen referensi sengaja tidak ditambahkan di
+	// sini — keduanya terbukti tidak pernah dipakai di ldksyahid-app (FACT,
+	// hanya dideklarasikan di config tanpa call site), menambahkannya di
+	// sini hanya akan jadi dead config.
+	BisatopupQrisMdrPercentCrowdfunding             float64 `mapstructure:"BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING"`
+	BisatopupQrisExpiryHoursCrowdfunding            int     `mapstructure:"BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING"`
+	BisatopupUsernameCrowdfunding                   string  `mapstructure:"BISATOPUP_USERNAME_CROWDFUNDING"`
+	BisatopupPasswordApiCrowdfunding                string  `mapstructure:"BISATOPUP_PASSWORD_API_CROWDFUNDING"`
+	BisatopupEnvCrowdfunding                        string  `mapstructure:"BISATOPUP_ENV_CROWDFUNDING"`
+	BisatopupBaseURLLiveCrowdfunding                string  `mapstructure:"BISATOPUP_BASE_URL_LIVE_CROWDFUNDING"`
+	BisatopupBaseURLDevCrowdfunding                 string  `mapstructure:"BISATOPUP_BASE_URL_DEV_CROWDFUNDING"`
+	BisatopupQrisPaymentIDCrowdfunding              int     `mapstructure:"BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING"`
+	BisatopupEnforceCallbackSignatureCrowdfunding   bool    `mapstructure:"BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING"`
+	BisatopupAllowedIPsCrowdfunding                 string  `mapstructure:"BISATOPUP_ALLOWED_IPS_CROWDFUNDING"`
+	BisatopupCallbackDisbursementSecretCrowdfunding string  `mapstructure:"BISATOPUP_CALLBACK_DISBURSEMENT_SECRET_CROWDFUNDING"`
+	// BisatopupSettlementMinutesCrowdfunding menjelaskan gap wajar antara
+	// ledger dan wallet gateway untuk donasi yang baru saja PAID (belum
+	// settle penuh) saat rekonsiliasi §15.1/§15.5 — reuse atribusi
+	// "Settling..." ldksyahid-app.
+	BisatopupSettlementMinutesCrowdfunding int `mapstructure:"BISATOPUP_SETTLEMENT_MINUTES_CROWDFUNDING"`
+
 	KirimdevAPIKey             string `mapstructure:"KIRIMDEV_API_KEY"`
 	KirimdevPhoneNumberID      string `mapstructure:"KIRIMDEV_PHONE_NUMBER_ID"`
 	KirimdevBaseURL            string `mapstructure:"KIRIMDEV_BASE_URL"`
@@ -112,6 +135,24 @@ func (c AppConfig) JobQueueBackoffSchedule() []time.Duration {
 // tidak menyebabkan downtime (secret lama & baru sama-sama valid sementara).
 func (c AppConfig) KirimdevWebhookSecrets() []string {
 	parts := strings.Split(c.KirimdevWebhookSecretsRaw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// AllowedBisatopupIPsCrowdfunding mengembalikan daftar IP yang diizinkan
+// memanggil endpoint callback payment Kantong Amal. Slice kosong berarti
+// allowlist tidak aktif (seluruh IP diizinkan) — sesuai sifat opsional
+// fitur ini.
+func (c AppConfig) AllowedBisatopupIPsCrowdfunding() []string {
+	if strings.TrimSpace(c.BisatopupAllowedIPsCrowdfunding) == "" {
+		return nil
+	}
+	parts := strings.Split(c.BisatopupAllowedIPsCrowdfunding, ",")
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		if v := strings.TrimSpace(p); v != "" {
@@ -203,6 +244,15 @@ func setDefaults() {
 	viper.SetDefault("MAIL_FROM_NAME", "FSLDK Indonesia")
 
 	viper.SetDefault("CORS_ALLOWED_ORIGINS", "http://localhost:4200")
+
+	viper.SetDefault("BISATOPUP_QRIS_MDR_PERCENT_CROWDFUNDING", 1)
+	viper.SetDefault("BISATOPUP_QRIS_EXPIRY_HOURS_CROWDFUNDING", 24)
+	viper.SetDefault("BISATOPUP_ENV_CROWDFUNDING", "dev")
+	viper.SetDefault("BISATOPUP_BASE_URL_LIVE_CROWDFUNDING", "https://api.bisabiller.com")
+	viper.SetDefault("BISATOPUP_BASE_URL_DEV_CROWDFUNDING", "https://api-sandbox.bisabiller.com")
+	viper.SetDefault("BISATOPUP_QRIS_PAYMENT_ID_CROWDFUNDING", 33)
+	viper.SetDefault("BISATOPUP_ENFORCE_CALLBACK_SIGNATURE_CROWDFUNDING", true)
+	viper.SetDefault("BISATOPUP_SETTLEMENT_MINUTES_CROWDFUNDING", 15)
 
 	viper.SetDefault("KIRIMDEV_BASE_URL", "https://api.kirimdev.com/v1")
 	viper.SetDefault("KIRIMDEV_TEMPLATE_LANGUAGE", "id")

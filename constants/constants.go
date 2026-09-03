@@ -4,18 +4,24 @@ package constants
 
 // Internal response codes (sent on the "code" field of the response envelope).
 const (
-	CodeSuccess                 = "00"
-	CodeValidationError         = "40"
-	CodeUnauthorized            = "41"
-	CodeForbidden               = "43"
-	CodeNotFound                = "44"
-	CodeConflict                = "49"
-	CodeUnprocessable           = "42"
-	CodeTooManyRequest          = "45"
-	CodeUnknownError            = "99"
-	CodeEmailNotVerified        = "43-EMAIL"
-	CodeDuplicateSubmission     = "49-DUP"
-	CodeInvalidStatusTransition = "42-STATUS"
+	CodeSuccess                      = "00"
+	CodeValidationError              = "40"
+	CodeUnauthorized                 = "41"
+	CodeForbidden                    = "43"
+	CodeNotFound                     = "44"
+	CodeConflict                     = "49"
+	CodeUnprocessable                = "42"
+	CodeTooManyRequest               = "45"
+	CodeUnknownError                 = "99"
+	CodeEmailNotVerified             = "43-EMAIL"
+	CodeDuplicateSubmission          = "49-DUP"
+	CodeInvalidStatusTransition      = "42-STATUS"
+	CodeInsufficientBalance          = "42-BAL"
+	CodeDuplicateRequest             = "49-DUP-REQ"
+	CodePaymentFailed                = "42-PAYFAIL"
+	CodeProviderError                = "50-PROVIDER"
+	CodeWithdrawalFailed             = "42-WDFAIL"
+	CodeSecurityVerificationRequired = "42-SECREQ"
 )
 
 // Default system roles.
@@ -126,6 +132,32 @@ const (
 	PermCommentView   = "comment.view"
 	PermCommentUpdate = "comment.update"
 	PermCommentDelete = "comment.delete"
+
+	PermCampaignCreate   = "kantong_amal.campaign.create"
+	PermCampaignView     = "kantong_amal.campaign.view"
+	PermCampaignUpdate   = "kantong_amal.campaign.update"
+	PermCampaignDelete   = "kantong_amal.campaign.delete"
+	PermCampaignPublish  = "kantong_amal.campaign.publish"
+	PermCampaignModerate = "kantong_amal.campaign.moderate"
+
+	PermDonationView   = "kantong_amal.donation.view"
+	PermDonationCreate = "kantong_amal.donation.create"
+	PermDonationUpdate = "kantong_amal.donation.update"
+	PermDonationDelete = "kantong_amal.donation.delete"
+
+	PermWalletView = "kantong_amal.wallet.view"
+
+	PermWithdrawalRequest = "kantong_amal.withdrawal.request"
+	// PermWithdrawalApprove kini menggerbang akses lihat/kelola daftar
+	// withdrawal ("Penarikan" di sidebar CMS) — bukan lagi aksi approve
+	// terpisah (maker-checker dihapus, revisi 2026-08-30); kode dipertahankan
+	// apa adanya untuk menghindari cascade rename ke role grant/dokumentasi.
+	PermWithdrawalApprove = "kantong_amal.withdrawal.approve"
+	PermWithdrawalProcess = "kantong_amal.withdrawal.process"
+
+	PermFinanceReportView   = "kantong_amal.report.view"
+	PermFinanceReportExport = "kantong_amal.report.export"
+	PermFinanceAuditView    = "kantong_amal.audit.view"
 
 	PermSettingView   = "setting.view"
 	PermSettingUpdate = "setting.update"
@@ -272,9 +304,10 @@ const (
 	TableLevel            = "lk_level"
 	TableLevelisasiResult = "tr_levelisasi_result"
 
-	TableFormAuditLog       = "tr_form_audit_log"
-	TableUserAuditLog       = "tr_user_audit_log"
-	TableExportLog          = "tr_export_log"
+	TableFormAuditLog = "tr_form_audit_log"
+	TableUserAuditLog = "tr_user_audit_log"
+	TableExportLog    = "tr_export_log"
+
 	TableSetting            = "ms_setting"
 	TableJobQueue           = "tr_job_queue"
 	TableWhatsAppMessageLog = "tr_whatsapp_message_log"
@@ -287,6 +320,20 @@ const (
 	TableDynamicFormFile         = "tr_dynamic_form_file"
 	TableDynamicFormDraft        = "tr_dynamic_form_draft"
 	TableDynamicFormCollaborator = "map_dynamic_form_collaborator"
+
+	// Kantong Amal.
+	TableCampaignCategory = "lk_campaign_category"
+	TableCampaign         = "ms_campaign"
+	TableCampaignImage    = "ms_campaign_image"
+	TableCampaignReview   = "tr_campaign_review"
+	TableDonation         = "tr_donation"
+	TableWalletLedger     = "tr_wallet_ledger"
+	TableWithdrawal       = "tr_withdrawal"
+	TableQueueJob         = "tr_queue_job"
+	TableQueueJobLog      = "tr_queue_job_log"
+	TableFinanceAuditLog  = "tr_finance_audit_log"
+
+	TableFinanceReconciliationSnapshot = "tr_finance_reconciliation_snapshot"
 )
 
 // Dynamic form lifecycle status (dynamicform module — distinct from the
@@ -321,6 +368,110 @@ const (
 	JobDynamicFormGSheetDelete  = "dynamicform.gsheet.delete"  // payload: {formID, submissionID, gsheetRowIndex}
 	JobDynamicFormGSheetHeader  = "dynamicform.gsheet.header"  // payload: {formID}
 	JobDynamicFormGSheetRebuild = "dynamicform.gsheet.rebuild" // payload: {formID}
+)
+
+// Tipe entry tr_wallet_ledger (Kantong Amal).
+const (
+	LedgerEntryDonationCredit    = "DONATION_CREDIT"
+	LedgerEntryWithdrawalReserve = "WITHDRAWAL_RESERVE"
+	LedgerEntryWithdrawalRelease = "WITHDRAWAL_RELEASE"
+	LedgerEntryRefundDebit       = "REFUND_DEBIT"
+	LedgerEntryAdjustmentCredit  = "ADJUSTMENT_CREDIT"
+	LedgerEntryAdjustmentDebit   = "ADJUSTMENT_DEBIT"
+	LedgerEntryFeeDebit          = "FEE_DEBIT"
+)
+
+// Arah entry tr_wallet_ledger.
+const (
+	LedgerDirectionCredit = "CREDIT"
+	LedgerDirectionDebit  = "DEBIT"
+)
+
+// Tipe referensi tr_wallet_ledger.referenceType.
+const (
+	LedgerReferenceDonation   = "DONATION"
+	LedgerReferenceWithdrawal = "WITHDRAWAL"
+	LedgerReferenceAdjustment = "ADJUSTMENT"
+)
+
+// Status ms_campaign.
+const (
+	CampaignStatusDraft             = "DRAFT"
+	CampaignStatusSubmitted         = "SUBMITTED"
+	CampaignStatusRevisionRequested = "REVISION_REQUESTED"
+	CampaignStatusApproved          = "APPROVED"
+	CampaignStatusPublished         = "PUBLISHED"
+	CampaignStatusPaused            = "PAUSED"
+	CampaignStatusCompleted         = "COMPLETED"
+	CampaignStatusRejected          = "REJECTED"
+	CampaignStatusArchived          = "ARCHIVED"
+	CampaignStatusExpired           = "EXPIRED"
+)
+
+// Status tr_donation.paymentStatus.
+const (
+	DonationStatusPending        = "PENDING"
+	DonationStatusPaid           = "PAID"
+	DonationStatusExpired        = "EXPIRED"
+	DonationStatusFailed         = "FAILED"
+	DonationStatusCancelled      = "CANCELLED"
+	DonationStatusRefunded       = "REFUNDED"
+	DonationStatusAmountMismatch = "AMOUNT_MISMATCH"
+)
+
+// Gateway tr_donation.gateway. DonationGatewayManual menandai donasi
+// offline/manual yang dicatat admin (revisi 2026-09-01, pola sama celengan
+// syahid ldksyahid-app) — TIDAK PERNAH menyentuh tr_wallet_ledger, sehingga
+// withdrawal (yang membaca saldo dari ledger) otomatis hanya bisa menarik
+// dana yang benar-benar berasal dari Bisatopup (item 5 revision-prompt-2.md).
+const (
+	DonationGatewayBisatopup = "bisatopup"
+	DonationGatewayManual    = "manual"
+)
+
+// Metode pembayaran donasi manual/offline (tr_donation.paymentMethod) —
+// hanya relevan untuk DonationGatewayManual; donasi Bisatopup selalu QRIS.
+const (
+	DonationPaymentMethodCash         = "CASH"
+	DonationPaymentMethodQris         = "QRIS"
+	DonationPaymentMethodEwallet      = "EWALLET"
+	DonationPaymentMethodTransfer     = "TRANSFER"
+	DonationPaymentMethodBankTransfer = "BANK_TRANSFER"
+	DonationPaymentMethodOther        = "OTHER"
+)
+
+// Status tr_withdrawal.status.
+const (
+	WithdrawalStatusRequested       = "REQUESTED"
+	WithdrawalStatusSecurityCheck   = "SECURITY_CHECK"
+	WithdrawalStatusPendingApproval = "PENDING_APPROVAL"
+	WithdrawalStatusApproved        = "APPROVED"
+	WithdrawalStatusProcessing      = "PROCESSING"
+	WithdrawalStatusSuccess         = "SUCCESS"
+	WithdrawalStatusFailed          = "FAILED"
+	WithdrawalStatusRejected        = "REJECTED"
+	WithdrawalStatusCancelled       = "CANCELLED"
+	WithdrawalStatusReversed        = "REVERSED"
+)
+
+// tr_withdrawal.securityVerifiedMethod — NULL berarti step-up password saja
+// (Option B, withdrawal rutin non-risiko), non-NULL berarti OTP/TOTP juga
+// diverifikasi (Option D, dipicu risk-based). OTP_WA dipakai versi awal;
+// OTP_EMAIL menggantikannya sejak revisi 2026-09-01 (item 8
+// revision-prompt-2.md — OTP dikirim ke email tetap di ms_setting, bukan
+// WhatsApp). Kode lama dipertahankan untuk baris historis, tidak dihapus.
+const (
+	WithdrawalSecurityMethodOtpWa    = "OTP_WA"
+	WithdrawalSecurityMethodOtpEmail = "OTP_EMAIL"
+)
+
+// Channel tr_otp_challenge.channel. OtpChannelEmail menggantikan
+// OtpChannelWhatsapp untuk OTP withdrawal Kantong Amal (item 8
+// revision-prompt-2.md, 2026-09-01) — dikirim ke email tetap yang
+// dikonfigurasi admin di ms_setting, bukan WhatsApp requester.
+const (
+	OtpChannelWhatsapp = "OTP_WA"
+	OtpChannelEmail    = "OTP_EMAIL"
 )
 
 // Keys stored on gin.Context by the authentication middleware.

@@ -16,11 +16,23 @@ import (
 	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_model"
 	"fsldk-api/modules/jobqueue/jobqueue_repository"
+	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/kirimdev"
 	"fsldk-api/pkg/mailer"
 
 	"golang.org/x/time/rate"
 )
+
+// financeCorrelationTypes adalah correlationType job queue yang berasal dari
+// modul finance Kantong Amal — dipakai Retry() untuk memutuskan apakah satu
+// retry manual perlu dicatat ke tr_finance_audit_log (§16.1 techspec:
+// `queue.job.retried`) tanpa salah mengatribusikan retry job non-finance
+// (mis. shortlink request) sebagai audit finance.
+var financeCorrelationTypes = map[string]bool{
+	jobqueue_model.CorrelationTypeDonation:   true,
+	jobqueue_model.CorrelationTypeCampaign:   true,
+	jobqueue_model.CorrelationTypeWithdrawal: true,
+}
 
 // sortColumns memetakan field sort yang diizinkan ke kolom database.
 var sortColumns = map[string]string{
@@ -34,6 +46,7 @@ type ServiceImpl struct {
 	repo     jobqueue_repository.Repository
 	kirimdev *kirimdev.Client
 	mailer   mailer.Mailer
+	audit    *auditlog.Logger
 	cfg      config.AppConfig
 	limiters map[string]*rate.Limiter
 
@@ -42,7 +55,7 @@ type ServiceImpl struct {
 }
 
 // NewService membuat Service job queue.
-func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Client, mail mailer.Mailer, cfg config.AppConfig) Service {
+func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Client, mail mailer.Mailer, audit *auditlog.Logger, cfg config.AppConfig) Service {
 	// int(...) pada rate < 1/menit akan terpotong jadi burst=0, yang membuat
 	// rate.Limiter.Allow() SELALU false (tidak pernah mengisi ulang) — WA
 	// akan macet permanen kalau config di-set sub-1/menit. Minimal 1 supaya
@@ -52,7 +65,7 @@ func NewService(repo jobqueue_repository.Repository, kirimdevClient *kirimdev.Cl
 		whatsappBurst = 1
 	}
 	return &ServiceImpl{
-		repo: repo, kirimdev: kirimdevClient, mailer: mail, cfg: cfg,
+		repo: repo, kirimdev: kirimdevClient, mailer: mail, audit: audit, cfg: cfg,
 		handlers: map[string]func(context.Context, string) error{},
 		limiters: map[string]*rate.Limiter{
 			// Inf: queue "email" tanpa batas — burst 0 tetap mengizinkan semua
@@ -214,7 +227,24 @@ func (s *ServiceImpl) Retry(ctx context.Context, id int64) error {
 	if err != nil {
 		return apperror.Internal("")
 	}
+
+	// queue.job.retried (§16.1 techspec) — hanya dicatat sebagai finance
+	// audit bila job ini berkorelasi ke modul finance Kantong Amal (bukan
+	// mis. shortlink request, yang juga memakai job queue generik ini).
+	if job, jerr := s.repo.FindByID(ctx, id); jerr == nil && job.CorrelationType != nil && financeCorrelationTypes[*job.CorrelationType] {
+		s.audit.LogFinance(ctx, auditlog.Entry{
+			Action: "queue.job.retried", Entity: *job.CorrelationType, EntityID: derefInt64(job.CorrelationID),
+			Metadata: map[string]interface{}{"jobID": id, "jobType": job.JobType},
+		})
+	}
 	return nil
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }
 
 func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {

@@ -30,6 +30,9 @@ const (
 	templateShortlinkApproved  = "shortlink_approved"
 	templateShortlinkRejected  = "shortlink_rejected"
 	templateFormSubmissionConf = "form_submission_confirmation"
+	templateDonationReceipt    = "donation_receipt"
+	templateDonationInvoice    = "donation_invoice"
+	templateOtpWithdrawal      = "otp_kantong_amal"
 )
 
 // AnswerPair is one label/value row shown in the form-submission confirmation email.
@@ -47,6 +50,18 @@ type Mailer interface {
 	// SendFormSubmissionConfirmation confirms a dynamicform submission to the
 	// respondent. Best-effort: callers log failures and never fail the submit.
 	SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error
+	// SendDonationReceipt mengirim konfirmasi donasi lunas (Kantong Amal) —
+	// amount/total/date sudah diformat pemanggil (Rupiah/tanggal Indonesia),
+	// bukan angka mentah, karena template menerima map[string]string.
+	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error
+	// SendDonationInvoice dikirim segera setelah donasi dibuat (sebelum
+	// dibayar) — email pertama dari dua email donasi (item 2
+	// revision-prompt-2.md); SendDonationReceipt di atas adalah email kedua.
+	SendDonationInvoice(toEmail, toName, campaignTitle, amount, qrURL, expiredDateStr string) error
+	// SendOtpEmail mengirim kode OTP verifikasi keamanan withdrawal Kantong
+	// Amal ke email yang dikonfigurasi di ms_setting (item 8
+	// revision-prompt-2.md) — menggantikan pengiriman via WhatsApp.
+	SendOtpEmail(toEmail, code, validityText string) error
 }
 
 type smtpMailer struct {
@@ -107,6 +122,38 @@ func (m *smtpMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle s
 		return err
 	}
 	return m.send(toEmail, "Konfirmasi Pengisian Formulir: "+formTitle+" — FSLDK Indonesia", body, "")
+}
+
+func (m *smtpMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error {
+	body, err := generateFromAsset(templateDonationReceipt, map[string]string{
+		"Name": toName, "CampaignTitle": campaignTitle, "Amount": amount, "Total": total,
+		"Date": dateStr, "PublicRef": publicRef, "URL": receiptURL, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Konfirmasi Donasi Diterima — FSLDK Indonesia", body, receiptURL)
+}
+
+func (m *smtpMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount, qrURL, expiredDateStr string) error {
+	body, err := generateFromAsset(templateDonationInvoice, map[string]string{
+		"Name": toName, "CampaignTitle": campaignTitle, "Amount": amount,
+		"QrURL": qrURL, "ExpiredDate": expiredDateStr, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Konfirmasi Donasi — FSLDK Indonesia", body, qrURL)
+}
+
+func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
+	body, err := generateFromAsset(templateOtpWithdrawal, map[string]string{
+		"Code": code, "ValidityText": validityText, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Kode OTP Penarikan Saldo Kantong Amal — FSLDK Indonesia", body, "")
 }
 
 func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
