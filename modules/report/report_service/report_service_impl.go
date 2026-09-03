@@ -425,12 +425,26 @@ func (s *ServiceImpl) GetReconciliation(ctx context.Context) (report_dto.Reconci
 		gatewayBalance = float64(walletRes.Amount)
 	}
 	discrepancy := gatewayBalance - expectedBalance
+	// settlementPending = bagian dari recentlyPaid yang KEMUNGKINAN masih
+	// benar-benar outstanding di gateway — dibatasi maksimum sebesar
+	// discrepancy aktual saat ini, bukan seluruh donasi yang baru PAID dalam
+	// jendela waktu. Tanpa pembatasan ini, badge "Settlement Pending" tetap
+	// menampilkan angka penuh meski discrepancy sudah 0 (settlement selesai
+	// duluan sebelum jendela waktu habis), padahal seharusnya otomatis
+	// hilang begitu uangnya benar-benar sudah sampai di wallet gateway.
+	var settlementPending float64
 	if gerr == nil {
 		// Toleransi tambahan untuk donasi yang baru PAID dan belum settle
 		// penuh di wallet gateway (§15.1 — atribusi "Settling..."), setara
 		// "Settlement Pending" di ldksyahid-app (balance-report.blade.php).
 		allowedGap := reconciliationDiscrepancyThreshold + recentlyPaid
 		hasAnomaly = math.Abs(discrepancy) > allowedGap
+		// Hanya relevan saat gateway MASIH kekurangan dari ekspektasi
+		// (discrepancy negatif) — kalau gateway sudah sama/lebih besar,
+		// tidak ada apa pun yang masih pending.
+		if discrepancy < 0 {
+			settlementPending = math.Min(recentlyPaid, -discrepancy)
+		}
 	}
 	if hasAnomaly {
 		log.Printf("[REPORT] reconciliation: ANOMALI terdeteksi, discrepancy=%.2f (ambang %.2f)", discrepancy, float64(reconciliationDiscrepancyThreshold))
@@ -442,7 +456,7 @@ func (s *ServiceImpl) GetReconciliation(ctx context.Context) (report_dto.Reconci
 		WithdrawalSuccessCount:     withdrawalCount, WithdrawalSuccessAmount: withdrawalAmount,
 		ExpectedBalance: expectedBalance, GatewayWalletBalance: gatewayBalance,
 		DiscrepancyAmount:       discrepancy,
-		SettlementPendingAmount: recentlyPaid, SettlementMinutes: settlementMinutes,
+		SettlementPendingAmount: settlementPending, SettlementMinutes: settlementMinutes,
 		HasAnomaly: hasAnomaly, GatewayError: gatewayErrMsg, CheckedDate: now,
 	}, nil
 }

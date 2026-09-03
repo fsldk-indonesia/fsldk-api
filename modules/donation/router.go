@@ -16,6 +16,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h donation_handler.Handler, mw *
 	pub.POST("/campaigns/:slug/donate", mw.OptionalAuth(), middlewares.RateLimit(30, 5), h.Create)
 	pub.GET("/campaigns/:slug/donations", h.PublicRecentDonations)
 	pub.GET("/donations/:publicRef", h.Detail)
+	pub.GET("/donations/:publicRef/receipt.pdf", h.DownloadReceipt)
 	pub.GET("/donations/:publicRef/status", middlewares.RateLimit(60, 10), h.Status)
 }
 

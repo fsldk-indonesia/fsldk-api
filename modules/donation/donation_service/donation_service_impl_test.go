@@ -37,7 +37,7 @@ type receiptCall struct {
 	ToEmail, CampaignTitle, PublicRef string
 }
 
-func (f *fakeMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error {
+func (f *fakeMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error {
 	f.receiptCalls = append(f.receiptCalls, receiptCall{ToEmail: toEmail, CampaignTitle: campaignTitle, PublicRef: publicRef})
 	return nil
 }

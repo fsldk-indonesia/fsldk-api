@@ -57,7 +57,7 @@ type FinanceAuditor interface {
 // Mailer adalah irisan sempit mailer.Mailer yang dibutuhkan modul ini — pola
 // sama JobEnqueuer/FinanceAuditor.
 type Mailer interface {
-	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error
+	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error
 	// SendDonationInvoice dikirim SEGERA setelah donasi dibuat (sebelum
 	// dibayar) — konfirmasi pertama dari dua email donasi (item 2
 	// revision-prompt-2.md), berisi tagihan QRIS. SendDonationReceipt
@@ -391,7 +391,21 @@ func (s *ServiceImpl) notifyDonationPaid(ctx context.Context, d donation_model.D
 	}
 	if d.DonorEmail != "" {
 		receiptURL := fmt.Sprintf("%s/kantong-amal/donasi/%s/bukti", strings.TrimRight(s.cfg.FrontendURL, "/"), d.PublicRef)
-		if err := s.mail.SendDonationReceipt(d.DonorEmail, d.DonorName, d.CampaignTitle, amountStr, formatRupiah(d.TotalAmount), d.CreatedDate.Format("02 Jan 2006 15:04"), d.PublicRef, receiptURL); err != nil {
+		dateStr := d.CreatedDate.Format("02 Jan 2006 15:04")
+		// PDF gagal dibuat bukan alasan menggagalkan email — dikirim tanpa
+		// lampiran, tetap lebih baik daripada donor tidak dapat konfirmasi
+		// sama sekali (lihat mailer.SendDonationReceipt).
+		pdfBytes, pdfFilename := []byte(nil), ""
+		if generated, err := buildReceiptPDF(receiptPDFData{
+			PublicRef: d.PublicRef, CampaignTitle: d.CampaignTitle,
+			DonorName: d.DonorName, IsAnonymous: d.IsAnonymous, Amount: d.Amount,
+			Message: d.Message.String, DateStr: dateStr,
+		}); err != nil {
+			log.Printf("[DONATION] gagal buat PDF bukti donasi %d: %v", d.DonationID, err)
+		} else {
+			pdfBytes, pdfFilename = generated, "Bukti-Donasi-"+d.PublicRef+".pdf"
+		}
+		if err := s.mail.SendDonationReceipt(d.DonorEmail, d.DonorName, d.CampaignTitle, amountStr, formatRupiah(d.TotalAmount), dateStr, d.PublicRef, receiptURL, pdfBytes, pdfFilename); err != nil {
 			log.Printf("[DONATION] gagal kirim email konfirmasi donasi %d: %v", d.DonationID, err)
 		}
 	}
@@ -456,6 +470,25 @@ func (s *ServiceImpl) GetByPublicRef(ctx context.Context, publicRef string) (don
 		return donation_dto.Response{}, apperror.NotFound("Donasi tidak ditemukan")
 	}
 	return toResponse(d), nil
+}
+
+func (s *ServiceImpl) GenerateReceiptPDF(ctx context.Context, publicRef string) ([]byte, string, error) {
+	d, err := s.repo.FindByPublicRef(ctx, publicRef)
+	if err != nil {
+		return nil, "", apperror.NotFound("Donasi tidak ditemukan")
+	}
+	if d.PaymentStatus != constants.DonationStatusPaid {
+		return nil, "", apperror.NotFound("Bukti donasi hanya tersedia setelah pembayaran berhasil dikonfirmasi")
+	}
+	pdfBytes, err := buildReceiptPDF(receiptPDFData{
+		PublicRef: d.PublicRef, CampaignTitle: d.CampaignTitle,
+		DonorName: d.DonorName, IsAnonymous: d.IsAnonymous, Amount: d.Amount,
+		Message: d.Message.String, DateStr: d.CreatedDate.Format("02 Jan 2006 15:04"),
+	})
+	if err != nil {
+		return nil, "", apperror.Internal("")
+	}
+	return pdfBytes, "Bukti-Donasi-" + d.PublicRef + ".pdf", nil
 }
 
 func (s *ServiceImpl) Status(ctx context.Context, publicRef string) (donation_dto.StatusResponse, error) {
