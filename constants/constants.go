@@ -4,23 +4,23 @@ package constants
 
 // Internal response codes (sent on the "code" field of the response envelope).
 const (
-	CodeSuccess                 = "00"
-	CodeValidationError         = "40"
-	CodeUnauthorized            = "41"
-	CodeForbidden               = "43"
-	CodeNotFound                = "44"
-	CodeConflict                = "49"
-	CodeUnprocessable           = "42"
-	CodeTooManyRequest          = "45"
-	CodeUnknownError            = "99"
-	CodeEmailNotVerified        = "43-EMAIL"
-	CodeDuplicateSubmission     = "49-DUP"
-	CodeInvalidStatusTransition = "42-STATUS"
-	CodeInsufficientBalance     = "42-BAL"
-	CodeDuplicateRequest        = "49-DUP-REQ"
-	CodePaymentFailed           = "42-PAYFAIL"
-	CodeProviderError           = "50-PROVIDER"
-	CodeWithdrawalFailed        = "42-WDFAIL"
+	CodeSuccess                      = "00"
+	CodeValidationError              = "40"
+	CodeUnauthorized                 = "41"
+	CodeForbidden                    = "43"
+	CodeNotFound                     = "44"
+	CodeConflict                     = "49"
+	CodeUnprocessable                = "42"
+	CodeTooManyRequest               = "45"
+	CodeUnknownError                 = "99"
+	CodeEmailNotVerified             = "43-EMAIL"
+	CodeDuplicateSubmission          = "49-DUP"
+	CodeInvalidStatusTransition      = "42-STATUS"
+	CodeInsufficientBalance          = "42-BAL"
+	CodeDuplicateRequest             = "49-DUP-REQ"
+	CodePaymentFailed                = "42-PAYFAIL"
+	CodeProviderError                = "50-PROVIDER"
+	CodeWithdrawalFailed             = "42-WDFAIL"
 	CodeSecurityVerificationRequired = "42-SECREQ"
 )
 
@@ -165,6 +165,17 @@ const (
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
+
+	PermGoodsView    = "goods.view"
+	PermGoodsCreate  = "goods.create"
+	PermGoodsUpdate  = "goods.update"
+	PermGoodsDelete  = "goods.delete"
+	PermGoodsPublish = "goods.publish"
+
+	PermGoodsCategoryView   = "goodscategory.view"
+	PermGoodsCategoryCreate = "goodscategory.create"
+	PermGoodsCategoryUpdate = "goodscategory.update"
+	PermGoodsCategoryDelete = "goodscategory.delete"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The
@@ -316,6 +327,17 @@ const (
 	TableQueueJob         = "tr_queue_job"
 	TableQueueJobLog      = "tr_queue_job_log"
 	TableFinanceAuditLog  = "tr_finance_audit_log"
+
+	TableGoodsCategory = "lk_goods_category"
+	TableGoods         = "ms_goods"
+	TableGoodsImage    = "ms_goods_image"
+)
+
+// Status ketersediaan produk FSLDK Goods (ms_goods.availabilityStatus).
+const (
+	GoodsAvailable  = "available"
+	GoodsOutOfStock = "out_of_stock"
+	GoodsComingSoon = "coming_soon"
 )
 
 // Tipe entry tr_wallet_ledger (Kantong Amal).

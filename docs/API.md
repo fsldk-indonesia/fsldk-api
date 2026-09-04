@@ -269,6 +269,54 @@ Repositori publik template Excel (`.xlsx`) format laporan keuangan, dikelompokka
 
 ---
 
+## 6b. FSLDK Goods (`/goods`, `/goods-categories`)
+
+Marketplace/product catalog — **bukan e-commerce**: tidak ada cart/checkout/payment/order. Tombol "Beli Sekarang" di frontend murni redirect ke `purchaseUrl` yang dikonfigurasi per produk (biasanya link WhatsApp). Gambar utama & gallery diunggah lewat `POST /uploads/image` bersama (§13), lalu URL-nya dikirim sebagai bagian body create/update.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/goods` | Daftar produk `isPublished=true` (query: `page`, `limit`, `search` nama/SKU, `category` slug, `categoryID`, `availability` `available`\|`out_of_stock`\|`coming_soon`, `featured` `1`/`true`, `sort` `newest`\|`name`\|`price_asc`\|`price_desc`\|`featured`) |
+| GET | `/public/goods-categories` | Kategori `isActive=true`, urut `sortOrder` |
+| GET | `/public/goods/:slug` | Detail produk published (`{ ...produk, images: string[] }`) — 404 bila unpublished/tidak ada |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/goods` | `goods.view` | Daftar seluruh produk (query sama seperti publik minus `featured`/`sort` kurasi; `sort` bebas whitelist `goodsName`/`price`/`sortOrder`/`createdDate`) |
+| GET | `/goods/:id` | `goods.view` | Detail untuk pengelolaan (termasuk `images`) |
+| POST | `/goods` | `goods.create` | Buat produk baru (selalu draft & non-unggulan) |
+| PUT | `/goods/:id` | `goods.update` | Perbarui — gambar gallery lama yang sudah tidak dipakai otomatis diganti (replace-all), gambar utama lama dihapus dari disk (best-effort) bila berubah |
+| PATCH | `/goods/:id/publish` | `goods.publish` | Body `{ "isPublished": bool }` |
+| PATCH | `/goods/:id/featured` | `goods.update` | Body `{ "isFeatured": bool }` |
+| DELETE | `/goods/:id` | `goods.delete` | Hapus baris DB, lalu gambar utama + seluruh gallery dari disk (best-effort) |
+| GET | `/goods-categories` | `goodscategory.view` | Seluruh kategori (aktif & nonaktif) |
+| POST | `/goods-categories` | `goodscategory.create` | Buat kategori baru |
+| PUT | `/goods-categories/:id` | `goodscategory.update` | Perbarui (nama/status aktif/urutan) |
+| DELETE | `/goods-categories/:id` | `goodscategory.delete` | Ditolak `409` bila kategori masih dipakai produk manapun |
+
+**`POST /goods`** (`PUT` memakai bentuk sama)
+```json
+{
+  "goodsName": "Kaos FSLDK Edisi Munas",
+  "skuCode": "GDS-KAOS-01",
+  "goodsCategoryID": 1,
+  "shortDescription": "Kaos katun combed 30s, unisex.",
+  "fullDescription": "<p>Deskripsi lengkap…</p>",
+  "price": 120000,
+  "mainImageUrl": "http://localhost:8080/uploads/xxx.jpg",
+  "imageUrls": ["http://localhost:8080/uploads/yyy.jpg"],
+  "availabilityStatus": "available",
+  "purchaseUrl": "https://wa.me/6281234567890",
+  "purchaseButtonLabel": "Beli Sekarang"
+}
+```
+`purchaseUrl` hanya menerima scheme `http`/`https` (ditolak `400` untuk `javascript:`/`data:`/dsb.). `fullDescription` disanitasi HTML (`bluemonday.UGCPolicy()`) di service layer sebelum disimpan — tidak ada mekanisme sanitasi rich-text lain di project ini, jadi Goods menerapkannya sendiri. `imageUrls` maksimal 10 URL.
+
+---
+
 ## 7. Komentar (`/comments`)
 
 Dipakai bersama oleh Artikel, Berita, dan Event — `contentType` (`article`/`news`/`event`) + `contentID` menunjuk ke konten manapun tanpa foreign key (lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention)). Balasan dibatasi **1 level** (tidak bisa membalas balasan).
@@ -584,7 +632,8 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `news.view/create/update/delete/publish` | Berita | `article.view/create/update/delete/publish` | Artikel |
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
 | `shortlink.view/create/update/delete/approve` | Shortlink (+ Permintaan Shortlink) | `event.view/create/update/delete` | Event |
-| `financeformat.view/create/update/delete/publish` | Format Keuangan | | |
+| `financeformat.view/create/update/delete/publish` | Format Keuangan | `goods.view/create/update/delete/publish` | FSLDK Goods (Produk) |
+| `goodscategory.view/create/update/delete` | FSLDK Goods (Kategori) | | |
 | `comment.view/update/delete` | Komentar | `setting.view/update` | App Settings |
 | `jobqueue.view/retry/delete` | Job Queue | `organization.create/profile.manage/deactivate` | Organisasi |
 | `organization.ldk.list/ldk.list.national/puskomda.list` | Organisasi (daftar) | `submission_form.view/manage` | Form Builder |

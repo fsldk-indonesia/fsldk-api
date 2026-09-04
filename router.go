@@ -63,6 +63,11 @@ import (
 	"fsldk-api/modules/catalogbook/catalogbook_repository"
 	"fsldk-api/modules/catalogbook/catalogbook_service"
 
+	"fsldk-api/modules/goods"
+	"fsldk-api/modules/goods/goods_handler"
+	"fsldk-api/modules/goods/goods_repository"
+	"fsldk-api/modules/goods/goods_service"
+
 	"fsldk-api/modules/financeformat"
 	"fsldk-api/modules/financeformat/financeformat_handler"
 	"fsldk-api/modules/financeformat/financeformat_repository"
@@ -175,6 +180,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	catalogbookRepo := catalogbook_repository.NewRepository(db)
+	goodsRepo := goods_repository.NewRepository(db)
 	financeformatRepo := financeformat_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
 	scheduleRepo := schedule_repository.NewRepository(db)
@@ -251,6 +257,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsSvc := news_service.NewService(newsRepo, commentSvc)
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
 	catalogbookSvc := catalogbook_service.NewService(catalogbookRepo, uploader, commentSvc)
+	goodsSvc := goods_service.NewService(goodsRepo, uploader)
 	eventSvc := event_service.NewService(eventRepo, commentSvc)
 	scheduleSvc := schedule_service.NewService(scheduleRepo)
 	// uploader satisfies FileDeleter; settingSvc satisfies SettingReader for
@@ -268,6 +275,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsH := news_handler.NewHandler(newsSvc)
 	articleH := article_handler.NewHandler(articleSvc)
 	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
+	goodsH := goods_handler.NewHandler(goodsSvc)
 	financeformatH := financeformat_handler.NewHandler(financeformatSvc)
 	eventH := event_handler.NewHandler(eventSvc)
 	scheduleH := schedule_handler.NewHandler(scheduleSvc)
@@ -333,6 +341,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	article.RegisterCMSRoutes(api, articleH, mw)
 	catalogbook.RegisterPublicRoutes(pub, catalogbookH)
 	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
+	goods.RegisterPublicRoutes(pub, goodsH)
+	goods.RegisterCMSRoutes(api, goodsH, mw)
 	financeformat.RegisterPublicRoutes(pub, financeformatH)
 	financeformat.RegisterCMSRoutes(api, financeformatH, mw)
 	event.RegisterPublicRoutes(pub, eventH)
