@@ -60,12 +60,12 @@ CREATE TABLE IF NOT EXISTS ms_goods_image (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 INSERT IGNORE INTO lk_permission (permissionCode, permissionName, moduleName, menuLabel, menuIcon, menuRoute, sortOrder) VALUES
-('goods.view',            'Lihat Produk FSLDK Goods',  'goods',         'Produk',    'shopping-bag', '/cms/goods/products',    26),
+('goods.view',            'Lihat Produk FSLDK Goods',  'goods',         'FSLDK Goods',    'shopping-bag', '/cms/goods/products',    26),
 ('goods.create',          'Tambah Produk',              'goods',         NULL, NULL, NULL, NULL),
 ('goods.update',          'Ubah Produk',                'goods',         NULL, NULL, NULL, NULL),
 ('goods.delete',          'Hapus Produk',               'goods',         NULL, NULL, NULL, NULL),
 ('goods.publish',         'Publish/Unpublish Produk',   'goods',         NULL, NULL, NULL, NULL),
-('goodscategory.view',    'Lihat Kategori Produk',      'goodscategory', 'Kategori',  'tags',         '/cms/goods/categories', 27),
+('goodscategory.view',    'Lihat Kategori Produk',      'goodscategory', 'Kategori Goods', 'tags',         '/cms/goods/categories', 27),
 ('goodscategory.create',  'Tambah Kategori Produk',     'goodscategory', NULL, NULL, NULL, NULL),
 ('goodscategory.update',  'Ubah Kategori Produk',       'goodscategory', NULL, NULL, NULL, NULL),
 ('goodscategory.delete',  'Hapus Kategori Produk',      'goodscategory', NULL, NULL, NULL, NULL);
