@@ -190,6 +190,12 @@ func (r *RepositoryImpl) CountShortlinks(ctx context.Context) (int, error) {
 	return int(count), err
 }
 
+func (r *RepositoryImpl) CountUnreadContactMessages(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("tr_contact_message").Where("isRead = 0").Count(&count).Error
+	return int(count), err
+}
+
 func (r *RepositoryImpl) PerPuskomdaBreakdown(ctx context.Context) ([]dashboard_dto.PuskomdaBreakdown, error) {
 	var rows []dashboard_dto.PuskomdaBreakdown
 	err := r.db.WithContext(ctx).Table("ms_organization p").

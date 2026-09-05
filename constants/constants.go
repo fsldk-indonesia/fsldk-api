@@ -176,6 +176,13 @@ const (
 	PermGoodsCategoryCreate = "goodscategory.create"
 	PermGoodsCategoryUpdate = "goodscategory.update"
 	PermGoodsCategoryDelete = "goodscategory.delete"
+
+	PermContactView   = "contact.view"
+	PermContactDelete = "contact.delete"
+
+	PermSubscriptionView   = "subscription.view"
+	PermSubscriptionCreate = "subscription.create"
+	PermSubscriptionDelete = "subscription.delete"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The
@@ -331,6 +338,8 @@ const (
 	TableGoodsCategory = "lk_goods_category"
 	TableGoods         = "ms_goods"
 	TableGoodsImage    = "ms_goods_image"
+
+	TableSubscriber = "tr_subscriber"
 )
 
 // Status ketersediaan produk FSLDK Goods (ms_goods.availabilityStatus).

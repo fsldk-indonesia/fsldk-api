@@ -117,6 +117,11 @@ import (
 	uploadpkg "fsldk-api/pkg/upload"
 
 	"fsldk-api/modules/zakat"
+	"fsldk-api/modules/structure"
+	"fsldk-api/modules/gallery"
+	"fsldk-api/modules/contact"
+	"fsldk-api/modules/subscription"
+	"fsldk-api/modules/statistic"
 	"fsldk-api/modules/zakat/zakat_handler"
 	"fsldk-api/modules/zakat/zakat_service"
 
@@ -381,6 +386,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
 
 	zakat.RegisterPublicRoutes(pub, zakatH)
+
+	structure.RegisterRoutes(api, pub, db, mw)
+	gallery.RegisterRoutes(api, pub, db, uploader, mw)
+	contact.RegisterRoutes(api, pub, db, mw)
+	subscription.RegisterRoutes(api, pub, db, mail, cfg.FrontendURL, mw)
+	statistic.RegisterPublicRoutes(pub, db)
 
 	return engine
 }
