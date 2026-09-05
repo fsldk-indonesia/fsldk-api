@@ -16,6 +16,10 @@ type Service interface {
 	// donasi tamu (guest, tidak login).
 	Create(ctx context.Context, slug string, donorUserID *int64, req donation_dto.CreateRequest) (donation_dto.Response, error)
 	GetByPublicRef(ctx context.Context, publicRef string) (donation_dto.Response, error)
+	// GenerateReceiptPDF membuat PDF "Bukti Donasi" untuk donasi PAID (unduh
+	// langsung dari halaman bukti donasi) — menolak (apperror.NotFound) bila
+	// donasi belum PAID, sama seperti guard di halaman web-nya.
+	GenerateReceiptPDF(ctx context.Context, publicRef string) (data []byte, filename string, err error)
 	Status(ctx context.Context, publicRef string) (donation_dto.StatusResponse, error)
 	// PublicRecentDonations mengembalikan donasi PAID terbaru untuk campaign
 	// PUBLISHED (identifikasi via slug) — dipakai daftar "donatur terbaru" di

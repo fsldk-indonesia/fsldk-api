@@ -27,6 +27,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h withdrawal_handler.Handler, mw *mi
 	g.Use(mw.Auth(), mw.RequireVerified())
 	{
 		g.GET("", mw.RequirePermission(constants.PermWithdrawalApprove), h.CMSList)
+		g.GET("/:id", mw.RequirePermission(constants.PermWithdrawalApprove), h.Detail)
 		g.POST("/:id/cancel", mw.RequirePermission(constants.PermWithdrawalRequest), h.Cancel)
 		// Rate limit 5/5menit (§12.9) — reuse pola ldksyahid-app untuk percobaan
 		// security verification. Penjamin sesungguhnya tetap attemptCount di

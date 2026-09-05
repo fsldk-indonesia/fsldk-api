@@ -57,7 +57,7 @@ type FinanceAuditor interface {
 // Mailer adalah irisan sempit mailer.Mailer yang dibutuhkan modul ini — pola
 // sama JobEnqueuer/FinanceAuditor.
 type Mailer interface {
-	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error
+	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error
 	// SendDonationInvoice dikirim SEGERA setelah donasi dibuat (sebelum
 	// dibayar) — konfirmasi pertama dari dua email donasi (item 2
 	// revision-prompt-2.md), berisi tagihan QRIS. SendDonationReceipt
@@ -111,8 +111,9 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 	adminFee := bisatopup.CalculateAdminFee(grossTotal, s.cfg.BisatopupQrisMdrPercentCrowdfunding)
 	expiredAt := now.Add(time.Duration(s.cfg.BisatopupQrisExpiryHoursCrowdfunding) * time.Hour)
 
+	publicRef := idgen.NewUUIDv4()
 	id, err := s.repo.Create(ctx, donation_model.CreateParams{
-		PublicRef:       idgen.NewUUIDv4(),
+		PublicRef:       publicRef,
 		CampaignID:      camp.CampaignID,
 		DonorUserID:     nullInt64FromPtr(donorUserID),
 		DonorName:       req.DonorName,
@@ -156,11 +157,17 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		CustomerName:    req.DonorName,
 		CustomerEmail:   req.DonorEmail,
 		CustomerNumber:  req.DonorPhone,
+		ItemID:          camp.CampaignID,
+		ItemName:        truncateNoEllipsis(camp.Title, 49),
 	})
 	if gerr != nil {
 		// Tidak ada retry otomatis di sini (lihat pkg/bisatopup) — retry
 		// create-transaction berisiko membuat transaksi duplikat di sisi
 		// gateway. User diminta mengulang secara eksplisit (donasi baru).
+		// Alasan penolakan asli dari gateway di-log di sini (bukan
+		// dikembalikan ke client) supaya bisa didiagnosis dari server tanpa
+		// membocorkan detail internal gateway ke publik.
+		log.Printf("[DONATION] gateway create transaction gagal, transactionID=%s nominal=%d: %v", transactionID, grossTotal, gerr)
 		_ = s.repo.MarkGatewayFailed(ctx, id)
 		if errors.Is(gerr, bisatopup.ErrGatewayRejected) {
 			return donation_dto.Response{}, apperror.PaymentFailed("")
@@ -177,8 +184,16 @@ func (s *ServiceImpl) Create(ctx context.Context, slug string, donorUserID *int6
 		return donation_dto.Response{}, apperror.Internal("")
 	}
 
+	// qris.PaymentLinks SELALU kosong untuk transaksi QRIS (field itu dipakai
+	// gateway untuk metode pembayaran lain yang redirect ke URL, bukan QRIS) —
+	// mengirimnya sebagai parameter template WhatsApp membuat WhatsApp Cloud
+	// API menolak kirim dengan "(#100) Invalid parameter" (body param kosong
+	// tidak diizinkan). Dipakai link halaman status donasi kita sendiri
+	// (selalu terisi, dan memang berisi QR code-nya), sama seperti receiptURL
+	// di notifyDonationPaid.
+	statusURL := fmt.Sprintf("%s/kantong-amal/donasi/%s/status", strings.TrimRight(s.cfg.FrontendURL, "/"), publicRef)
 	s.notify(ctx, req.DonorPhone, "invoice_donasi_kantong_amal",
-		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, qris.PaymentLinks},
+		[]string{req.DonorName, formatRupiah(float64(amount)), camp.Title, statusURL},
 		id)
 	// Email pertama dari dua email donasi (item 2 revision-prompt-2.md) —
 	// konfirmasi/tagihan segera setelah donasi dibuat, sebelum dibayar.
@@ -376,7 +391,21 @@ func (s *ServiceImpl) notifyDonationPaid(ctx context.Context, d donation_model.D
 	}
 	if d.DonorEmail != "" {
 		receiptURL := fmt.Sprintf("%s/kantong-amal/donasi/%s/bukti", strings.TrimRight(s.cfg.FrontendURL, "/"), d.PublicRef)
-		if err := s.mail.SendDonationReceipt(d.DonorEmail, d.DonorName, d.CampaignTitle, amountStr, formatRupiah(d.TotalAmount), d.CreatedDate.Format("02 Jan 2006 15:04"), d.PublicRef, receiptURL); err != nil {
+		dateStr := d.CreatedDate.Format("02 Jan 2006 15:04")
+		// PDF gagal dibuat bukan alasan menggagalkan email — dikirim tanpa
+		// lampiran, tetap lebih baik daripada donor tidak dapat konfirmasi
+		// sama sekali (lihat mailer.SendDonationReceipt).
+		pdfBytes, pdfFilename := []byte(nil), ""
+		if generated, err := buildReceiptPDF(receiptPDFData{
+			PublicRef: d.PublicRef, CampaignTitle: d.CampaignTitle,
+			DonorName: d.DonorName, IsAnonymous: d.IsAnonymous, Amount: d.Amount,
+			Message: d.Message.String, DateStr: dateStr,
+		}); err != nil {
+			log.Printf("[DONATION] gagal buat PDF bukti donasi %d: %v", d.DonationID, err)
+		} else {
+			pdfBytes, pdfFilename = generated, "Bukti-Donasi-"+d.PublicRef+".pdf"
+		}
+		if err := s.mail.SendDonationReceipt(d.DonorEmail, d.DonorName, d.CampaignTitle, amountStr, formatRupiah(d.TotalAmount), dateStr, d.PublicRef, receiptURL, pdfBytes, pdfFilename); err != nil {
 			log.Printf("[DONATION] gagal kirim email konfirmasi donasi %d: %v", d.DonationID, err)
 		}
 	}
@@ -441,6 +470,25 @@ func (s *ServiceImpl) GetByPublicRef(ctx context.Context, publicRef string) (don
 		return donation_dto.Response{}, apperror.NotFound("Donasi tidak ditemukan")
 	}
 	return toResponse(d), nil
+}
+
+func (s *ServiceImpl) GenerateReceiptPDF(ctx context.Context, publicRef string) ([]byte, string, error) {
+	d, err := s.repo.FindByPublicRef(ctx, publicRef)
+	if err != nil {
+		return nil, "", apperror.NotFound("Donasi tidak ditemukan")
+	}
+	if d.PaymentStatus != constants.DonationStatusPaid {
+		return nil, "", apperror.NotFound("Bukti donasi hanya tersedia setelah pembayaran berhasil dikonfirmasi")
+	}
+	pdfBytes, err := buildReceiptPDF(receiptPDFData{
+		PublicRef: d.PublicRef, CampaignTitle: d.CampaignTitle,
+		DonorName: d.DonorName, IsAnonymous: d.IsAnonymous, Amount: d.Amount,
+		Message: d.Message.String, DateStr: d.CreatedDate.Format("02 Jan 2006 15:04"),
+	})
+	if err != nil {
+		return nil, "", apperror.Internal("")
+	}
+	return pdfBytes, "Bukti-Donasi-" + d.PublicRef + ".pdf", nil
 }
 
 func (s *ServiceImpl) Status(ctx context.Context, publicRef string) (donation_dto.StatusResponse, error) {

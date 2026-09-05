@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -59,7 +60,18 @@ type client struct {
 
 // NewClient membuat Gateway berbasis HTTP ke BisaTopup/Bisabiller.
 func NewClient(cfg Config) Gateway {
-	return &client{cfg: cfg, http: &http.Client{Timeout: httpTimeout}}
+	// Dipaksa IPv4 (padanan CURLOPT_IPRESOLVE_V4 di ldksyahid-app/BisaTopup.php):
+	// api.bisabiller.com punya AAAA record, dan tanpa dipaksa Go lebih
+	// memilih IPv6 (Happy Eyeballs) — sumber request jadi alamat IPv6 VPS
+	// yang tidak terdaftar di whitelist IP Bisabiller (hanya IPv4 mitra yang
+	// didaftarkan di sana), sehingga login ditolak "Ip not registered".
+	dialer := &net.Dialer{Timeout: httpTimeout}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp4", addr)
+		},
+	}
+	return &client{cfg: cfg, http: &http.Client{Timeout: httpTimeout, Transport: transport}}
 }
 
 func (c *client) baseURL() string {
@@ -214,6 +226,13 @@ func (c *client) CreateQRISTransaction(ctx context.Context, p CreateQRISTransact
 		"customer_number":   p.CustomerNumber,
 		"customer_name":     p.CustomerName,
 		"customer_email":    p.CustomerEmail,
+		"item_details": []map[string]interface{}{{
+			"item_id":          p.ItemID,
+			"item_name":        p.ItemName,
+			"item_price":       p.Nominal,
+			"item_total_price": p.Nominal,
+			"item_quantity":    1,
+		}},
 	}
 	var out transactionResponse
 	if err := c.authedJSON(ctx, http.MethodPost, "/payment/transaction", payload, &out); err != nil {

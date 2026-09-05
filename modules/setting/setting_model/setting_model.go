@@ -30,4 +30,12 @@ const (
 	// withdrawal Kantong Amal (item 8 revision-prompt-2.md), sengaja isHide=true.
 	GroupKantongAmal      = "kantong_amal"
 	KeyWithdrawalOtpEmail = "withdrawal_otp_email"
+
+	// GroupNotifikasi/KeyWhatsAppEnabled — saklar global kirim/tidaknya
+	// SEMUA notifikasi WhatsApp (donasi, withdrawal OTP, balasan shortlink
+	// request, dst — lihat jobqueue_service.executeWhatsAppTemplate, satu
+	// titik gate untuk seluruh pengiriman). isHide=false (sengaja tampil di
+	// App Settings CMS, beda dari KeyWithdrawalOtpEmail).
+	GroupNotifikasi    = "notifikasi"
+	KeyWhatsAppEnabled = "whatsapp_enabled"
 )
