@@ -33,6 +33,7 @@ const (
 	templateDonationReceipt   = "donation_receipt"
 	templateDonationInvoice   = "donation_invoice"
 	templateOtpWithdrawal     = "otp_kantong_amal"
+	templateContactReply      = "contact_reply"
 )
 
 // Mailer adalah kontrak layanan email.
@@ -57,6 +58,8 @@ type Mailer interface {
 	// Amal ke email yang dikonfigurasi di ms_setting (item 8
 	// revision-prompt-2.md) — menggantikan pengiriman via WhatsApp.
 	SendOtpEmail(toEmail, code, validityText string) error
+	// SendContactReplyEmail mengirimkan balasan resmi atas pesan kontak masuk.
+	SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error
 }
 
 type smtpMailer struct {
@@ -130,6 +133,20 @@ func (m *smtpMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount,
 	return m.send(toEmail, "Konfirmasi Donasi — FSLDK Indonesia", body, qrURL, nil, "")
 }
 
+func (m *smtpMailer) SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error {
+	body, err := generateFromAsset(templateContactReply, map[string]string{
+		"Name":            toName,
+		"OriginalSubject": originalSubject,
+		"OriginalMessage": originalMessage,
+		"ReplyBody":       replyBody,
+		"LogoCID":         logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, subject, body, "", nil, "")
+}
+
 func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
 	body, err := generateFromAsset(templateOtpWithdrawal, map[string]string{
 		"Code": code, "ValidityText": validityText, "LogoCID": logoCID,
@@ -142,7 +159,7 @@ func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
 
 func (m *smtpMailer) send(to, subject, htmlBody, link string, attachData []byte, attachFilename string) error {
 	// Mode pengembangan: SMTP belum dikonfigurasi → cetak tautan ke log.
-	if m.cfg.SMTPHost == "" {
+	if m.cfg.SMTPHost == "" || m.cfg.SMTPUsername == "" {
 		attachNote := ""
 		if len(attachData) > 0 {
 			attachNote = fmt.Sprintf(" | Lampiran: %s (%d byte)", attachFilename, len(attachData))

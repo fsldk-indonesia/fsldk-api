@@ -387,7 +387,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 
 	structure.RegisterRoutes(api, pub, db, mw)
 	gallery.RegisterRoutes(api, pub, db, uploader, mw)
-	contact.RegisterRoutes(api, pub, db, mw)
+	contact.RegisterRoutes(api, pub, db, mail, mw)
 
 	return engine
 }
