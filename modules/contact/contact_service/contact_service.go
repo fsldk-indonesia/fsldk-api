@@ -1,4 +1,4 @@
-﻿// Package contact_service provides business logic for contact inquiries.
+// Package contact_service provides business logic for contact inquiries.
 package contact_service
 
 import (
@@ -15,4 +15,5 @@ type Service interface {
 	MarkRead(ctx context.Context, id int64) error
 	Delete(ctx context.Context, id int64) error
 	CountUnread(ctx context.Context) (int, error)
+	Reply(ctx context.Context, id int64, req contact_dto.ReplyContactRequest) error
 }

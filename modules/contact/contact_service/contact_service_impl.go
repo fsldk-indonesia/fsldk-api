@@ -1,4 +1,4 @@
-﻿package contact_service
+package contact_service
 
 import (
 	"context"
@@ -9,15 +9,17 @@ import (
 	"fsldk-api/modules/contact/contact_dto"
 	"fsldk-api/modules/contact/contact_model"
 	"fsldk-api/modules/contact/contact_repository"
+	"fsldk-api/pkg/mailer"
 )
 
 type serviceImpl struct {
 	repo contact_repository.Repository
+	mail mailer.Mailer
 }
 
 // NewService creates a new instance of contact Service.
-func NewService(repo contact_repository.Repository) Service {
-	return &serviceImpl{repo: repo}
+func NewService(repo contact_repository.Repository, mail mailer.Mailer) Service {
+	return &serviceImpl{repo: repo, mail: mail}
 }
 
 func (s *serviceImpl) Send(ctx context.Context, req contact_dto.SendContactRequest, ip string) error {
@@ -125,3 +127,32 @@ func (s *serviceImpl) Delete(ctx context.Context, id int64) error {
 func (s *serviceImpl) CountUnread(ctx context.Context) (int, error) {
 	return s.repo.CountUnread(ctx)
 }
+
+func (s *serviceImpl) Reply(ctx context.Context, id int64, req contact_dto.ReplyContactRequest) error {
+	msg, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, contact_repository.ErrNotFound) {
+			return apperror.NotFound("Pesan kontak tidak ditemukan")
+		}
+		return err
+	}
+
+	subject := strings.TrimSpace(req.Subject)
+	if subject == "" {
+		subject = "Re: " + msg.Subject
+	}
+	body := strings.TrimSpace(req.Message)
+
+	if s.mail != nil {
+		if err := s.mail.SendContactReplyEmail(msg.Email, msg.SenderName, subject, body, msg.Subject, msg.Message); err != nil {
+			return err
+		}
+	}
+
+	if !msg.IsRead {
+		_ = s.repo.MarkAsRead(ctx, id)
+	}
+
+	return nil
+}
+

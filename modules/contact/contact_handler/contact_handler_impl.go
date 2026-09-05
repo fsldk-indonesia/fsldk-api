@@ -103,3 +103,30 @@ func (h *handlerImpl) Delete(c *gin.Context) {
 
 	httphelper.Success(c, "Pesan berhasil dihapus", nil)
 }
+
+func (h *handlerImpl) Reply(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httphelper.Error(c, apperror.BadRequest("ID tidak valid"))
+		return
+	}
+
+	var req contact_dto.ReplyContactRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	if err := h.svc.Reply(c.Request.Context(), id, req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	httphelper.Success(c, "Balasan berhasil dikirim ke pengirim pesan", nil)
+}
+

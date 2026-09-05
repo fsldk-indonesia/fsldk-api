@@ -84,7 +84,7 @@ func (m *mockRepository) CountUnread(ctx context.Context) (int, error) {
 
 func TestContactService_Send(t *testing.T) {
 	repo := newMockRepository()
-	svc := contact_service.NewService(repo)
+	svc := contact_service.NewService(repo, nil)
 
 	req := contact_dto.SendContactRequest{
 		SenderName: "Fulan",
@@ -111,7 +111,7 @@ func TestContactService_Send(t *testing.T) {
 
 func TestContactService_GetByID_AutoMarkRead(t *testing.T) {
 	repo := newMockRepository()
-	svc := contact_service.NewService(repo)
+	svc := contact_service.NewService(repo, nil)
 
 	req := contact_dto.SendContactRequest{
 		SenderName: "Ahmad",
@@ -137,7 +137,7 @@ func TestContactService_GetByID_AutoMarkRead(t *testing.T) {
 
 func TestContactService_Delete(t *testing.T) {
 	repo := newMockRepository()
-	svc := contact_service.NewService(repo)
+	svc := contact_service.NewService(repo, nil)
 
 	req := contact_dto.SendContactRequest{
 		SenderName: "Budi",
@@ -157,3 +157,31 @@ func TestContactService_Delete(t *testing.T) {
 		t.Fatalf("expected error finding deleted message, got nil")
 	}
 }
+
+func TestContactService_Reply(t *testing.T) {
+	repo := newMockRepository()
+	svc := contact_service.NewService(repo, nil)
+
+	req := contact_dto.SendContactRequest{
+		SenderName: "Fulan",
+		Email:      "fulan@example.com",
+		Subject:    "Tanya Program",
+		Message:    "Bisa minta proposal kegiatan?",
+	}
+	_ = svc.Send(context.Background(), req, "127.0.0.1")
+
+	replyReq := contact_dto.ReplyContactRequest{
+		Subject: "Re: Tanya Program",
+		Message: "Assalamu'alaikum, berikut kami lampirkan informasinya.",
+	}
+	err := svc.Reply(context.Background(), 1, replyReq)
+	if err != nil {
+		t.Fatalf("expected nil error on reply, got %v", err)
+	}
+
+	detail, _ := svc.GetByID(context.Background(), 1)
+	if !detail.IsRead {
+		t.Errorf("expected isRead true after reply")
+	}
+}
+

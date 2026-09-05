@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="id">
+<body style="margin:0; background:#f2f3f2; font-family:Arial,Helvetica,sans-serif; color:#14171a;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f3f2; padding:24px 0;">
+    <tr>
+      <td align="center">
+
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0"
+               style="background:#ffffff; border-radius:16px; overflow:hidden; max-width:560px; width:100%;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:#00933b; padding:24px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding-right:12px;">
+                    <img src="cid:{{.LogoCID}}" alt="FSLDK Indonesia" width="40" height="40"
+                         style="display:block; border-radius:8px;">
+                  </td>
+                  <td>
+                    <span style="color:#ffffff; font-size:20px; font-weight:800; letter-spacing:.3px;">
+                      FSLDK Indonesia
+                    </span>
+                    <div style="color:#eafbf1; font-size:12px; margin-top:2px;">
+                      Forum Silaturahmi Lembaga Dakwah Kampus
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:32px;">
+              <h1 style="font-size:20px; margin:0 0 16px; color:#0f172a;">
+                Balasan Pesan: {{.OriginalSubject}}
+              </h1>
+
+              <p style="font-size:15px; line-height:1.7; color:#334155; margin:0 0 16px;">
+                Assalamu'alaikum <strong>{{.Name}}</strong>,<br><br>
+                Terima kasih telah menghubungi FSLDK Indonesia melalui formulir Hubungi Kami. Berikut adalah tanggapan resmi dari tim kami terkait pesan yang Anda sampaikan:
+              </p>
+
+              <!-- Reply Content Box -->
+              <div style="background:#f8fafc; border-left:4px solid #00933b; border-radius:6px; padding:18px 20px; margin:20px 0; font-size:15px; line-height:1.7; color:#1e293b; white-space:pre-wrap;">{{.ReplyBody}}</div>
+
+              <!-- Original Message Quote Box -->
+              <div style="margin-top:28px; padding-top:20px; border-top:1px solid #e2e8f0;">
+                <p style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#64748b; margin:0 0 8px;">
+                  Pesan Anda Sebelumnya:
+                </p>
+                <div style="background:#f1f5f9; border-radius:6px; padding:14px 16px; font-size:13px; color:#475569; font-style:italic; line-height:1.6; white-space:pre-wrap;">{{.OriginalMessage}}</div>
+              </div>
+
+              <p style="font-size:13px; color:#64748b; line-height:1.6; margin:24px 0 0;">
+                Jika Anda memiliki pertanyaan lebih lanjut, silakan hubungi kami kembali melalui form kontak resmi di website FSLDK Indonesia.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 32px; background:#fbfaf7; color:#9aa1a8; font-size:12px; line-height:1.6; border-top:1px solid #f1f5f9;">
+              Email ini dikirim resmi oleh sistem FSLDK Indonesia.<br>
+              &copy; FSLDK Indonesia — Menyatukan Langkah Dakwah Kampus se-Indonesia.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

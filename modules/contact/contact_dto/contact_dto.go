@@ -1,4 +1,4 @@
-﻿// Package contact_dto contains data transfer objects for contact message operations.
+// Package contact_dto contains data transfer objects for contact message operations.
 package contact_dto
 
 import "time"
@@ -49,4 +49,10 @@ type ContactListResponse struct {
 	Page  int               `json:"page"`
 	Limit int               `json:"limit"`
 	Total int64             `json:"total"`
+}
+
+// ReplyContactRequest defines the payload sent by CMS admin to reply to a contact inquiry via email.
+type ReplyContactRequest struct {
+	Subject string `json:"subject" validate:"required,min=3,max=200"`
+	Message string `json:"message" validate:"required,min=5,max=5000"`
 }

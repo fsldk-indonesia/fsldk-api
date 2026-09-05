@@ -29,6 +29,7 @@ func (f *fakeMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount,
 	return nil
 }
 func (f *fakeMailer) SendOtpEmail(toEmail, code, validityText string) error { return nil }
+func (f *fakeMailer) SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error { return nil }
 func (f *fakeMailer) SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error {
 	f.welcomeEmailsSent++
 	return nil
