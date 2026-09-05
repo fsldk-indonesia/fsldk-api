@@ -1,4 +1,4 @@
-﻿-- Migration 0031_contact: Contact messages table and permissions
+-- Migration 0031_contact: Contact messages table and permissions
 CREATE TABLE IF NOT EXISTS tr_contact_message (
     messageID   BIGINT AUTO_INCREMENT PRIMARY KEY,
     senderName  VARCHAR(100) NOT NULL      COMMENT 'Sender name',
