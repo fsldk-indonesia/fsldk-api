@@ -23,17 +23,19 @@ import (
 )
 
 const (
-	assetsDir                 = "assets"
-	logoAsset                 = "logo-fsldk.png"
-	logoCID                   = "logo-fsldk.png"
-	templateVerification      = "verification"
-	templatePasswordReset     = "password_reset"
-	templateShortlinkApproved = "shortlink_approved"
-	templateShortlinkRejected = "shortlink_rejected"
-	templateDonationReceipt   = "donation_receipt"
-	templateDonationInvoice   = "donation_invoice"
-	templateOtpWithdrawal     = "otp_kantong_amal"
-	templateContactReply      = "contact_reply"
+	assetsDir                   = "assets"
+	logoAsset                   = "logo-fsldk.png"
+	logoCID                     = "logo-fsldk.png"
+	templateVerification        = "verification"
+	templatePasswordReset       = "password_reset"
+	templateShortlinkApproved   = "shortlink_approved"
+	templateShortlinkRejected   = "shortlink_rejected"
+	templateDonationReceipt     = "donation_receipt"
+	templateDonationInvoice     = "donation_invoice"
+	templateOtpWithdrawal       = "otp_kantong_amal"
+	templateContactReply        = "contact_reply"
+	templateSubscriptionWelcome = "subscription_welcome"
+	templateUnsubscribeConfirm  = "unsubscribe_confirmation"
 )
 
 // Mailer adalah kontrak layanan email.
@@ -60,6 +62,14 @@ type Mailer interface {
 	SendOtpEmail(toEmail, code, validityText string) error
 	// SendContactReplyEmail mengirimkan balasan resmi atas pesan kontak masuk.
 	SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error
+	// SendSubscriptionWelcomeEmail dikirim setiap kali email berhasil
+	// berlangganan (baru atau berlangganan ulang) newsletter FSLDK —
+	// unsubscribeURL memuat token per-subscriber agar penerima bisa berhenti
+	// berlangganan langsung dari email tanpa perlu login.
+	SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error
+	// SendUnsubscribeConfirmationEmail dikirim setiap kali email berhasil
+	// berhenti berlangganan, sebagai konfirmasi bahwa permintaannya berhasil.
+	SendUnsubscribeConfirmationEmail(toEmail string) error
 }
 
 type smtpMailer struct {
@@ -155,6 +165,26 @@ func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
 		return err
 	}
 	return m.send(toEmail, "Kode OTP Penarikan Saldo Kantong Amal — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error {
+	body, err := generateFromAsset(templateSubscriptionWelcome, map[string]string{
+		"URL": unsubscribeURL, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Terima Kasih Telah Berlangganan — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) SendUnsubscribeConfirmationEmail(toEmail string) error {
+	body, err := generateFromAsset(templateUnsubscribeConfirm, map[string]string{
+		"LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Anda Berhasil Berhenti Berlangganan — FSLDK Indonesia", body, "", nil, "")
 }
 
 func (m *smtpMailer) send(to, subject, htmlBody, link string, attachData []byte, attachFilename string) error {
