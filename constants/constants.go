@@ -176,6 +176,9 @@ const (
 	PermGoodsCategoryCreate = "goodscategory.create"
 	PermGoodsCategoryUpdate = "goodscategory.update"
 	PermGoodsCategoryDelete = "goodscategory.delete"
+
+	PermContactView   = "contact.view"
+	PermContactDelete = "contact.delete"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The

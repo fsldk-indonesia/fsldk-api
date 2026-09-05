@@ -63,10 +63,11 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 	if err != nil {
 		return dashboard_dto.Summary{}, apperror.Internal("")
 	}
+	unreadMessages, _ := s.repo.CountUnreadContactMessages(ctx)
 	return dashboard_dto.Summary{
 		OrganizationTypeCode: "FSLDK",
 		Utama: &dashboard_dto.UtamaSummary{
-			TotalUsers: totalUsers, TotalNews: totalNews, TotalArticles: totalArticles, TotalShortlinks: totalShortlinks,
+			TotalUsers: totalUsers, TotalNews: totalNews, TotalArticles: totalArticles, TotalShortlinks: totalShortlinks, UnreadContactMessages: unreadMessages,
 		},
 	}, nil
 }
