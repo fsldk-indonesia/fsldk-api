@@ -96,8 +96,6 @@ func (r *RepositoryImpl) PurgeFormChildren(ctx context.Context, formID int64) ([
 		for _, table := range []string{
 			constants.TableDynamicFormDraft,
 			constants.TableDynamicFormField,
-			constants.TableDynamicFormSection,
-			constants.TableDynamicFormCollaborator,
 		} {
 			if err := tx.Exec("DELETE FROM "+table+" WHERE formID = ?", formID).Error; err != nil {
 				return err
@@ -132,8 +130,7 @@ func (r *RepositoryImpl) ListForms(ctx context.Context, f dynamicform_dto.FormFi
 		q = q.Where("f.createdDate <= ?", f.DateTo)
 	}
 	if f.MineOnly {
-		q = q.Where("(f.createdBy = ? OR f.formID IN (SELECT formID FROM "+constants.TableDynamicFormCollaborator+" WHERE userID = ?))",
-			f.ActorID, f.ActorID)
+		q = q.Where("f.createdBy = ?", f.ActorID)
 	}
 
 	var total int64
@@ -162,58 +159,42 @@ func (r *RepositoryImpl) ListForms(ctx context.Context, f dynamicform_dto.FormFi
 }
 
 // ---------------------------------------------------------------------------
-// collaborators
+// misc lookups + Google Drive file bookkeeping
 // ---------------------------------------------------------------------------
 
-func (r *RepositoryImpl) ListCollaborators(ctx context.Context, formID int64) ([]dynamicform_model.Collaborator, error) {
-	var out []dynamicform_model.Collaborator
-	err := r.db.WithContext(ctx).Table(constants.TableDynamicFormCollaborator+" c").
-		Joins("JOIN ms_user u ON u.userID = c.userID").
-		Select("c.*, u.fullName AS userName, u.email AS userEmail").
-		Where("c.formID = ?", formID).Order("c.addedDate ASC").Find(&out).Error
-	return out, err
+func (r *RepositoryImpl) UserEmail(ctx context.Context, userID int64) string {
+	var email string
+	_ = r.db.WithContext(ctx).Table("ms_user").Select("email").Where("userID = ?", userID).Scan(&email).Error
+	return email
 }
 
-func (r *RepositoryImpl) ReplaceCollaborators(ctx context.Context, formID int64, rows []dynamicform_dto.CollaboratorInput) error {
+func (r *RepositoryImpl) RelocateFile(ctx context.Context, fileID, submissionID, fieldID int64, driveURL, driveFileID string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("DELETE FROM "+constants.TableDynamicFormCollaborator+" WHERE formID = ?", formID).Error; err != nil {
+		if err := tx.Table(constants.TableDynamicFormFile).Where("fileID = ?", fileID).
+			Updates(map[string]any{"fileURL": driveURL, "gdriveFileID": driveFileID}).Error; err != nil {
 			return err
 		}
-		for _, row := range rows {
-			if row.UserID == 0 {
-				continue
-			}
-			if err := tx.Table(constants.TableDynamicFormCollaborator).Create(map[string]any{
-				"formID": formID, "userID": row.UserID, "role": row.Role, "addedDate": time.Now(),
-			}).Error; err != nil {
-				return err
-			}
-		}
-		return nil
+		return tx.Table(constants.TableDynamicFormAnswer).
+			Where("submissionID = ? AND fieldID = ?", submissionID, fieldID).
+			Update("answerValue", driveURL).Error
 	})
 }
 
-func (r *RepositoryImpl) IsCollaborator(ctx context.Context, formID, userID int64, roles ...string) (bool, error) {
-	q := r.db.WithContext(ctx).Table(constants.TableDynamicFormCollaborator).
-		Where("formID = ? AND userID = ?", formID, userID)
-	if len(roles) > 0 {
-		q = q.Where("role IN ?", roles)
+func (r *RepositoryImpl) CollectGdriveFileIDs(ctx context.Context, formID int64, submissionID *int64) ([]string, error) {
+	q := r.db.WithContext(ctx).Table(constants.TableDynamicFormFile+" tf").
+		Joins("JOIN "+constants.TableDynamicFormSubmission+" s ON s.submissionID = tf.submissionID").
+		Where("s.formID = ? AND tf.gdriveFileID IS NOT NULL AND tf.gdriveFileID <> ''", formID)
+	if submissionID != nil {
+		q = q.Where("tf.submissionID = ?", *submissionID)
 	}
-	var count int64
-	err := q.Count(&count).Error
-	return count > 0, err
+	var ids []string
+	err := q.Pluck("tf.gdriveFileID", &ids).Error
+	return ids, err
 }
 
 // ---------------------------------------------------------------------------
-// sections & fields
+// fields
 // ---------------------------------------------------------------------------
-
-func (r *RepositoryImpl) ListSections(ctx context.Context, formID int64) ([]dynamicform_model.Section, error) {
-	var out []dynamicform_model.Section
-	err := r.db.WithContext(ctx).Table(constants.TableDynamicFormSection).
-		Where("formID = ? AND isActive = 1", formID).Order("sortOrder ASC, sectionID ASC").Find(&out).Error
-	return out, err
-}
 
 func (r *RepositoryImpl) ListFields(ctx context.Context, formID int64, activeOnly bool) ([]dynamicform_model.Field, error) {
 	q := r.db.WithContext(ctx).Table(constants.TableDynamicFormField).Where("formID = ?", formID)
@@ -339,7 +320,7 @@ func (r *RepositoryImpl) Submit(ctx context.Context, in SubmitData) (int64, erro
 		}
 		for fieldID, file := range in.Files {
 			if err := tx.Table(constants.TableDynamicFormFile).Create(map[string]any{
-				"submissionID": newID, "fieldID": fieldID, "fileURL": file.FileURL,
+				"submissionID": newID, "fieldID": fieldID, "fileURL": file.FileURL, "gdriveFileID": file.GdriveFileID,
 				"originalFileName": file.OriginalFileName, "mimeType": file.MimeType,
 				"fileSizeKB": file.FileSizeKB, "createdDate": time.Now(),
 			}).Error; err != nil {
@@ -482,7 +463,7 @@ func (r *RepositoryImpl) EditSubmission(ctx context.Context, in EditData) error 
 				return err
 			}
 			if err := tx.Table(constants.TableDynamicFormFile).Create(map[string]any{
-				"submissionID": in.SubmissionID, "fieldID": fieldID, "fileURL": file.FileURL,
+				"submissionID": in.SubmissionID, "fieldID": fieldID, "fileURL": file.FileURL, "gdriveFileID": file.GdriveFileID,
 				"originalFileName": file.OriginalFileName, "mimeType": file.MimeType,
 				"fileSizeKB": file.FileSizeKB, "createdDate": time.Now(),
 			}).Error; err != nil {
@@ -634,6 +615,11 @@ func (r *RepositoryImpl) DeleteDraftByID(ctx context.Context, draftID int64) err
 	return r.db.WithContext(ctx).Exec("DELETE FROM "+constants.TableDynamicFormDraft+" WHERE draftID = ?", draftID).Error
 }
 
+func (r *RepositoryImpl) SetDraftAnswers(ctx context.Context, draftID int64, answersJSON string) error {
+	return r.db.WithContext(ctx).Exec("UPDATE "+constants.TableDynamicFormDraft+
+		" SET answersJSON = ? WHERE draftID = ?", answersJSON, draftID).Error
+}
+
 // ---------------------------------------------------------------------------
 // analytics
 // ---------------------------------------------------------------------------
@@ -668,6 +654,14 @@ func (r *RepositoryImpl) ValidCounts(ctx context.Context, formID int64) (int, in
 		return 0, 0, err
 	}
 	return int(valid), int(total - valid), nil
+}
+
+// UniqueRespondents counts distinct respondent emails for the form.
+func (r *RepositoryImpl) UniqueRespondents(ctx context.Context, formID int64) (int, error) {
+	var c int64
+	err := r.db.WithContext(ctx).Table(constants.TableDynamicFormSubmission).
+		Where("formID = ?", formID).Distinct("respondentEmail").Count(&c).Error
+	return int(c), err
 }
 
 func (r *RepositoryImpl) TotalFiles(ctx context.Context, formID int64) (int, error) {

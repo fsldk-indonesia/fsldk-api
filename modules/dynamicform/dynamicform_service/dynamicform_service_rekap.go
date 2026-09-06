@@ -156,7 +156,8 @@ func (s *ServiceImpl) UpdateSubmission(ctx context.Context, formID, submissionID
 			fileSatisfied[f.FieldID] = true
 		}
 	}
-	if errs := validateAnswers(fields, values, fileSatisfied); len(errs) > 0 {
+	// Admin edit validates against the whole form (reachable = nil = all).
+	if errs := validateAnswers(fields, values, fileSatisfied, nil); len(errs) > 0 {
 		return apperror.Validation("Data tidak valid", errs)
 	}
 
@@ -178,8 +179,12 @@ func (s *ServiceImpl) UpdateSubmission(ctx context.Context, formID, submissionID
 
 	existingFiles, _ := s.repo.FilesFor(ctx, []int64{submissionID})
 	oldByField := map[int64]string{}
+	oldGdriveByField := map[int64]string{}
 	for _, fl := range existingFiles[submissionID] {
 		oldByField[fl.FieldID] = fl.FileURL
+		if fl.GdriveFileID != nil {
+			oldGdriveByField[fl.FieldID] = *fl.GdriveFileID
+		}
 	}
 
 	replaced := map[int64]dynamicform_model.File{}
@@ -222,6 +227,13 @@ func (s *ServiceImpl) UpdateSubmission(ctx context.Context, formID, submissionID
 		if old, ok := oldByField[fieldID]; ok && old != "" {
 			_ = s.uploader.DeleteFile(old)
 		}
+		if gid := oldGdriveByField[fieldID]; gid != "" && s.gsheet.Enabled() {
+			_ = s.gsheet.TrashFile(ctx, gid)
+		}
+	}
+	// Push the freshly-saved replacement file(s) into their Drive subfolder.
+	if len(replaced) > 0 {
+		s.relocateSubmissionFiles(ctx, form, submissionID, fields)
 	}
 	s.logAudit(ctx, actorID, formID, "edit_response", nil, answers, map[string]int64{"submissionID": submissionID})
 
@@ -247,12 +259,16 @@ func (s *ServiceImpl) DeleteSubmission(ctx context.Context, formID, submissionID
 	if sub.GsheetRowIndex != nil {
 		rowIndex = *sub.GsheetRowIndex
 	}
+	gdriveIDs, _ := s.repo.CollectGdriveFileIDs(ctx, formID, &submissionID)
 	urls, _, err := s.repo.DeleteSubmission(ctx, formID, submissionID)
 	if err != nil {
 		return apperror.Internal("")
 	}
 	for _, u := range urls {
 		_ = s.uploader.DeleteFile(u)
+	}
+	for _, gid := range gdriveIDs {
+		_ = s.gsheet.TrashFile(ctx, gid)
 	}
 	s.logAudit(ctx, actorID, formID, "delete_response", nil, nil, map[string]int64{"submissionID": submissionID})
 
@@ -270,12 +286,16 @@ func (s *ServiceImpl) DeleteResponses(ctx context.Context, formID int64, actorID
 	if err != nil {
 		return err
 	}
+	gdriveIDs, _ := s.repo.CollectGdriveFileIDs(ctx, formID, nil)
 	urls, err := s.repo.DeleteAllSubmissions(ctx, formID)
 	if err != nil {
 		return apperror.Internal("")
 	}
 	for _, u := range urls {
 		_ = s.uploader.DeleteFile(u)
+	}
+	for _, gid := range gdriveIDs {
+		_ = s.gsheet.TrashFile(ctx, gid)
 	}
 	s.logAudit(ctx, actorID, formID, "delete_responses", nil, nil, nil)
 
@@ -340,6 +360,7 @@ func (s *ServiceImpl) GetAnalytics(ctx context.Context, formID int64, actorID in
 	}
 
 	out.ValidCount, out.InvalidCount, _ = s.repo.ValidCounts(ctx, formID)
+	out.UniqueRespondents, _ = s.repo.UniqueRespondents(ctx, formID)
 	out.TotalFiles, _ = s.repo.TotalFiles(ctx, formID)
 
 	recent, _ := s.repo.RecentSubmissions(ctx, formID, 10)

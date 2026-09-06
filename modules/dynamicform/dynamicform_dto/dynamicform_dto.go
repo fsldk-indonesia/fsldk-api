@@ -10,27 +10,21 @@ import "encoding/json"
 
 // FormRequest is the create/update body for a form's metadata.
 type FormRequest struct {
-	Title                  string              `json:"title" validate:"required,min=3,max=255"`
-	Description            *string             `json:"description" validate:"omitempty,max=5000"`
-	MaxSubmission          *int                `json:"maxSubmission" validate:"omitempty,min=1"`
-	IsMultipleSubmit       bool                `json:"isMultipleSubmit"`
-	RequireLogin           bool                `json:"requireLogin"`
-	StartDate              *string             `json:"startDate" validate:"omitempty,datetime=2006-01-02 15:04:05"`
-	EndDate                *string             `json:"endDate" validate:"omitempty,datetime=2006-01-02 15:04:05"`
-	ConfirmationMessage    *string             `json:"confirmationMessage" validate:"omitempty,max=2000"`
-	RedirectURL            *string             `json:"redirectUrl" validate:"omitempty,url,max=500"`
-	NotifyEmails           []string            `json:"notifyEmails" validate:"omitempty,dive,email"`
-	SendConfirmationEmail  bool                `json:"sendConfirmationEmail"`
-	RateLimitPerIP         int                 `json:"rateLimitPerIP" validate:"omitempty,min=1,max=100"`
-	RateLimitWindowMinutes int                 `json:"rateLimitWindowMinutes" validate:"omitempty,min=1,max=1440"`
-	GsheetEnabled          bool                `json:"gsheetEnabled"`
-	Collaborators          []CollaboratorInput `json:"collaborators" validate:"omitempty,dive"`
-}
-
-// CollaboratorInput is one row of the collaborators editor.
-type CollaboratorInput struct {
-	UserID int64  `json:"userID" validate:"required"`
-	Role   string `json:"role" validate:"required,oneof=editor manager"`
+	Title                  string   `json:"title" validate:"required,min=3,max=255"`
+	Description            *string  `json:"description" validate:"omitempty,max=5000"`
+	HeaderImageURL         *string  `json:"headerImageUrl" validate:"omitempty,url,max=500"`
+	MaxSubmission          *int     `json:"maxSubmission" validate:"omitempty,min=1"`
+	IsMultipleSubmit       bool     `json:"isMultipleSubmit"`
+	RequireLogin           bool     `json:"requireLogin"`
+	StartDate              *string  `json:"startDate" validate:"omitempty,datetime=2006-01-02 15:04:05"`
+	EndDate                *string  `json:"endDate" validate:"omitempty,datetime=2006-01-02 15:04:05"`
+	ConfirmationMessage    *string  `json:"confirmationMessage" validate:"omitempty,max=2000"`
+	RedirectURL            *string  `json:"redirectUrl" validate:"omitempty,url,max=500"`
+	NotifyEmails           []string `json:"notifyEmails" validate:"omitempty,dive,email"`
+	SendConfirmationEmail  bool     `json:"sendConfirmationEmail"`
+	RateLimitPerIP         int      `json:"rateLimitPerIP" validate:"omitempty,min=1,max=100"`
+	RateLimitWindowMinutes int      `json:"rateLimitWindowMinutes" validate:"omitempty,min=1,max=1440"`
+	GsheetEnabled          bool     `json:"gsheetEnabled"`
 }
 
 // ---------------------------------------------------------------------------
@@ -38,20 +32,20 @@ type CollaboratorInput struct {
 // ---------------------------------------------------------------------------
 
 // FieldRequest is the add/update body for one field. The service loosens
-// `label` for section_break/image and validates option-bearing types.
+// `label` for section_break/image/video and validates option-bearing types.
+// Section routing (radio/dropdown) is carried inside fieldConfig as
+// {"sectionRouting":{"enabled":bool,"routes":[{"optionValue","targetSectionFieldID"}]}}.
 type FieldRequest struct {
-	SectionID        *int64           `json:"sectionID" validate:"omitempty"`
-	FieldType        string           `json:"fieldType" validate:"required,oneof=short_text long_text email number phone url date time datetime dropdown radio checkbox linear_scale rating file section_break paragraph image"`
-	Label            string           `json:"label" validate:"omitempty,max=500"`
-	Placeholder      *string          `json:"placeholder" validate:"omitempty,max=255"`
-	HelpText         *string          `json:"helpText" validate:"omitempty,max=2000"`
-	IsRequired       bool             `json:"isRequired"`
-	Options          []FieldOption    `json:"options" validate:"omitempty,dive"`
-	Validation       *FieldValidation `json:"validation"`
-	DefaultValue     *string          `json:"defaultValue" validate:"omitempty,max=2000"`
-	ConditionalLogic json.RawMessage  `json:"conditionalLogic"`
-	FieldConfig      json.RawMessage  `json:"fieldConfig"`
-	ImageURL         *string          `json:"imageURL" validate:"omitempty,url"`
+	FieldType    string           `json:"fieldType" validate:"required,oneof=short_text long_text email number phone url date time datetime dropdown radio checkbox linear_scale rating file section_break paragraph image video"`
+	Label        string           `json:"label" validate:"omitempty,max=500"`
+	Placeholder  *string          `json:"placeholder" validate:"omitempty,max=255"`
+	HelpText     *string          `json:"helpText" validate:"omitempty,max=2000"`
+	IsRequired   bool             `json:"isRequired"`
+	Options      []FieldOption    `json:"options" validate:"omitempty,dive"`
+	Validation   *FieldValidation `json:"validation"`
+	DefaultValue *string          `json:"defaultValue" validate:"omitempty,max=2000"`
+	FieldConfig  json.RawMessage  `json:"fieldConfig"`
+	ImageURL     *string          `json:"imageURL" validate:"omitempty,url"`
 }
 
 // FieldOption is one choice for dropdown/radio/checkbox.
@@ -76,7 +70,7 @@ type ReorderRequest struct {
 
 // StatusRequest carries a lifecycle transition target.
 type StatusRequest struct {
-	Status string `json:"status" validate:"required,oneof=published closed archived draft"`
+	Status string `json:"status" validate:"required,oneof=draft published closed"`
 }
 
 // ---------------------------------------------------------------------------
@@ -128,116 +122,97 @@ type SubmissionFilter struct {
 
 // FieldResponse is one field, JSON columns passed through raw for the frontend.
 type FieldResponse struct {
-	FieldID          int64           `json:"fieldID"`
-	FormID           int64           `json:"formID"`
-	SectionID        *int64          `json:"sectionID"`
-	FieldType        string          `json:"fieldType"`
-	Label            string          `json:"label"`
-	Placeholder      *string         `json:"placeholder"`
-	HelpText         *string         `json:"helpText"`
-	IsRequired       bool            `json:"isRequired"`
-	IsSystemField    bool            `json:"isSystemField"`
-	SortOrder        int             `json:"sortOrder"`
-	Options          json.RawMessage `json:"options"`
-	Validation       json.RawMessage `json:"validation"`
-	DefaultValue     *string         `json:"defaultValue"`
-	ConditionalLogic json.RawMessage `json:"conditionalLogic"`
-	FieldConfig      json.RawMessage `json:"fieldConfig"`
-}
-
-// SectionResponse is one section.
-type SectionResponse struct {
-	SectionID   int64   `json:"sectionID"`
-	FormID      int64   `json:"formID"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	SortOrder   int     `json:"sortOrder"`
-}
-
-// CollaboratorResponse is one collaborator row for the metadata editor.
-type CollaboratorResponse struct {
-	UserID    int64  `json:"userID"`
-	Role      string `json:"role"`
-	UserName  string `json:"userName"`
-	UserEmail string `json:"userEmail"`
+	FieldID       int64           `json:"fieldID"`
+	FormID        int64           `json:"formID"`
+	FieldType     string          `json:"fieldType"`
+	Label         string          `json:"label"`
+	Placeholder   *string         `json:"placeholder"`
+	HelpText      *string         `json:"helpText"`
+	IsRequired    bool            `json:"isRequired"`
+	IsSystemField bool            `json:"isSystemField"`
+	SortOrder     int             `json:"sortOrder"`
+	Options       json.RawMessage `json:"options"`
+	Validation    json.RawMessage `json:"validation"`
+	DefaultValue  *string         `json:"defaultValue"`
+	FieldConfig   json.RawMessage `json:"fieldConfig"`
 }
 
 // FormResponse is the full CMS view of a form (+ builder data).
 type FormResponse struct {
-	FormID                 int64                  `json:"formID"`
-	Title                  string                 `json:"title"`
-	Slug                   string                 `json:"slug"`
-	Description            string                 `json:"description"`
-	Status                 string                 `json:"status"`
-	Version                int                    `json:"version"`
-	MaxSubmission          *int                   `json:"maxSubmission"`
-	IsMultipleSubmit       bool                   `json:"isMultipleSubmit"`
-	RequireLogin           bool                   `json:"requireLogin"`
-	StartDate              string                 `json:"startDate"`
-	EndDate                string                 `json:"endDate"`
-	ConfirmationMessage    string                 `json:"confirmationMessage"`
-	RedirectURL            string                 `json:"redirectUrl"`
-	NotifyEmails           []string               `json:"notifyEmails"`
-	SendConfirmationEmail  bool                   `json:"sendConfirmationEmail"`
-	RateLimitPerIP         int                    `json:"rateLimitPerIP"`
-	RateLimitWindowMinutes int                    `json:"rateLimitWindowMinutes"`
-	GsheetEnabled          bool                   `json:"gsheetEnabled"`
-	GsheetSpreadsheetURL   string                 `json:"gsheetSpreadsheetUrl"`
-	GsheetLastSyncDate     string                 `json:"gsheetLastSyncDate"`
-	GsheetLastSyncError    string                 `json:"gsheetLastSyncError"`
-	TotalSubmission        int                    `json:"totalSubmission"`
-	IsActive               bool                   `json:"isActive"`
-	CreatedDate            string                 `json:"createdDate"`
-	CreatorName            string                 `json:"creatorName"`
-	UpdatedDate            string                 `json:"updatedDate"`
-	FieldCount             int                    `json:"fieldCount"`
-	Collaborators          []CollaboratorResponse `json:"collaborators"`
-	Sections               []SectionResponse      `json:"sections"`
-	Fields                 []FieldResponse        `json:"fields"`
-	PublicURL              string                 `json:"publicUrl"`
+	FormID                 int64           `json:"formID"`
+	Title                  string          `json:"title"`
+	Slug                   string          `json:"slug"`
+	Description            string          `json:"description"`
+	HeaderImageURL         string          `json:"headerImageUrl"`
+	Status                 string          `json:"status"`
+	Version                int             `json:"version"`
+	MaxSubmission          *int            `json:"maxSubmission"`
+	IsMultipleSubmit       bool            `json:"isMultipleSubmit"`
+	RequireLogin           bool            `json:"requireLogin"`
+	StartDate              string          `json:"startDate"`
+	EndDate                string          `json:"endDate"`
+	ConfirmationMessage    string          `json:"confirmationMessage"`
+	RedirectURL            string          `json:"redirectUrl"`
+	NotifyEmails           []string        `json:"notifyEmails"`
+	SendConfirmationEmail  bool            `json:"sendConfirmationEmail"`
+	RateLimitPerIP         int             `json:"rateLimitPerIP"`
+	RateLimitWindowMinutes int             `json:"rateLimitWindowMinutes"`
+	GsheetEnabled          bool            `json:"gsheetEnabled"`
+	GsheetAvailable        bool            `json:"gsheetAvailable"` // server-side: Google Sheets integration is configured
+	GsheetSpreadsheetURL   string          `json:"gsheetSpreadsheetUrl"`
+	GsheetLastSyncDate     string          `json:"gsheetLastSyncDate"`
+	GsheetLastSyncError    string          `json:"gsheetLastSyncError"`
+	GdriveAttachmentsURL   string          `json:"gdriveAttachmentsUrl"` // Drive folder for respondent uploads
+	GdriveAssetsURL        string          `json:"gdriveAssetsUrl"`      // Drive folder for builder images
+	TotalSubmission        int             `json:"totalSubmission"`
+	IsActive               bool            `json:"isActive"`
+	CreatedDate            string          `json:"createdDate"`
+	CreatorName            string          `json:"creatorName"`
+	UpdatedDate            string          `json:"updatedDate"`
+	FieldCount             int             `json:"fieldCount"`
+	Fields                 []FieldResponse `json:"fields"`
+	PublicURL              string          `json:"publicUrl"`
 }
 
 // PublicField is a field as served to the public renderer (no secret defaults).
+// The renderer splits these into sections on `section_break` — there is no
+// section table (techspec Part 2, K1).
 type PublicField struct {
-	FieldID          int64           `json:"fieldID"`
-	SectionID        *int64          `json:"sectionID"`
-	FieldType        string          `json:"fieldType"`
-	Label            string          `json:"label"`
-	Placeholder      *string         `json:"placeholder"`
-	HelpText         *string         `json:"helpText"`
-	IsRequired       bool            `json:"isRequired"`
-	IsSystemField    bool            `json:"isSystemField"`
-	SortOrder        int             `json:"sortOrder"`
-	Options          json.RawMessage `json:"options"`
-	Validation       json.RawMessage `json:"validation"`
-	DefaultValue     *string         `json:"defaultValue"`
-	ConditionalLogic json.RawMessage `json:"conditionalLogic"`
-	FieldConfig      json.RawMessage `json:"fieldConfig"`
-}
-
-// PublicSection is a section for the public renderer.
-type PublicSection struct {
-	SectionID   int64   `json:"sectionID"`
-	Title       string  `json:"title"`
-	Description *string `json:"description"`
-	SortOrder   int     `json:"sortOrder"`
+	FieldID       int64           `json:"fieldID"`
+	FieldType     string          `json:"fieldType"`
+	Label         string          `json:"label"`
+	Placeholder   *string         `json:"placeholder"`
+	HelpText      *string         `json:"helpText"`
+	IsRequired    bool            `json:"isRequired"`
+	IsSystemField bool            `json:"isSystemField"`
+	SortOrder     int             `json:"sortOrder"`
+	Options       json.RawMessage `json:"options"`
+	Validation    json.RawMessage `json:"validation"`
+	DefaultValue  *string         `json:"defaultValue"`
+	FieldConfig   json.RawMessage `json:"fieldConfig"`
 }
 
 // PublicFormResponse is what GET /public/dynamic-forms/:slug returns.
 type PublicFormResponse struct {
-	FormID           int64                      `json:"formID"`
-	Title            string                     `json:"title"`
-	Description      string                     `json:"description"`
-	Slug             string                     `json:"slug"`
-	Status           string                     `json:"status"`
-	RequireLogin     bool                       `json:"requireLogin"`
-	IsMultipleSubmit bool                       `json:"isMultipleSubmit"`
-	Version          int                        `json:"version"`
-	Sections         []PublicSection            `json:"sections"`
-	Fields           []PublicField              `json:"fields"`
-	PrefillEmail     string                     `json:"prefillEmail,omitempty"`
-	DraftAnswers     map[string]json.RawMessage `json:"draftAnswers,omitempty"`
-	IsPreview        bool                       `json:"isPreview"`
+	FormID           int64  `json:"formID"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	HeaderImageURL   string `json:"headerImageUrl"`
+	Slug             string `json:"slug"`
+	Status           string `json:"status"`
+	RequireLogin     bool   `json:"requireLogin"`
+	IsMultipleSubmit bool   `json:"isMultipleSubmit"`
+	MaxSubmission    *int   `json:"maxSubmission"`
+	TotalSubmission  int    `json:"totalSubmission"`
+	EndDate          string `json:"endDate,omitempty"`
+	Version          int    `json:"version"`
+	// FormStartTS is the server clock (unix millis) at render time — echoed back
+	// on submit for the <3s anti-bot timing check (techspec Part 2, S1).
+	FormStartTS  int64                      `json:"formStartTs"`
+	Fields       []PublicField              `json:"fields"`
+	PrefillEmail string                     `json:"prefillEmail,omitempty"`
+	DraftAnswers map[string]json.RawMessage `json:"draftAnswers,omitempty"`
+	IsPreview    bool                       `json:"isPreview"`
 }
 
 // SubmissionRow is one rekap table row. answers maps "field_<id>" -> display value.
@@ -326,6 +301,7 @@ type Analytics struct {
 	SubmissionsPerDay []DayCount         `json:"submissionsPerDay"`
 	ValidCount        int                `json:"validCount"`
 	InvalidCount      int                `json:"invalidCount"`
+	UniqueRespondents int                `json:"uniqueRespondents"` // COUNT(DISTINCT respondentEmail) — techspec Part 2, S3
 	TotalFiles        int                `json:"totalFiles"`
 	Recent            []RecentSubmission `json:"recent"`
 	FieldCharts       []FieldChart       `json:"fieldCharts"`

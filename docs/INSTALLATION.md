@@ -96,6 +96,35 @@ KIRIMDEV_WEBHOOK_SECRETS=whsec_xxxxxxxxxxxxxxxxxxxxxxxx
 
 ---
 
+## 5b. (Opsional) Konfigurasi Google Sheets untuk Formulir Dinamis
+
+Modul **Formulir Dinamis** dapat mencerminkan setiap tanggapan ke satu Google Spreadsheet per formulir (baca-tulis *best-effort* lewat `jobqueue` — kegagalan Sheets tidak pernah menggagalkan pengiriman). Konfigurasinya **memakai ulang kredensial OAuth Google Drive** persis seperti aplikasi referensi (`ldksyahid-app` `DynamicFormGDriveService`).
+
+```env
+# Kredensial OAuth "Desktop app" dari Google Cloud Console + refresh token
+# hasil consent sekali (scope: .../auth/drive dan .../auth/spreadsheets).
+GOOGLE_DRIVE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+GOOGLE_DRIVE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxx
+GOOGLE_DRIVE_REFRESH_TOKEN=1//xxxxxxxxxxxxxxxxxxxxxxxx
+# ID folder Drive tempat tiap spreadsheet formulir dibuat (dibagikan Editor ke
+# akun Google pemilik refresh token). Ambil dari URL folder Drive.
+GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID=1AbCdEfGhIjKlMnOpQrStUvWxYz
+```
+
+Langkah:
+
+1. **Google Cloud Console → APIs & Services**: aktifkan *Google Drive API* dan *Google Sheets API*.
+2. **Credentials → Create OAuth client ID → Application type: Desktop app**. Salin *Client ID* & *Client secret*.
+3. Jalankan alur consent **sekali** untuk memperoleh *refresh token* (mis. lewat OAuth Playground atau skrip kecil), dengan scope `https://www.googleapis.com/auth/drive` + `https://www.googleapis.com/auth/spreadsheets`.
+4. Buat satu folder di Google Drive, **Share → Editor** ke akun Google yang dipakai di langkah 3, lalu salin ID folder dari URL-nya (`https://drive.google.com/drive/folders/<ID>`).
+5. Isi keempat nilai di atas pada `app.env` dan restart server.
+
+Bila keempat nilai terisi, integrasi **otomatis aktif** — tidak perlu menyetel `GSHEET_SYNC_ENABLED`. Untuk memaksa nyala/mati terlepas dari kredensial, set `GSHEET_SYNC_ENABLED=true|false` secara eksplisit. Alternatif *service account* tersedia lewat `GSHEET_CREDENTIALS_JSON` (lihat komentar di `.env.example`). Jika seluruh kredensial kosong, fieldset "Google Sheets" pada editor formulir tampil non-aktif dengan catatan "belum dikonfigurasi administrator server", dan seluruh operasi Sheets menjadi *no-op*.
+
+Setelah aktif: pada editor formulir aktifkan **"Sinkronkan jawaban ke Google Sheets"**, lalu tekan **Hubungkan** (atau publish formulir) untuk membuat spreadsheet-nya. Bila terjadi galat sinkron, tombol **Resync** membangun ulang isi sheet secara deterministik dari database.
+
+---
+
 ## 6. Jalankan Server
 
 ```bash

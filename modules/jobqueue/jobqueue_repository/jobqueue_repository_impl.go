@@ -10,6 +10,7 @@ import (
 	"fsldk-api/modules/jobqueue/jobqueue_model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
@@ -17,6 +18,12 @@ type RepositoryImpl struct{ db *gorm.DB }
 
 // NewRepository membuat implementasi Repository.
 func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
+
+// quiet returns the GORM handle with SQL logging silenced — used for the
+// per-tick poll query in Claim so it does not flood the dev log every ~1.5s.
+func (r *RepositoryImpl) quiet(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Session(&gorm.Session{Logger: logger.Discard})
+}
 
 func (r *RepositoryImpl) Create(ctx context.Context, j jobqueue_model.Job) (int64, error) {
 	values := map[string]interface{}{
@@ -103,7 +110,7 @@ func (r *RepositoryImpl) Stats(ctx context.Context, stuckThreshold time.Duration
 
 func (r *RepositoryImpl) Claim(ctx context.Context, queue string) (jobqueue_model.Job, bool, error) {
 	var job jobqueue_model.Job
-	err := r.db.WithContext(ctx).Table("tr_job_queue").
+	err := r.quiet(ctx).Table("tr_job_queue").
 		Where("status = ? AND queue = ? AND availableDate <= ?", jobqueue_model.StatusPending, queue, time.Now()).
 		Order("availableDate ASC").Limit(1).Take(&job).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

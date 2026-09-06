@@ -124,8 +124,8 @@ func marshalOrNil(v any) *string {
 	return &s
 }
 
-// getOwnedForm loads a form and enforces the ownership guard: creator, holder
-// of dynamicform.manage.all, or an editor/manager collaborator.
+// getOwnedForm loads a form and enforces the ownership guard: the creator or a
+// holder of dynamicform.manage.all.
 func (s *ServiceImpl) getOwnedForm(ctx context.Context, id, actorID int64, perms []string) (dynamicform_model.Form, error) {
 	form, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -135,10 +135,6 @@ func (s *ServiceImpl) getOwnedForm(ctx context.Context, id, actorID int64, perms
 		return form, nil
 	}
 	if slices.Contains(perms, constants.PermDynamicFormManageAll) {
-		return form, nil
-	}
-	isCollab, _ := s.repo.IsCollaborator(ctx, id, actorID, "editor", "manager")
-	if isCollab {
 		return form, nil
 	}
 	return dynamicform_model.Form{}, apperror.Forbidden("Anda tidak memiliki akses ke formulir ini")
@@ -185,48 +181,40 @@ func notifyEmailsOf(form dynamicform_model.Form) []string {
 
 func toFieldResponse(f dynamicform_model.Field) dynamicform_dto.FieldResponse {
 	return dynamicform_dto.FieldResponse{
-		FieldID: f.FieldID, FormID: f.FormID, SectionID: f.SectionID, FieldType: f.FieldType,
+		FieldID: f.FieldID, FormID: f.FormID, FieldType: f.FieldType,
 		Label: f.Label, Placeholder: f.Placeholder, HelpText: f.HelpText, IsRequired: f.IsRequired,
 		IsSystemField: f.IsSystemField, SortOrder: f.SortOrder,
 		Options: rawJSON(f.OptionsJSON), Validation: rawJSON(f.ValidationJSON),
-		DefaultValue: f.DefaultValue, ConditionalLogic: rawJSON(f.ConditionalLogicJSON),
-		FieldConfig: rawJSON(f.FieldConfigJSON),
+		DefaultValue: f.DefaultValue, FieldConfig: rawJSON(f.FieldConfigJSON),
 	}
 }
 
-func toSectionResponse(sec dynamicform_model.Section) dynamicform_dto.SectionResponse {
-	return dynamicform_dto.SectionResponse{
-		SectionID: sec.SectionID, FormID: sec.FormID, Title: sec.Title,
-		Description: sec.Description, SortOrder: sec.SortOrder,
-	}
-}
-
-func (s *ServiceImpl) toFormResponse(form dynamicform_model.Form, fields []dynamicform_model.Field, sections []dynamicform_model.Section, collabs []dynamicform_model.Collaborator, fieldCount int) dynamicform_dto.FormResponse {
+func (s *ServiceImpl) toFormResponse(form dynamicform_model.Form, fields []dynamicform_model.Field, fieldCount int) dynamicform_dto.FormResponse {
 	fr := dynamicform_dto.FormResponse{
 		FormID: form.FormID, Title: form.Title, Slug: form.Slug, Description: strOr(form.Description),
-		Status: form.Status, Version: form.Version, MaxSubmission: form.MaxSubmission,
+		HeaderImageURL: strOr(form.HeaderImageURL),
+		Status:         form.Status, Version: form.Version, MaxSubmission: form.MaxSubmission,
 		IsMultipleSubmit: form.IsMultipleSubmit, RequireLogin: form.RequireLogin,
 		StartDate: fmtTimePtr(form.StartDate), EndDate: fmtTimePtr(form.EndDate),
 		ConfirmationMessage: strOr(form.ConfirmationMessage), RedirectURL: strOr(form.RedirectURL),
 		NotifyEmails: notifyEmailsOf(form), SendConfirmationEmail: form.SendConfirmationEmail,
 		RateLimitPerIP: form.RateLimitPerIP, RateLimitWindowMinutes: form.RateLimitWindowMinutes,
-		GsheetEnabled: form.GsheetEnabled, GsheetSpreadsheetURL: strOr(form.GsheetSpreadsheetURL),
-		GsheetLastSyncDate: fmtTimePtr(form.GsheetLastSyncDate), GsheetLastSyncError: strOr(form.GsheetLastSyncError),
+		GsheetEnabled: form.GsheetEnabled, GsheetAvailable: s.gsheet.Enabled(),
+		GsheetSpreadsheetURL: strOr(form.GsheetSpreadsheetURL),
+		GsheetLastSyncDate:   fmtTimePtr(form.GsheetLastSyncDate), GsheetLastSyncError: strOr(form.GsheetLastSyncError),
 		TotalSubmission: form.TotalSubmission, IsActive: form.IsActive,
 		CreatedDate: form.CreatedDate.Format(timeLayout), CreatorName: form.CreatorName,
 		UpdatedDate: fmtTimePtr(form.UpdatedDate), FieldCount: fieldCount,
 		PublicURL: s.frontendURL + "/form/" + form.Slug,
 	}
+	if id := strOr(form.GdriveAttachmentsFolderID); id != "" {
+		fr.GdriveAttachmentsURL = "https://drive.google.com/drive/folders/" + id
+	}
+	if id := strOr(form.GdriveAssetsFolderID); id != "" {
+		fr.GdriveAssetsURL = "https://drive.google.com/drive/folders/" + id
+	}
 	for _, f := range fields {
 		fr.Fields = append(fr.Fields, toFieldResponse(f))
-	}
-	for _, sec := range sections {
-		fr.Sections = append(fr.Sections, toSectionResponse(sec))
-	}
-	for _, c := range collabs {
-		fr.Collaborators = append(fr.Collaborators, dynamicform_dto.CollaboratorResponse{
-			UserID: c.UserID, Role: c.Role, UserName: c.UserName, UserEmail: c.UserEmail,
-		})
 	}
 	return fr
 }
@@ -247,6 +235,7 @@ func (s *ServiceImpl) formValuesFromRequest(req dynamicform_dto.FormRequest) map
 	return map[string]any{
 		"title":                  strings.TrimSpace(req.Title),
 		"description":            req.Description,
+		"headerImageUrl":         req.HeaderImageURL,
 		"maxSubmission":          req.MaxSubmission,
 		"isMultipleSubmit":       req.IsMultipleSubmit,
 		"requireLogin":           req.RequireLogin,
@@ -291,10 +280,15 @@ func (s *ServiceImpl) CreateForm(ctx context.Context, req dynamicform_dto.FormRe
 		return dynamicform_dto.FormResponse{}, apperror.Internal("Gagal menambahkan field email sistem")
 	}
 
-	if len(req.Collaborators) > 0 {
-		_ = s.repo.ReplaceCollaborators(ctx, id, req.Collaborators)
-	}
 	s.logAudit(ctx, actorID, id, "create", nil, values, nil)
+
+	// Build the Drive folder tree + spreadsheet right away when the mirror is
+	// enabled for this form (parity with ldksyahid-app: folder created at store()).
+	if req.GsheetEnabled && s.gsheet.Enabled() {
+		if fresh, gErr := s.repo.GetByID(ctx, id); gErr == nil {
+			_ = s.ensureSheet(ctx, fresh)
+		}
+	}
 	return s.GetForm(ctx, id, actorID, perms)
 }
 
@@ -310,11 +304,17 @@ func (s *ServiceImpl) UpdateForm(ctx context.Context, id int64, req dynamicform_
 	if err := s.repo.UpdateForm(ctx, id, values); err != nil {
 		return dynamicform_dto.FormResponse{}, apperror.Internal("")
 	}
-	_ = s.repo.ReplaceCollaborators(ctx, id, req.Collaborators)
 	s.logAudit(ctx, actorID, id, "update", form, values, nil)
 
-	// gsheet toggle false -> true: create the sheet now (best-effort).
-	if req.GsheetEnabled && !form.GsheetEnabled && form.GsheetSpreadsheetID == nil && s.gsheet.Enabled() {
+	// Replaced header image: best-effort delete the old asset (same pattern as
+	// the builder's "image" field replace in UpdateField).
+	if req.HeaderImageURL != nil && form.HeaderImageURL != nil && *form.HeaderImageURL != *req.HeaderImageURL {
+		_ = s.uploader.DeleteFile(*form.HeaderImageURL)
+	}
+
+	// gsheet toggle on (or an older form missing its Drive tree): build it now
+	// (best-effort; ensureSheet is idempotent).
+	if req.GsheetEnabled && s.gsheet.Enabled() && needsGsheetSetup(form) {
 		if refreshed, gErr := s.repo.GetByID(ctx, id); gErr == nil {
 			_ = s.ensureSheet(ctx, refreshed)
 		}
@@ -334,12 +334,20 @@ func (s *ServiceImpl) SetStatus(ctx context.Context, id int64, status string, ac
 	}
 	s.logAudit(ctx, actorID, id, statusAction(status), map[string]string{"status": form.Status}, map[string]string{"status": status}, nil)
 
-	if status == constants.DynamicFormStatusPublished && form.GsheetEnabled && form.GsheetSpreadsheetID == nil && s.gsheet.Enabled() {
+	if status == constants.DynamicFormStatusPublished && form.GsheetEnabled && s.gsheet.Enabled() && needsGsheetSetup(form) {
 		if refreshed, gErr := s.repo.GetByID(ctx, id); gErr == nil {
 			_ = s.ensureSheet(ctx, refreshed)
 		}
 	}
 	return nil
+}
+
+// needsGsheetSetup reports whether ensureSheet still has work to do for a form
+// (no spreadsheet yet, or connected before the Drive-folder-tree feature).
+func needsGsheetSetup(form dynamicform_model.Form) bool {
+	noSheet := form.GsheetSpreadsheetID == nil || *form.GsheetSpreadsheetID == ""
+	noTree := form.GdriveFormFolderID == nil || *form.GdriveFormFolderID == ""
+	return noSheet || noTree
 }
 
 func statusAction(status string) string {
@@ -348,26 +356,33 @@ func statusAction(status string) string {
 		return "publish"
 	case constants.DynamicFormStatusClosed:
 		return "close"
-	case constants.DynamicFormStatusArchived:
-		return "archive"
 	default:
 		return "update"
 	}
 }
 
 func (s *ServiceImpl) DeleteForm(ctx context.Context, id int64, actorID int64, perms []string) error {
-	if _, err := s.getOwnedForm(ctx, id, actorID, perms); err != nil {
+	form, err := s.getOwnedForm(ctx, id, actorID, perms)
+	if err != nil {
 		return err
 	}
-	urls, err := s.repo.PurgeFormChildren(ctx, id)
-	if err != nil {
+	urls, pErr := s.repo.PurgeFormChildren(ctx, id)
+	if pErr != nil {
 		return apperror.Internal("")
+	}
+	if form.HeaderImageURL != nil && *form.HeaderImageURL != "" {
+		urls = append(urls, *form.HeaderImageURL)
 	}
 	if err := s.repo.SoftDeleteForm(ctx, id); err != nil {
 		return apperror.Internal("")
 	}
 	for _, u := range urls {
 		_ = s.uploader.DeleteFile(u)
+	}
+	// Best-effort: trash the whole Drive tree (form folder). The spreadsheet
+	// lives inside it, so this removes it too — acceptable on an explicit form delete.
+	if form.GdriveFormFolderID != nil && *form.GdriveFormFolderID != "" && s.gsheet.Enabled() {
+		_ = s.gsheet.TrashFile(ctx, *form.GdriveFormFolderID)
 	}
 	s.logAudit(ctx, actorID, id, "delete", nil, nil, nil)
 	return nil
@@ -412,7 +427,7 @@ func (s *ServiceImpl) ListForms(ctx context.Context, q dto.ListQuery, f dynamicf
 		if i < len(counts) {
 			fc = counts[i]
 		}
-		out = append(out, s.toFormResponse(form, nil, nil, nil, fc))
+		out = append(out, s.toFormResponse(form, nil, fc))
 	}
 	return out, int(total), nil
 }
@@ -423,15 +438,13 @@ func (s *ServiceImpl) GetForm(ctx context.Context, id int64, actorID int64, perm
 		return dynamicform_dto.FormResponse{}, err
 	}
 	fields, _ := s.repo.ListFields(ctx, id, true)
-	sections, _ := s.repo.ListSections(ctx, id)
-	collabs, _ := s.repo.ListCollaborators(ctx, id)
 	fieldCount := 0
 	for _, fld := range fields {
 		if !isDisplayType(fld.FieldType) {
 			fieldCount++
 		}
 	}
-	return s.toFormResponse(form, fields, sections, collabs, fieldCount), nil
+	return s.toFormResponse(form, fields, fieldCount), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -442,24 +455,26 @@ func choiceType(t string) bool { return t == "dropdown" || t == "radio" || t == 
 
 // fieldValuesFromRequest normalises a FieldRequest into a column map. It loosens
 // `label` for section_break/image and requires options for choice fields.
+// labelOptionalTypes are the display elements that may have an empty label.
+var labelOptionalTypes = map[string]bool{"section_break": true, "image": true, "video": true}
+
 func (s *ServiceImpl) fieldValuesFromRequest(req dynamicform_dto.FieldRequest) (map[string]any, error) {
 	label := strings.TrimSpace(req.Label)
-	if label == "" && req.FieldType != "section_break" && req.FieldType != "image" {
+	if label == "" && !labelOptionalTypes[req.FieldType] {
 		return nil, apperror.BadRequest("Label field wajib diisi")
 	}
 	if choiceType(req.FieldType) && len(req.Options) == 0 {
 		return nil, apperror.BadRequest("Field pilihan wajib memiliki minimal 1 opsi")
 	}
 	values := map[string]any{
-		"fieldType":            req.FieldType,
-		"label":                label,
-		"placeholder":          req.Placeholder,
-		"isRequired":           req.IsRequired,
-		"defaultValue":         req.DefaultValue,
-		"optionsJSON":          marshalOrNil(req.Options),
-		"validationJSON":       marshalOrNil(req.Validation),
-		"conditionalLogicJSON": rawStringOrNil(req.ConditionalLogic),
-		"fieldConfigJSON":      rawStringOrNil(req.FieldConfig),
+		"fieldType":       req.FieldType,
+		"label":           label,
+		"placeholder":     req.Placeholder,
+		"isRequired":      req.IsRequired,
+		"defaultValue":    req.DefaultValue,
+		"optionsJSON":     marshalOrNil(req.Options),
+		"validationJSON":  marshalOrNil(req.Validation),
+		"fieldConfigJSON": rawStringOrNil(req.FieldConfig),
 	}
 	if len(req.Options) == 0 {
 		values["optionsJSON"] = nil
@@ -482,7 +497,8 @@ func rawStringOrNil(r json.RawMessage) *string {
 }
 
 func (s *ServiceImpl) AddField(ctx context.Context, formID int64, req dynamicform_dto.FieldRequest, actorID int64, perms []string) (dynamicform_dto.FieldResponse, error) {
-	if _, err := s.getOwnedForm(ctx, formID, actorID, perms); err != nil {
+	form, err := s.getOwnedForm(ctx, formID, actorID, perms)
+	if err != nil {
 		return dynamicform_dto.FieldResponse{}, err
 	}
 	if !slices.Contains(constants.DynamicFormFieldTypes, req.FieldType) {
@@ -502,11 +518,14 @@ func (s *ServiceImpl) AddField(ctx context.Context, formID int64, req dynamicfor
 	s.enqueueHeaderSync(ctx, formID)
 
 	field, _ := s.repo.GetField(ctx, formID, newID)
+	s.ensureFieldFolder(ctx, form, field) // creates attachments/<label>/ or assets/<label>/ when the form has a Drive tree
+	field, _ = s.repo.GetField(ctx, formID, newID)
 	return toFieldResponse(field), nil
 }
 
 func (s *ServiceImpl) UpdateField(ctx context.Context, formID, fieldID int64, req dynamicform_dto.FieldRequest, actorID int64, perms []string) (dynamicform_dto.FieldResponse, error) {
-	if _, err := s.getOwnedForm(ctx, formID, actorID, perms); err != nil {
+	form, err := s.getOwnedForm(ctx, formID, actorID, perms)
+	if err != nil {
 		return dynamicform_dto.FieldResponse{}, err
 	}
 	existing, err := s.repo.GetField(ctx, formID, fieldID)
@@ -549,6 +568,8 @@ func (s *ServiceImpl) UpdateField(ctx context.Context, formID, fieldID int64, re
 	}
 
 	field, _ := s.repo.GetField(ctx, formID, fieldID)
+	s.ensureFieldFolder(ctx, form, field) // no-op if the subfolder already exists / no Drive tree
+	field, _ = s.repo.GetField(ctx, formID, fieldID)
 	return toFieldResponse(field), nil
 }
 

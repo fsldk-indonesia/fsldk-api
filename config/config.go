@@ -4,6 +4,8 @@
 package config
 
 import (
+	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -205,12 +207,49 @@ func Load() (AppConfig, error) {
 			return AppConfig{}, err
 		}
 	}
+	if used := viper.ConfigFileUsed(); used != "" {
+		log.Printf("[CONFIG] app.env dimuat dari %s", used)
+	} else {
+		wd, _ := os.Getwd()
+		log.Printf("[CONFIG] app.env TIDAK ditemukan (cwd=%s) — hanya memakai default + environment OS. "+
+			"Jalankan server dari dalam folder fsldk-api/.", wd)
+	}
 
 	var cfg AppConfig
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return AppConfig{}, err
 	}
+	resolveGSheet(&cfg)
 	return cfg, nil
+}
+
+// resolveGSheet wires the Google Sheets mirror the same way the reference app
+// (ldksyahid-app DynamicFormGDriveService) does: it reuses the existing Google
+// Drive OAuth-user credentials (GOOGLE_DRIVE_CLIENT_ID / _CLIENT_SECRET /
+// _REFRESH_TOKEN) and a root Drive folder (GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID)
+// when the dedicated GSHEET_* keys are not set. The reference has no separate
+// on/off switch — the integration is active whenever the credentials and root
+// folder exist — so we auto-enable in that case unless GSHEET_SYNC_ENABLED was
+// set explicitly.
+func resolveGSheet(cfg *AppConfig) {
+	if cfg.GSheetOAuthClientID == "" {
+		cfg.GSheetOAuthClientID = viper.GetString("GOOGLE_DRIVE_CLIENT_ID")
+	}
+	if cfg.GSheetOAuthClientSecret == "" {
+		cfg.GSheetOAuthClientSecret = viper.GetString("GOOGLE_DRIVE_CLIENT_SECRET")
+	}
+	if cfg.GSheetOAuthRefreshToken == "" {
+		cfg.GSheetOAuthRefreshToken = viper.GetString("GOOGLE_DRIVE_REFRESH_TOKEN")
+	}
+	if cfg.GSheetRootFolderID == "" {
+		cfg.GSheetRootFolderID = viper.GetString("GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID")
+	}
+
+	if !viper.IsSet("GSHEET_SYNC_ENABLED") {
+		hasSA := cfg.GSheetCredentialsJSON != ""
+		hasOAuth := cfg.GSheetOAuthClientID != "" && cfg.GSheetOAuthClientSecret != "" && cfg.GSheetOAuthRefreshToken != ""
+		cfg.GSheetSyncEnabled = (hasSA || hasOAuth) && cfg.GSheetRootFolderID != ""
+	}
 }
 
 func setDefaults() {
@@ -269,6 +308,9 @@ func setDefaults() {
 	viper.SetDefault("ZAKAT_GOLD_PRICE_FALLBACK", 2600000)
 	viper.SetDefault("ZAKAT_GOLD_PRICE_CACHE_MINUTES", 60)
 
-	viper.SetDefault("GSHEET_SYNC_ENABLED", false)
+	// NOTE: sengaja TIDAK memakai viper.SetDefault untuk GSHEET_SYNC_ENABLED —
+	// viper.SetDefault membuat viper.IsSet() mengembalikan true, sehingga
+	// resolveGSheet() tidak bisa membedakan "operator men-set eksplisit" vs
+	// "tidak diisi sama sekali". Zero value bool (false) sudah cukup.
 	viper.SetDefault("GSHEET_TAB_NAME", "Responses")
 }

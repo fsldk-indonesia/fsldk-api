@@ -21,6 +21,7 @@ type SubmitInput struct {
 	FormTS        int64
 	AuthUserID    *int64
 	AuthUserEmail *string
+	AuthPerms     []string // caller's permission codes (OptionalAuth + LoadPermissions)
 }
 
 // Service is the dynamicform business-logic contract.
@@ -41,7 +42,7 @@ type Service interface {
 	ReorderFields(ctx context.Context, formID int64, order []int64, actorID int64, perms []string) error
 
 	// --- Public ---
-	GetPublicForm(ctx context.Context, slug string, authUserID *int64, authUserEmail *string) (dynamicform_dto.PublicFormResponse, error)
+	GetPublicForm(ctx context.Context, slug string, authUserID *int64, authUserEmail *string, authPerms []string) (dynamicform_dto.PublicFormResponse, error)
 	Submit(ctx context.Context, slug string, in SubmitInput) (dynamicform_dto.SubmitResult, error)
 	SaveDraft(ctx context.Context, slug string, userID int64, answers map[string]json.RawMessage) error
 	StageDraftFile(ctx context.Context, slug string, userID, fieldID int64, fh *multipart.FileHeader) (string, error)

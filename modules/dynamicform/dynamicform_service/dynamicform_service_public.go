@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/mail"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,9 +24,39 @@ import (
 	"fsldk-api/pkg/mailer"
 )
 
-// CodeFormClosed marks a 422 raised because the form is not accepting responses
-// (frontend renders a "Formulir Ditutup" card instead of an inline banner).
+// CodeFormClosed marks a 422 raised because the form is not accepting responses.
+// The specific reason (draft | closed | not_started | ended | quota_full) is
+// attached as a FieldError{Attribute:"closedReason"} so the frontend can pick
+// one of the 7 "closed" copies (techspec Part 2, §5.1).
 const CodeFormClosed = "42-CLOSED"
+
+// closedReason maps a non-accepting form to a machine reason + human message.
+func closedReason(form dynamicform_model.Form) (reason, message string) {
+	now := time.Now()
+	switch {
+	case form.Status == constants.DynamicFormStatusDraft:
+		return "draft", "Formulir ini belum dibuka untuk umum."
+	case form.Status == constants.DynamicFormStatusClosed:
+		return "closed", "Formulir ini sudah ditutup."
+	case form.StartDate != nil && now.Before(*form.StartDate):
+		return "not_started", "Formulir ini baru dibuka pada " + form.StartDate.Format("2 January 2006 15:04") + "."
+	case form.EndDate != nil && now.After(*form.EndDate):
+		return "ended", "Formulir ini ditutup pada " + form.EndDate.Format("2 January 2006 15:04") + "."
+	case form.MaxSubmission != nil && form.TotalSubmission >= *form.MaxSubmission:
+		return "quota_full", fmt.Sprintf("Kuota formulir ini (%d tanggapan) sudah penuh.", *form.MaxSubmission)
+	default:
+		return "closed", "Formulir ini sedang tidak menerima tanggapan."
+	}
+}
+
+// formClosedError builds the standard 422 with its machine reason attached.
+func formClosedError(form dynamicform_model.Form) *apperror.AppError {
+	reason, message := closedReason(form)
+	e := apperror.Unprocessable(message)
+	e.Code = CodeFormClosed
+	e.Fields = []apperror.FieldError{{Attribute: "closedReason", Code: CodeFormClosed, Message: reason}}
+	return e
+}
 
 var imageExt = map[string]bool{".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true}
 
@@ -50,60 +81,53 @@ func (s *ServiceImpl) isAcceptingSubmissions(form dynamicform_model.Form) bool {
 	return true
 }
 
-func (s *ServiceImpl) isPrivileged(ctx context.Context, form dynamicform_model.Form, userID *int64) bool {
+func (s *ServiceImpl) isPrivileged(ctx context.Context, form dynamicform_model.Form, userID *int64, perms []string) bool {
+	if slices.Contains(perms, constants.PermDynamicFormManageAll) {
+		return true
+	}
 	if userID == nil {
 		return false
 	}
-	if form.CreatedBy != nil && *form.CreatedBy == *userID {
-		return true
-	}
-	ok, _ := s.repo.IsCollaborator(ctx, form.FormID, *userID)
-	return ok
+	return form.CreatedBy != nil && *form.CreatedBy == *userID
 }
 
-func (s *ServiceImpl) GetPublicForm(ctx context.Context, slug string, authUserID *int64, authUserEmail *string) (dynamicform_dto.PublicFormResponse, error) {
+func (s *ServiceImpl) GetPublicForm(ctx context.Context, slug string, authUserID *int64, authUserEmail *string, authPerms []string) (dynamicform_dto.PublicFormResponse, error) {
 	form, err := s.repo.GetBySlug(ctx, slug)
 	if err != nil {
 		return dynamicform_dto.PublicFormResponse{}, apperror.NotFound("Formulir tidak ditemukan")
 	}
-	privileged := s.isPrivileged(ctx, form, authUserID)
+	privileged := s.isPrivileged(ctx, form, authUserID, authPerms)
 	accepting := s.isAcceptingSubmissions(form)
 
 	if !privileged {
 		if form.RequireLogin && authUserID == nil {
-			return dynamicform_dto.PublicFormResponse{}, apperror.Unauthorized("Masuk untuk mengisi formulir ini")
-		}
-		if form.Status != constants.DynamicFormStatusPublished {
-			return dynamicform_dto.PublicFormResponse{}, apperror.NotFound("Formulir tidak ditemukan atau sudah ditutup")
-		}
-		if !accepting {
-			e := apperror.Unprocessable("Formulir ini sedang tidak menerima tanggapan.")
-			e.Code = CodeFormClosed
+			e := apperror.Unauthorized("Masuk untuk mengisi formulir ini")
+			e.Fields = []apperror.FieldError{{Attribute: "closedReason", Code: e.Code, Message: "needs_login"}}
 			return dynamicform_dto.PublicFormResponse{}, e
+		}
+		if form.Status != constants.DynamicFormStatusPublished || !accepting {
+			return dynamicform_dto.PublicFormResponse{}, formClosedError(form)
 		}
 	}
 
 	fields, _ := s.repo.ListFields(ctx, form.FormID, true)
-	sections, _ := s.repo.ListSections(ctx, form.FormID)
 
 	resp := dynamicform_dto.PublicFormResponse{
 		FormID: form.FormID, Title: form.Title, Description: strOr(form.Description),
-		Slug: form.Slug, Status: form.Status, RequireLogin: form.RequireLogin,
-		IsMultipleSubmit: form.IsMultipleSubmit, Version: form.Version, IsPreview: privileged && !accepting,
-	}
-	for _, sec := range sections {
-		resp.Sections = append(resp.Sections, dynamicform_dto.PublicSection{
-			SectionID: sec.SectionID, Title: sec.Title, Description: sec.Description, SortOrder: sec.SortOrder,
-		})
+		HeaderImageURL: strOr(form.HeaderImageURL),
+		Slug:           form.Slug, Status: form.Status, RequireLogin: form.RequireLogin,
+		IsMultipleSubmit: form.IsMultipleSubmit, MaxSubmission: form.MaxSubmission,
+		TotalSubmission: form.TotalSubmission, EndDate: fmtTimePtr(form.EndDate),
+		Version: form.Version, FormStartTS: time.Now().UnixMilli(),
+		IsPreview: privileged && (!accepting || form.Status != constants.DynamicFormStatusPublished),
 	}
 	for _, f := range fields {
 		resp.Fields = append(resp.Fields, dynamicform_dto.PublicField{
-			FieldID: f.FieldID, SectionID: f.SectionID, FieldType: f.FieldType, Label: f.Label,
+			FieldID: f.FieldID, FieldType: f.FieldType, Label: f.Label,
 			Placeholder: f.Placeholder, HelpText: f.HelpText, IsRequired: f.IsRequired,
 			IsSystemField: f.IsSystemField, SortOrder: f.SortOrder,
 			Options: rawJSON(f.OptionsJSON), Validation: rawJSON(f.ValidationJSON),
-			DefaultValue: f.DefaultValue, ConditionalLogic: rawJSON(f.ConditionalLogicJSON),
-			FieldConfig: rawJSON(f.FieldConfigJSON),
+			DefaultValue: f.DefaultValue, FieldConfig: rawJSON(f.FieldConfigJSON),
 		})
 	}
 	if authUserID != nil && authUserEmail != nil {
@@ -212,18 +236,21 @@ func (s *ServiceImpl) Submit(ctx context.Context, slug string, in SubmitInput) (
 		}
 	}
 
-	privileged := s.isPrivileged(ctx, form, in.AuthUserID)
+	privileged := s.isPrivileged(ctx, form, in.AuthUserID, in.AuthPerms)
 	if form.RequireLogin && in.AuthUserID == nil {
 		return dynamicform_dto.SubmitResult{}, apperror.Unauthorized("Masuk untuk mengisi formulir ini")
 	}
 	if !privileged && !s.isAcceptingSubmissions(form) {
-		e := apperror.Unprocessable("Formulir ini sudah ditutup.")
-		e.Code = CodeFormClosed
-		return dynamicform_dto.SubmitResult{}, e
+		return dynamicform_dto.SubmitResult{}, formClosedError(form)
 	}
 
 	fields, _ := s.repo.ListFields(ctx, form.FormID, true)
 	sysField, hasSys := systemEmailField(fields)
+
+	// Reconstruct the section path these answers actually take, so `required` is
+	// only enforced for fields on that path and skipped-branch answers are
+	// dropped (techspec Part 2, B1).
+	reachable := reachableFieldIDs(fields, buildSections(fields), in.Values)
 
 	// Rate-limit per IP (skipped for privileged callers doing QA).
 	if !privileged {
@@ -292,15 +319,15 @@ func (s *ServiceImpl) Submit(ctx context.Context, slug string, in SubmitInput) (
 		}
 	}
 
-	if errs := validateAnswers(fields, in.Values, fileSatisfied); len(errs) > 0 {
+	if errs := validateAnswers(fields, in.Values, fileSatisfied, reachable); len(errs) > 0 {
 		return dynamicform_dto.SubmitResult{}, apperror.Validation("Data tidak valid", errs)
 	}
 
-	// Build answers + files.
+	// Build answers + files. Fields in a skipped section are not persisted.
 	answers := map[int64]string{}
 	files := map[int64]dynamicform_model.File{}
 	for _, f := range fields {
-		if isDisplayType(f.FieldType) {
+		if isDisplayType(f.FieldType) || !reachable[f.FieldID] {
 			continue
 		}
 		if f.FieldType == "file" {
@@ -393,6 +420,10 @@ func (s *ServiceImpl) Submit(ctx context.Context, slug string, in SubmitInput) (
 }
 
 func (s *ServiceImpl) afterSubmit(ctx context.Context, form dynamicform_model.Form, submissionID int64, email, name string, fields []dynamicform_model.Field, answers map[int64]string, files map[int64]dynamicform_model.File) {
+	// Move any uploaded files into their Drive subfolder (attachments/<label>/)
+	// BEFORE the append job so the sheet row carries the Drive link.
+	s.relocateSubmissionFiles(ctx, form, submissionID, fields)
+
 	if form.SendConfirmationEmail && s.mailer != nil {
 		var pairs []mailer.AnswerPair
 		for _, f := range fields {

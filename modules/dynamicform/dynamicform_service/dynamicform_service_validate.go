@@ -13,17 +13,6 @@ import (
 	"fsldk-api/modules/dynamicform/dynamicform_model"
 )
 
-// conditionalLogic mirrors conditionalLogicJSON.
-type conditionalLogic struct {
-	Action     string `json:"action"` // show | hide
-	Match      string `json:"match"`  // all | any
-	Conditions []struct {
-		FieldID  int64  `json:"fieldID"`
-		Operator string `json:"operator"` // eq|neq|contains|gt|lt|filled|empty
-		Value    string `json:"value"`
-	} `json:"conditions"`
-}
-
 // fieldValidation mirrors validationJSON.
 type fieldValidation struct {
 	Min           *int     `json:"min"`
@@ -31,6 +20,15 @@ type fieldValidation struct {
 	Pattern       *string  `json:"pattern"`
 	AcceptedTypes []string `json:"acceptedTypes"`
 	MaxSizeKB     *int     `json:"maxSizeKB"`
+}
+
+// scaleConfig mirrors the linear_scale / rating bounds inside fieldConfigJSON
+// (techspec Part 2, S9). linear_scale: minValue 0 or 1, maxValue 2..10.
+// rating: maxRating 3..10.
+type scaleConfig struct {
+	MinValue  *int `json:"minValue"`
+	MaxValue  *int `json:"maxValue"`
+	MaxRating *int `json:"maxRating"`
 }
 
 func isDisplayType(t string) bool {
@@ -78,73 +76,21 @@ func optionValues(f dynamicform_model.Field) []string {
 	return out
 }
 
-// fieldVisible re-evaluates a field's conditionalLogic against the submitted
-// values so a conditionally-hidden field is never held to its `required` rule.
-func fieldVisible(f dynamicform_model.Field, values map[int64][]string) bool {
-	if f.ConditionalLogicJSON == nil || strings.TrimSpace(*f.ConditionalLogicJSON) == "" {
-		return true
-	}
-	var cl conditionalLogic
-	if json.Unmarshal([]byte(*f.ConditionalLogicJSON), &cl) != nil || len(cl.Conditions) == 0 {
-		return true
-	}
-	matchAll := !strings.EqualFold(cl.Match, "any")
-	matched := matchAll
-	for _, c := range cl.Conditions {
-		got := firstVal(values, c.FieldID)
-		var ok bool
-		switch c.Operator {
-		case "eq":
-			ok = got == c.Value
-		case "neq":
-			ok = got != c.Value
-		case "contains":
-			ok = strings.Contains(got, c.Value)
-			if !ok {
-				for _, v := range allVals(values, c.FieldID) {
-					if v == c.Value {
-						ok = true
-						break
-					}
-				}
-			}
-		case "gt":
-			ok = numLess(c.Value, got)
-		case "lt":
-			ok = numLess(got, c.Value)
-		case "filled":
-			ok = got != ""
-		case "empty":
-			ok = got == ""
-		}
-		if matchAll {
-			matched = matched && ok
-		} else {
-			matched = matched || ok
-		}
-	}
-	if strings.EqualFold(cl.Action, "hide") {
-		return !matched
-	}
-	return matched
-}
-
-func numLess(a, b string) bool {
-	af, aerr := strconv.ParseFloat(strings.TrimSpace(a), 64)
-	bf, berr := strconv.ParseFloat(strings.TrimSpace(b), 64)
-	if aerr != nil || berr != nil {
-		return false
-	}
-	return af < bf
-}
-
 var timeRe = regexp.MustCompile(`^\d{2}:\d{2}(:\d{2})?$`)
 var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 var datetimeRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}`)
 
-// validateAnswers runs the dynamic per-field validation. fileSatisfied reports,
-// per file fieldID, whether a live upload or a staged draft file covers it.
-func validateAnswers(fields []dynamicform_model.Field, values map[int64][]string, fileSatisfied map[int64]bool) []apperror.FieldError {
+// validateAnswers runs the dynamic per-field validation. `reachable` (may be
+// nil = "all reachable") is the set of fieldIDs on the section path the answers
+// actually take; fields off that path are not held to `required` (B1).
+// fileSatisfied reports, per file fieldID, whether a live upload or a staged
+// draft file covers it.
+func validateAnswers(
+	fields []dynamicform_model.Field,
+	values map[int64][]string,
+	fileSatisfied map[int64]bool,
+	reachable map[int64]bool,
+) []apperror.FieldError {
 	var errs []apperror.FieldError
 	add := func(f dynamicform_model.Field, msg string) {
 		errs = append(errs, apperror.FieldError{
@@ -159,7 +105,7 @@ func validateAnswers(fields []dynamicform_model.Field, values map[int64][]string
 		if !f.IsActive || isDisplayType(f.FieldType) {
 			continue
 		}
-		if !fieldVisible(f, values) {
+		if reachable != nil && !reachable[f.FieldID] {
 			continue
 		}
 
@@ -196,7 +142,7 @@ func validateAnswers(fields []dynamicform_model.Field, values map[int64][]string
 			if u, err := url.ParseRequestURI(single); err != nil || u.Scheme == "" {
 				add(f, f.Label+" harus berupa URL yang valid")
 			}
-		case "number", "linear_scale", "rating":
+		case "number":
 			n, err := strconv.ParseFloat(single, 64)
 			if err != nil {
 				add(f, f.Label+" harus berupa angka")
@@ -207,6 +153,13 @@ func validateAnswers(fields []dynamicform_model.Field, values map[int64][]string
 				if val.Max != nil && n > float64(*val.Max) {
 					add(f, f.Label+" maksimal "+strconv.Itoa(*val.Max))
 				}
+			}
+		case "linear_scale", "rating":
+			n, err := strconv.Atoi(single)
+			if err != nil {
+				add(f, f.Label+" harus berupa angka bulat")
+			} else if lo, hi, ok := scaleBounds(f); ok && (n < lo || n > hi) {
+				add(f, f.Label+" harus di antara "+strconv.Itoa(lo)+" dan "+strconv.Itoa(hi))
 			}
 		case "date":
 			if !dateRe.MatchString(single) {
@@ -252,6 +205,46 @@ func validateAnswers(fields []dynamicform_model.Field, values map[int64][]string
 		}
 	}
 	return errs
+}
+
+// scaleBounds returns the clamped [lo, hi] a linear_scale / rating answer must
+// fall in, from fieldConfig (techspec Part 2, S9).
+func scaleBounds(f dynamicform_model.Field) (lo, hi int, ok bool) {
+	if f.FieldConfigJSON == nil || strings.TrimSpace(*f.FieldConfigJSON) == "" {
+		return 0, 0, false
+	}
+	var c scaleConfig
+	if json.Unmarshal([]byte(*f.FieldConfigJSON), &c) != nil {
+		return 0, 0, false
+	}
+	switch f.FieldType {
+	case "rating":
+		hi = 5
+		if c.MaxRating != nil {
+			hi = clamp(*c.MaxRating, 3, 10)
+		}
+		return 1, hi, true
+	case "linear_scale":
+		lo, hi = 1, 5
+		if c.MinValue != nil {
+			lo = clamp(*c.MinValue, 0, 1)
+		}
+		if c.MaxValue != nil {
+			hi = clamp(*c.MaxValue, 2, 10)
+		}
+		return lo, hi, true
+	}
+	return 0, 0, false
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 func contains(list []string, v string) bool {

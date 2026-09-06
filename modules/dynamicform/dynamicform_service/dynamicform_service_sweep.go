@@ -7,31 +7,71 @@ import (
 	"time"
 )
 
-// SweepStaleDrafts deletes drafts untouched for more than 7 days and best-effort
-// removes their staged files from disk. Idempotent and safe to run concurrently
-// (it operates row by row).
+// Draft retention windows, measured from the draft's last update:
+//   - staged files (uploaded images/attachments) are purged after 3 days
+//   - the whole draft, text answers included, is purged after 7 days
+const (
+	draftFileTTL = 3 * 24 * time.Hour
+	draftTTL     = 7 * 24 * time.Hour
+)
+
+// SweepStaleDrafts enforces the two retention windows above. Idempotent and safe
+// to run row by row: stripping an already-stripped draft is a no-op.
 func (s *ServiceImpl) SweepStaleDrafts(ctx context.Context) error {
-	cutoff := time.Now().AddDate(0, 0, -7)
-	drafts, err := s.repo.StaleDrafts(ctx, cutoff)
+	now := time.Now()
+	fileCutoff := now.Add(-draftFileTTL)
+	draftCutoff := now.Add(-draftTTL)
+
+	// One query for everything older than the shorter (file) window; the longer
+	// (whole-draft) window is a subset filtered in memory.
+	drafts, err := s.repo.StaleDrafts(ctx, fileCutoff)
 	if err != nil {
 		return err
 	}
-	removed := 0
+
+	removedDrafts, strippedFiles := 0, 0
 	for _, d := range drafts {
 		m := map[string]json.RawMessage{}
-		if json.Unmarshal([]byte(d.AnswersJSON), &m) == nil {
+		if json.Unmarshal([]byte(d.AnswersJSON), &m) != nil {
+			m = nil
+		}
+
+		// Older than 7 days: drop the draft and every staged file it still holds.
+		if d.UpdatedDate.Before(draftCutoff) {
 			for _, v := range m {
 				if url, _, _, _, ok := stagedFileEntry(v); ok && url != "" {
 					_ = s.uploader.DeleteFile(url)
 				}
 			}
+			if err := s.repo.DeleteDraftByID(ctx, d.DraftID); err == nil {
+				removedDrafts++
+			}
+			continue
 		}
-		if err := s.repo.DeleteDraftByID(ctx, d.DraftID); err == nil {
-			removed++
+
+		// 3–7 days old: delete staged files but keep the text answers.
+		changed := false
+		for key, v := range m {
+			url, _, _, _, ok := stagedFileEntry(v)
+			if !ok {
+				continue
+			}
+			if url != "" {
+				_ = s.uploader.DeleteFile(url)
+			}
+			delete(m, key)
+			changed = true
+		}
+		if changed {
+			if b, mErr := json.Marshal(m); mErr == nil {
+				if err := s.repo.SetDraftAnswers(ctx, d.DraftID, string(b)); err == nil {
+					strippedFiles++
+				}
+			}
 		}
 	}
-	if removed > 0 {
-		log.Printf("[DYNAMICFORM] sweep: removed %d stale draft(s)", removed)
+	if removedDrafts > 0 || strippedFiles > 0 {
+		log.Printf("[DYNAMICFORM] sweep: removed %d stale draft(s), stripped files from %d", removedDrafts, strippedFiles)
 	}
 	return nil
 }

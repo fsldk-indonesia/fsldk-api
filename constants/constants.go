@@ -312,14 +312,12 @@ const (
 	TableJobQueue           = "tr_job_queue"
 	TableWhatsAppMessageLog = "tr_whatsapp_message_log"
 
-	TableDynamicForm             = "ms_dynamic_form"
-	TableDynamicFormSection      = "ms_dynamic_form_section"
-	TableDynamicFormField        = "ms_dynamic_form_field"
-	TableDynamicFormSubmission   = "tr_dynamic_form_submission"
-	TableDynamicFormAnswer       = "tr_dynamic_form_answer"
-	TableDynamicFormFile         = "tr_dynamic_form_file"
-	TableDynamicFormDraft        = "tr_dynamic_form_draft"
-	TableDynamicFormCollaborator = "map_dynamic_form_collaborator"
+	TableDynamicForm           = "ms_dynamic_form"
+	TableDynamicFormField      = "ms_dynamic_form_field"
+	TableDynamicFormSubmission = "tr_dynamic_form_submission"
+	TableDynamicFormAnswer     = "tr_dynamic_form_answer"
+	TableDynamicFormFile       = "tr_dynamic_form_file"
+	TableDynamicFormDraft      = "tr_dynamic_form_draft"
 
 	// Kantong Amal.
 	TableCampaignCategory = "lk_campaign_category"
@@ -337,28 +335,34 @@ const (
 )
 
 // Dynamic form lifecycle status (dynamicform module — distinct from the
-// submission_form engine's DRAFT/PUBLISHED/ARCHIVED).
+// submission_form engine's DRAFT/PUBLISHED/ARCHIVED). There is no `archived`:
+// the reference never reaches it, so the lifecycle is draft -> published ->
+// closed (techspec Part 2, K4).
 const (
 	DynamicFormStatusDraft     = "draft"
 	DynamicFormStatusPublished = "published"
 	DynamicFormStatusClosed    = "closed"
-	DynamicFormStatusArchived  = "archived"
 )
 
 // DynamicFormFieldTypes are the validated field-type slugs (used by the DTO
 // `oneof` tag and a service re-check). Display elements (no input):
-// section_break, paragraph, image.
+// section_break, paragraph, image, video.
 var DynamicFormFieldTypes = []string{
 	"short_text", "long_text", "email", "number", "phone", "url",
 	"date", "time", "datetime",
 	"dropdown", "radio", "checkbox", "linear_scale", "rating",
 	"file",
-	"section_break", "paragraph", "image",
+	"section_break", "paragraph", "image", "video",
 }
 
 // DynamicFormDisplayFieldTypes are the display-only elements (skipped by
-// validation, excluded from CSV columns).
-var DynamicFormDisplayFieldTypes = []string{"section_break", "paragraph", "image"}
+// validation, excluded from CSV/sheet columns). `video` is display-only here
+// (techspec Part 2, B8 — the reference wrongly treats it as an input field).
+var DynamicFormDisplayFieldTypes = []string{"section_break", "paragraph", "image", "video"}
+
+// DynamicFormRoutingFieldTypes are the choice types that may carry a
+// fieldConfig.sectionRouting rule (forward-only section jumps).
+var DynamicFormRoutingFieldTypes = []string{"radio", "dropdown"}
 
 // Job types for the Google Sheets mirror (run through modules/jobqueue on the
 // "default" queue via a registered handler).

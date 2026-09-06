@@ -62,18 +62,24 @@ type Repository interface {
 	UpdateForm(ctx context.Context, id int64, values map[string]any) error
 	SoftDeleteForm(ctx context.Context, id int64) error
 	// PurgeFormChildren hard-deletes every child row (submissions+answers+files,
-	// drafts, fields, sections, collaborators) in FK-safe order and returns the
-	// file URLs that were referenced, for best-effort disk cleanup.
+	// drafts, fields) in FK-safe order and returns the file URLs that were
+	// referenced, for best-effort disk cleanup.
 	PurgeFormChildren(ctx context.Context, formID int64) ([]string, error)
 	ListForms(ctx context.Context, f dynamicform_dto.FormFilter) ([]dynamicform_model.Form, int64, []int, error)
 
-	// --- collaborators ---
-	ListCollaborators(ctx context.Context, formID int64) ([]dynamicform_model.Collaborator, error)
-	ReplaceCollaborators(ctx context.Context, formID int64, rows []dynamicform_dto.CollaboratorInput) error
-	IsCollaborator(ctx context.Context, formID, userID int64, roles ...string) (bool, error)
+	// UserEmail returns ms_user.email for a user id ("" if not found) — used to
+	// share the Drive form folder with the form's creator.
+	UserEmail(ctx context.Context, userID int64) string
 
-	// --- sections & fields ---
-	ListSections(ctx context.Context, formID int64) ([]dynamicform_model.Section, error)
+	// --- Google Drive folder tree ---
+	// RelocateFile repoints a file row (and its answer value) to a Drive URL
+	// after the local copy has been uploaded to the form's Drive subfolder.
+	RelocateFile(ctx context.Context, fileID, submissionID, fieldID int64, driveURL, driveFileID string) error
+	// CollectGdriveFileIDs returns the Drive file ids for a form (submissionID
+	// nil) or one submission, for best-effort trashing on delete.
+	CollectGdriveFileIDs(ctx context.Context, formID int64, submissionID *int64) ([]string, error)
+
+	// --- fields ---
 	ListFields(ctx context.Context, formID int64, activeOnly bool) ([]dynamicform_model.Field, error)
 	GetField(ctx context.Context, formID, fieldID int64) (dynamicform_model.Field, error)
 	AddField(ctx context.Context, formID int64, values map[string]any) (int64, error)
@@ -104,10 +110,14 @@ type Repository interface {
 	DeleteDraft(ctx context.Context, formID, userID int64) error
 	StaleDrafts(ctx context.Context, olderThan time.Time) ([]dynamicform_model.Draft, error)
 	DeleteDraftByID(ctx context.Context, draftID int64) error
+	// SetDraftAnswers overwrites a draft's answers without touching updatedDate,
+	// so the sweep can strip expired file entries while the text-answer clock runs.
+	SetDraftAnswers(ctx context.Context, draftID int64, answersJSON string) error
 
 	// --- analytics ---
 	SubmissionsPerDay(ctx context.Context, formID int64, since time.Time) (map[string]int, error)
 	ValidCounts(ctx context.Context, formID int64) (valid int, invalid int, err error)
+	UniqueRespondents(ctx context.Context, formID int64) (int, error)
 	TotalFiles(ctx context.Context, formID int64) (int, error)
 	RecentSubmissions(ctx context.Context, formID int64, limit int) ([]dynamicform_model.Submission, error)
 	AnswerValueCounts(ctx context.Context, formID, fieldID int64) ([]ValueCount, error)

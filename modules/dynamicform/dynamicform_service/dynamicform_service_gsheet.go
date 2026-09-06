@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"fsldk-api/base/apperror"
@@ -29,54 +30,193 @@ func tabOf(form dynamicform_model.Form) string {
 	return form.GsheetTabName
 }
 
-// ensureSheet creates the spreadsheet for a form (idempotent) and writes its
-// header + shares it. It records gsheetLastSyncError on failure but only the
-// gsheet/connect endpoint surfaces that error to the caller.
+// driveNameSanitizer strips characters Drive dislikes in file/folder names and
+// keeps the result non-empty.
+func driveName(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "/", "-"))
+	if s == "" {
+		return "untitled"
+	}
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return s
+}
+
+// ensureSheet builds the full Drive tree for a form (idempotent) — ported from
+// ldksyahid-app DynamicFormGDriveService::setupFormFolder:
+//
+//	<root>/<Form Title>/
+//	  ├── <Form Title> — Responses   (spreadsheet)
+//	  ├── attachments/  └── <file field label>/
+//	  └── assets/       └── <image field label>/
+//
+// then writes the header row and shares the form folder with the creator and the
+// notify-email list. Records gsheetLastSyncError on failure; only gsheet/connect
+// surfaces the error to the caller.
 func (s *ServiceImpl) ensureSheet(ctx context.Context, form dynamicform_model.Form) error {
 	if !s.gsheet.Enabled() {
 		return apperror.Unprocessable("Integrasi Google Sheets belum dikonfigurasi di server.")
 	}
-	if form.GsheetSpreadsheetID != nil && *form.GsheetSpreadsheetID != "" {
-		return nil
+	haveSheet := form.GsheetSpreadsheetID != nil && *form.GsheetSpreadsheetID != ""
+	haveTree := form.GdriveFormFolderID != nil && *form.GdriveFormFolderID != ""
+	if haveSheet && haveTree {
+		return nil // fully set up
 	}
 	tab := tabOf(form)
-	id, url, err := s.gsheet.CreateSpreadsheet(ctx, form.Title+" — Responses", s.gsheetFolderID)
-	if err != nil {
+	fail := func(err error) error {
 		_ = s.repo.TouchGsheetSync(ctx, form.FormID, err.Error())
 		return err
 	}
+
+	// 1. form folder inside the configured root folder
+	formFolderID, _, err := s.gsheet.CreateFolder(ctx, driveName(form.Title), s.gsheetFolderID)
+	if err != nil {
+		return fail(err)
+	}
+	// 2. spreadsheet — reuse an already-created one (pull it into the form
+	//    folder), otherwise create it inside the form folder.
+	var sheetID, sheetURL string
+	if haveSheet {
+		sheetID = *form.GsheetSpreadsheetID
+		sheetURL = strOr(form.GsheetSpreadsheetURL)
+		_ = s.gsheet.MoveFile(ctx, sheetID, formFolderID, s.gsheetFolderID)
+	} else {
+		sheetID, sheetURL, err = s.gsheet.CreateSpreadsheet(ctx, form.Title+" — Responses", formFolderID)
+		if err != nil {
+			return fail(err)
+		}
+	}
+	// 3. attachments/ + assets/
+	attachID, _, err := s.gsheet.CreateFolder(ctx, "attachments", formFolderID)
+	if err != nil {
+		return fail(err)
+	}
+	assetsID, _, err := s.gsheet.CreateFolder(ctx, "assets", formFolderID)
+	if err != nil {
+		return fail(err)
+	}
+
 	if err := s.repo.UpdateForm(ctx, form.FormID, map[string]any{
-		"gsheetSpreadsheetID": id, "gsheetSpreadsheetURL": url, "gsheetTabName": tab,
+		"gsheetSpreadsheetID": sheetID, "gsheetSpreadsheetURL": sheetURL, "gsheetTabName": tab,
+		"gdriveFormFolderID": formFolderID, "gdriveAttachmentsFolderID": attachID, "gdriveAssetsFolderID": assetsID,
 	}); err != nil {
 		return err
 	}
+	form.GsheetSpreadsheetID = &sheetID
+	form.GdriveFormFolderID = &formFolderID
+	form.GdriveAttachmentsFolderID = &attachID
+	form.GdriveAssetsFolderID = &assetsID
+
+	// 4. header row
 	fields, _ := s.repo.ListFields(ctx, form.FormID, true)
-	if hErr := s.gsheet.SetHeaderRow(ctx, id, tab, buildHeader(fields)); hErr != nil {
-		_ = s.repo.TouchGsheetSync(ctx, form.FormID, hErr.Error())
-		return hErr
+	if hErr := s.gsheet.SetHeaderRow(ctx, sheetID, tab, buildHeader(fields)); hErr != nil {
+		return fail(hErr)
 	}
+	// 5. per-field subfolders for existing file/image fields
+	for _, f := range fields {
+		s.ensureFieldFolder(ctx, form, f)
+	}
+	// 6. share the whole tree (form folder) with creator + notify emails
 	if emails := s.sheetShareEmails(ctx, form); len(emails) > 0 {
-		_ = s.gsheet.Share(ctx, id, emails)
+		_ = s.gsheet.Share(ctx, formFolderID, emails)
 	}
 	_ = s.repo.TouchGsheetSync(ctx, form.FormID, "")
 	return nil
 }
 
+// ensureFieldFolder creates the Drive subfolder for one file/image field
+// (attachments/<label>/ or assets/<label>/) when the form's tree exists and the
+// field has no folder yet. Best-effort — a failure only logs.
+func (s *ServiceImpl) ensureFieldFolder(ctx context.Context, form dynamicform_model.Form, field dynamicform_model.Field) {
+	if !s.gsheet.Enabled() {
+		return
+	}
+	if field.FieldType != "file" && field.FieldType != "image" {
+		return
+	}
+	if field.GdriveFolderID != nil && *field.GdriveFolderID != "" {
+		return
+	}
+	parent := form.GdriveAttachmentsFolderID
+	if field.FieldType == "image" {
+		parent = form.GdriveAssetsFolderID
+	}
+	if parent == nil || *parent == "" {
+		return
+	}
+	subID, _, err := s.gsheet.CreateFolder(ctx, driveName(field.Label), *parent)
+	if err != nil {
+		log.Printf("[DYNAMICFORM] gdrive subfolder for field %d failed: %v", field.FieldID, err)
+		return
+	}
+	_ = s.repo.UpdateField(ctx, form.FormID, field.FieldID, map[string]any{"gdriveFolderID": subID})
+	// NOTE: builder images (fieldType "image") keep their LOCAL helpText URL — a
+	// public respondent must be able to render <img src=…>, and Drive files in
+	// the restricted form folder are not publicly fetchable. The assets/<label>/
+	// subfolder is created for structural parity with the reference only.
+}
+
+// relocateSubmissionFiles uploads each locally-stored file of a submission into
+// its field's Drive subfolder (attachments/<label>/), then repoints the file row
+// + answer to the Drive link and deletes the local copy. No-op when the form has
+// no Drive tree. Called post-commit so it never holds a DB lock during upload.
+func (s *ServiceImpl) relocateSubmissionFiles(ctx context.Context, form dynamicform_model.Form, submissionID int64, fields []dynamicform_model.Field) {
+	if !s.gsheet.Enabled() || form.GdriveAttachmentsFolderID == nil || *form.GdriveAttachmentsFolderID == "" {
+		return
+	}
+	folderByField := map[int64]string{}
+	for _, f := range fields {
+		if f.GdriveFolderID != nil && *f.GdriveFolderID != "" {
+			folderByField[f.FieldID] = *f.GdriveFolderID
+		}
+	}
+	byField, _ := s.repo.FilesFor(ctx, []int64{submissionID})
+	for _, fl := range byField[submissionID] {
+		if fl.GdriveFileID != nil && *fl.GdriveFileID != "" {
+			continue // already on Drive
+		}
+		folderID, ok := folderByField[fl.FieldID]
+		if !ok || folderID == "" {
+			continue
+		}
+		data, err := os.ReadFile(s.uploader.LocalPath(fl.FileURL))
+		if err != nil {
+			log.Printf("[DYNAMICFORM] read local file %s failed: %v", fl.FileURL, err)
+			continue
+		}
+		mt := ""
+		if fl.MimeType != nil {
+			mt = *fl.MimeType
+		}
+		name := fmt.Sprintf("submission_%d_%s", submissionID, driveName(fl.OriginalFileName))
+		driveID, driveURL, uErr := s.gsheet.UploadFile(ctx, folderID, name, mt, data)
+		if uErr != nil {
+			log.Printf("[DYNAMICFORM] upload %s to drive failed: %v", fl.OriginalFileName, uErr)
+			continue
+		}
+		if err := s.repo.RelocateFile(ctx, fl.FileID, submissionID, fl.FieldID, driveURL, driveID); err != nil {
+			log.Printf("[DYNAMICFORM] relocate file row %d failed: %v", fl.FileID, err)
+			continue
+		}
+		_ = s.uploader.DeleteFile(fl.FileURL)
+	}
+}
+
 func (s *ServiceImpl) sheetShareEmails(ctx context.Context, form dynamicform_model.Form) []string {
 	seen := map[string]bool{}
 	var out []string
+	if form.CreatedBy != nil {
+		if e := strings.TrimSpace(s.repo.UserEmail(ctx, *form.CreatedBy)); e != "" {
+			seen[e] = true
+			out = append(out, e)
+		}
+	}
 	for _, e := range notifyEmailsOf(form) {
 		e = strings.TrimSpace(e)
 		if e != "" && !seen[e] {
 			seen[e] = true
 			out = append(out, e)
-		}
-	}
-	collabs, _ := s.repo.ListCollaborators(ctx, form.FormID)
-	for _, c := range collabs {
-		if c.UserEmail != "" && !seen[c.UserEmail] {
-			seen[c.UserEmail] = true
-			out = append(out, c.UserEmail)
 		}
 	}
 	return out
@@ -130,6 +270,13 @@ func (s *ServiceImpl) GSheetResync(ctx context.Context, formID int64, actorID in
 	}
 	if form.GsheetSpreadsheetID == nil {
 		return dynamicform_dto.GSheetStatus{}, apperror.Unprocessable("Formulir ini belum terhubung ke Google Sheets.")
+	}
+	// Build the Drive folder tree if it is missing (forms connected before the
+	// folder-tree feature) — ensureSheet is idempotent and pulls the existing
+	// spreadsheet into the new form folder.
+	if form.GdriveFormFolderID == nil || *form.GdriveFormFolderID == "" {
+		_ = s.ensureSheet(ctx, form)
+		form, _ = s.repo.GetByID(ctx, formID)
 	}
 	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
 		Queue: jobqueue_model.QueueDefault, JobType: constants.JobDynamicFormGSheetRebuild,

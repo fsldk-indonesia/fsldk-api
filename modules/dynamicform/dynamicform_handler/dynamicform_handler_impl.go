@@ -141,7 +141,7 @@ func firstRaw(raw map[string][]string, key string) string {
 
 func (h *HandlerImpl) PublicGet(c *gin.Context) {
 	uid, email := optionalUser(c)
-	data, err := h.svc.GetPublicForm(c.Request.Context(), c.Param("slug"), uid, email)
+	data, err := h.svc.GetPublicForm(c.Request.Context(), c.Param("slug"), uid, email, permsOf(c))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -158,7 +158,7 @@ func (h *HandlerImpl) PublicSubmit(c *gin.Context) {
 		Values: values, Files: files,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		Honeypot: firstRaw(raw, "_hp_website"), FormTS: formTS,
-		AuthUserID: uid, AuthUserEmail: email,
+		AuthUserID: uid, AuthUserEmail: email, AuthPerms: permsOf(c),
 	}
 	res, err := h.svc.Submit(c.Request.Context(), c.Param("slug"), in)
 	if err != nil {

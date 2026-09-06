@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -40,35 +41,65 @@ type Client interface {
 	FindRowBySubmissionID(ctx context.Context, id, tab string, submissionID int64) (rowIndex int, err error)
 	ClearDataRows(ctx context.Context, id, tab string) error
 	Share(ctx context.Context, id string, emails []string) error
+
+	// --- Drive folder tree (ported from ldksyahid-app DynamicFormGDriveService) ---
+	CreateFolder(ctx context.Context, name, parentID string) (id, folderURL string, err error)
+	UploadFile(ctx context.Context, parentID, name, mimeType string, data []byte) (id, fileURL string, err error)
+	MoveFile(ctx context.Context, id, newParentID, oldParentID string) error
+	TrashFile(ctx context.Context, id string) error
 }
 
 // New picks the service-account flow (GSHEET_CREDENTIALS_JSON) or the
 // OAuth-user flow (client id/secret/refresh token); if neither is configured,
-// or the global switch is off, it returns a disabled no-op client.
+// or the global switch is off, it returns a disabled no-op client. It logs one
+// line at boot stating which path was taken (or why it stayed disabled).
 func New(cfg config.AppConfig) Client {
+	c, reason := build(cfg)
+	if _, ok := c.(disabledClient); ok {
+		log.Printf("[GSHEET] mirror NONAKTIF — %s (isi GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN + GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID di app.env lalu restart)", reason)
+	} else {
+		log.Printf("[GSHEET] mirror AKTIF via %s, root folder=%q", reason, cfg.GSheetRootFolderID)
+	}
+	return c
+}
+
+func build(cfg config.AppConfig) (Client, string) {
+	haveOAuth := cfg.GSheetOAuthClientID != "" && cfg.GSheetOAuthClientSecret != "" && cfg.GSheetOAuthRefreshToken != ""
+	haveSA := cfg.GSheetCredentialsJSON != ""
+	haveRoot := cfg.GSheetRootFolderID != ""
+
 	if !cfg.GSheetSyncEnabled {
-		return disabledClient{}
+		if (haveOAuth || haveSA) && haveRoot {
+			// Credentials look complete but auto-enable did not fire — an
+			// explicit GSHEET_SYNC_ENABLED (in app.env OR the OS environment)
+			// is forcing it off.
+			return disabledClient{}, "GSHEET_SYNC_ENABLED di-set eksplisit (cek app.env DAN environment OS: `echo $GSHEET_SYNC_ENABLED`) — hapus/kosongkan atau set `true`"
+		}
+		return disabledClient{}, fmt.Sprintf(
+			"kredensial belum lengkap (clientID:%v secret:%v refreshToken:%v credJSON:%v rootFolder:%v)",
+			cfg.GSheetOAuthClientID != "", cfg.GSheetOAuthClientSecret != "", cfg.GSheetOAuthRefreshToken != "", haveSA, haveRoot,
+		)
 	}
 	if cfg.GSheetCredentialsJSON != "" {
 		raw, err := os.ReadFile(cfg.GSheetCredentialsJSON)
 		if err != nil {
-			return disabledClient{}
+			return disabledClient{}, fmt.Sprintf("GSHEET_CREDENTIALS_JSON tidak terbaca: %v", err)
 		}
 		var key serviceAccountKey
 		if json.Unmarshal(raw, &key) != nil || key.ClientEmail == "" || key.PrivateKey == "" {
-			return disabledClient{}
+			return disabledClient{}, "GSHEET_CREDENTIALS_JSON bukan berkas service-account yang valid"
 		}
 		if key.TokenURI == "" {
 			key.TokenURI = oauthTokenURL
 		}
-		return &apiClient{http: &http.Client{Timeout: callTimeout}, saKey: &key, impersonate: cfg.GSheetImpersonateEmail}
+		return &apiClient{http: &http.Client{Timeout: callTimeout}, saKey: &key, impersonate: cfg.GSheetImpersonateEmail}, "service account"
 	}
 	if cfg.GSheetOAuthClientID != "" && cfg.GSheetOAuthClientSecret != "" && cfg.GSheetOAuthRefreshToken != "" {
 		return &apiClient{http: &http.Client{Timeout: callTimeout}, oauth: &oauthCreds{
 			clientID: cfg.GSheetOAuthClientID, clientSecret: cfg.GSheetOAuthClientSecret, refreshToken: cfg.GSheetOAuthRefreshToken,
-		}}
+		}}, "OAuth user (GOOGLE_DRIVE_*)"
 	}
-	return disabledClient{}
+	return disabledClient{}, "trio OAuth (client id/secret/refresh token) belum lengkap"
 }
 
 // ---------------------------------------------------------------------------
@@ -95,6 +126,14 @@ func (disabledClient) FindRowBySubmissionID(context.Context, string, string, int
 }
 func (disabledClient) ClearDataRows(context.Context, string, string) error { return nil }
 func (disabledClient) Share(context.Context, string, []string) error       { return nil }
+func (disabledClient) CreateFolder(context.Context, string, string) (string, string, error) {
+	return "", "", nil
+}
+func (disabledClient) UploadFile(context.Context, string, string, string, []byte) (string, string, error) {
+	return "", "", nil
+}
+func (disabledClient) MoveFile(context.Context, string, string, string) error { return nil }
+func (disabledClient) TrashFile(context.Context, string) error                { return nil }
 
 // ---------------------------------------------------------------------------
 // live client
@@ -343,7 +382,20 @@ func (c *apiClient) cacheSheetID(key string, id int64) {
 	c.mu.Unlock()
 }
 
+// ensureTab makes sure a tab named `tab` exists (a brand-new spreadsheet only
+// has the localized default "Sheet1", so a plain "Responses!A1" range would be
+// rejected with "Unable to parse range"). sheetID renames the first sheet to
+// `tab` (or adds one) and caches the result, so this is a no-op after the
+// first call.
+func (c *apiClient) ensureTab(ctx context.Context, id, tab string) error {
+	_, err := c.sheetID(ctx, id, tab)
+	return err
+}
+
 func (c *apiClient) SetHeaderRow(ctx context.Context, id, tab string, headers []string) error {
+	if err := c.ensureTab(ctx, id, tab); err != nil {
+		return err
+	}
 	rng := tab + "!A1:" + colLetter(len(headers)) + "1"
 	endpoint := fmt.Sprintf("%s/%s/values/%s?valueInputOption=RAW", sheetsBaseURL, id, url.PathEscape(rng))
 	body := map[string]any{"values": [][]string{headers}}
@@ -369,6 +421,9 @@ func (c *apiClient) SetHeaderRow(ctx context.Context, id, tab string, headers []
 }
 
 func (c *apiClient) ReorderColumns(ctx context.Context, id, tab string, newHeaders []string) error {
+	if err := c.ensureTab(ctx, id, tab); err != nil {
+		return err
+	}
 	values, err := c.getValues(ctx, id, tab+"!A1:ZZ")
 	if err != nil {
 		return err
@@ -402,6 +457,9 @@ func (c *apiClient) ReorderColumns(ctx context.Context, id, tab string, newHeade
 }
 
 func (c *apiClient) AppendRow(ctx context.Context, id, tab string, row []string) (int, error) {
+	if err := c.ensureTab(ctx, id, tab); err != nil {
+		return 0, err
+	}
 	rng := tab + "!A1"
 	endpoint := fmt.Sprintf("%s/%s/values/%s:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
 		sheetsBaseURL, id, url.PathEscape(rng))
@@ -447,6 +505,9 @@ func (c *apiClient) DeleteRowByIndex(ctx context.Context, id, tab string, rowInd
 }
 
 func (c *apiClient) FindRowBySubmissionID(ctx context.Context, id, tab string, submissionID int64) (int, error) {
+	if err := c.ensureTab(ctx, id, tab); err != nil {
+		return 0, err
+	}
 	values, err := c.getValues(ctx, id, tab+"!B2:B")
 	if err != nil {
 		return 0, err
@@ -461,6 +522,9 @@ func (c *apiClient) FindRowBySubmissionID(ctx context.Context, id, tab string, s
 }
 
 func (c *apiClient) ClearDataRows(ctx context.Context, id, tab string) error {
+	if err := c.ensureTab(ctx, id, tab); err != nil {
+		return err
+	}
 	return c.clearRange(ctx, id, tab+"!A2:ZZ")
 }
 
@@ -478,6 +542,105 @@ func (c *apiClient) Share(ctx context.Context, id string, emails []string) error
 		}
 	}
 	return firstErr
+}
+
+// ---------------------------------------------------------------------------
+// Drive folder tree
+// ---------------------------------------------------------------------------
+
+// CreateFolder creates a Drive folder named `name` under parentID and returns
+// its id and browser URL.
+func (c *apiClient) CreateFolder(ctx context.Context, name, parentID string) (string, string, error) {
+	body := map[string]any{"name": name, "mimeType": "application/vnd.google-apps.folder"}
+	if parentID != "" {
+		body["parents"] = []string{parentID}
+	}
+	var out struct {
+		ID string `json:"id"`
+	}
+	if err := c.do(ctx, http.MethodPost, driveBaseURL+"?supportsAllDrives=true&fields=id", body, &out); err != nil {
+		return "", "", err
+	}
+	return out.ID, "https://drive.google.com/drive/folders/" + out.ID, nil
+}
+
+// UploadFile uploads raw bytes as a new Drive file under parentID (multipart/
+// related upload) and returns its id and webViewLink.
+func (c *apiClient) UploadFile(ctx context.Context, parentID, name, mimeType string, data []byte) (string, string, error) {
+	tok, err := c.accessToken(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+	meta := map[string]any{"name": name}
+	if parentID != "" {
+		meta["parents"] = []string{parentID}
+	}
+	metaJSON, _ := json.Marshal(meta)
+
+	boundary := "gsheet" + strconv.FormatInt(time.Now().UnixNano(), 16)
+	var buf bytes.Buffer
+	buf.WriteString("--" + boundary + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n")
+	buf.Write(metaJSON)
+	buf.WriteString("\r\n--" + boundary + "\r\nContent-Type: " + mimeType + "\r\n\r\n")
+	buf.Write(data)
+	buf.WriteString("\r\n--" + boundary + "--\r\n")
+
+	endpoint := "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, &buf)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "multipart/related; boundary="+boundary)
+
+	// Uploads can be larger/slower than the 15s JSON-call budget.
+	uploadClient := &http.Client{Timeout: 3 * time.Minute}
+	resp, err := uploadClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		b := new(bytes.Buffer)
+		_, _ = b.ReadFrom(resp.Body)
+		return "", "", fmt.Errorf("gsheet: upload -> %d: %s", resp.StatusCode, strings.TrimSpace(b.String()))
+	}
+	var out struct {
+		ID          string `json:"id"`
+		WebViewLink string `json:"webViewLink"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", "", err
+	}
+	link := out.WebViewLink
+	if link == "" {
+		link = "https://drive.google.com/file/d/" + out.ID + "/view"
+	}
+	return out.ID, link, nil
+}
+
+// MoveFile re-parents a Drive file (used to pull an already-created spreadsheet
+// into its new per-form folder). oldParentID may be "" to just add a parent.
+func (c *apiClient) MoveFile(ctx context.Context, id, newParentID, oldParentID string) error {
+	if id == "" || newParentID == "" {
+		return nil
+	}
+	endpoint := fmt.Sprintf("%s/%s?supportsAllDrives=true&addParents=%s", driveBaseURL, id, url.QueryEscape(newParentID))
+	if oldParentID != "" {
+		endpoint += "&removeParents=" + url.QueryEscape(oldParentID)
+	}
+	return c.do(ctx, http.MethodPatch, endpoint, map[string]any{}, nil)
+}
+
+// TrashFile moves a Drive file/folder to the trash (best-effort cleanup).
+func (c *apiClient) TrashFile(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	return c.do(ctx, http.MethodPatch, driveBaseURL+"/"+id+"?supportsAllDrives=true", map[string]any{"trashed": true}, nil)
 }
 
 // ---------------------------------------------------------------------------

@@ -284,8 +284,16 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 		go jobqueueSvc.RunWorker(i)
 	}
 	go jobqueueSvc.RunStuckSweeper()
-	// One-shot draft/upload sweep on boot (idempotent).
-	go func() { _ = dynamicFormSvc.SweepStaleDrafts(context.Background()) }()
+	// Draft/upload retention sweep: once on boot, then every 6 hours. Enforces
+	// the 3-day staged-file and 7-day whole-draft windows. Idempotent.
+	go func() {
+		_ = dynamicFormSvc.SweepStaleDrafts(context.Background())
+		t := time.NewTicker(6 * time.Hour)
+		defer t.Stop()
+		for range t.C {
+			_ = dynamicFormSvc.SweepStaleDrafts(context.Background())
+		}
+	}()
 
 	// Handler (presentasi HTTP)
 	authH := auth_handler.NewHandler(authSvc)

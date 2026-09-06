@@ -11,10 +11,12 @@ import (
 
 // RegisterPublicRoutes registers the public (fill) endpoints under
 // /api/v1/public/dynamic-forms. OptionalAuth sets the caller identity when a
-// valid token is present without ever rejecting a guest.
+// valid token is present without ever rejecting a guest; LoadPermissions then
+// adds that caller's permission codes so the service can grant preview/QA
+// access to a `dynamicform.manage.all` holder (techspec Part 2, B2).
 func RegisterPublicRoutes(pub *gin.RouterGroup, h dynamicform_handler.Handler, mw *middlewares.Middleware) {
 	g := pub.Group("/dynamic-forms")
-	g.Use(mw.OptionalAuth())
+	g.Use(mw.OptionalAuth(), mw.LoadPermissions())
 	{
 		g.GET("/:slug", h.PublicGet)
 		g.POST("/:slug/submit", middlewares.RateLimit(10, 5), h.PublicSubmit)
