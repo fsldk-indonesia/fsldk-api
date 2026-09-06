@@ -46,6 +46,12 @@ func (s *ServiceImpl) levelisasiFormID(ctx context.Context) int64 {
 
 // utamaSummary membangun ringkasan dashboard CMS Utama — metrik administrasi
 // sistem, sengaja terpisah total dari metrik Levelisasi/Kader Puskomnas.
+//
+// Setiap hitungan modul di bawah ini SENGAJA non-fatal (di-log via `_` bukan
+// early-return apperror.Internal) kecuali lima metrik inti yang sudah ada
+// sejak awal — satu modul yang query-nya gagal (mis. tabel belum di-migrate
+// di instalasi lama) tidak boleh membuat seluruh dashboard CMS Utama gagal
+// dimuat, cukup angkanya 0.
 func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, error) {
 	totalUsers, err := s.repo.CountUsers(ctx)
 	if err != nil {
@@ -64,10 +70,35 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 		return dashboard_dto.Summary{}, apperror.Internal("")
 	}
 	unreadMessages, _ := s.repo.CountUnreadContactMessages(ctx)
+
+	totalRoles, _ := s.repo.CountRoles(ctx)
+	totalEvents, _ := s.repo.CountEvents(ctx)
+	totalSchedules, _ := s.repo.CountSchedules(ctx)
+	totalGalleries, _ := s.repo.CountGalleries(ctx)
+	totalStructures, _ := s.repo.CountStructures(ctx)
+	totalCatalogBooks, _ := s.repo.CountCatalogBooks(ctx)
+	totalDynamicForms, _ := s.repo.CountDynamicForms(ctx)
+	totalGoodsProducts, _ := s.repo.CountGoodsProducts(ctx)
+	totalFinanceFormats, _ := s.repo.CountFinanceFormats(ctx)
+	totalCampaigns, _ := s.repo.CountCampaigns(ctx)
+	totalDonationCollected, _ := s.repo.SumDonationCollected(ctx)
+	totalComments, _ := s.repo.CountComments(ctx)
+	totalSubscribers, _ := s.repo.CountActiveSubscribers(ctx)
+	pendingJobs, _ := s.repo.CountPendingJobs(ctx)
+
 	return dashboard_dto.Summary{
 		OrganizationTypeCode: "FSLDK",
 		Utama: &dashboard_dto.UtamaSummary{
-			TotalUsers: totalUsers, TotalNews: totalNews, TotalArticles: totalArticles, TotalShortlinks: totalShortlinks, UnreadContactMessages: unreadMessages,
+			TotalUsers: totalUsers, TotalRoles: totalRoles,
+			TotalNews: totalNews, TotalArticles: totalArticles,
+			TotalEvents: totalEvents, TotalSchedules: totalSchedules,
+			TotalGalleries: totalGalleries, TotalStructures: totalStructures,
+			TotalCatalogBooks: totalCatalogBooks, TotalDynamicForms: totalDynamicForms,
+			TotalGoodsProducts: totalGoodsProducts, TotalFinanceFormats: totalFinanceFormats,
+			TotalCampaigns: totalCampaigns, TotalDonationCollected: totalDonationCollected,
+			TotalComments: totalComments, TotalShortlinks: totalShortlinks,
+			TotalSubscribers: totalSubscribers, UnreadContactMessages: unreadMessages,
+			PendingJobs: pendingJobs,
 		},
 	}, nil
 }

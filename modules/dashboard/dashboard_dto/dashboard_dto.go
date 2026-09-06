@@ -65,12 +65,31 @@ type PuskomnasSummary struct {
 // administrasi sistem (pengguna, konten), SENGAJA tidak memuat metrik
 // Levelisasi/Kader Puskomnas (miss-development-prompt-3.md poin 5: CMS
 // Utama harus beda dari dashboard Puskomnas, bukan menduplikasinya).
+//
+// Setiap field di sini berpasangan dengan satu modul yang tampil di sidebar
+// shell CMS Utama (lihat app.routes.ts fsldk-web, children dari path 'cms')
+// — field baru ditambah di sini SEKALIGUS repo/service count-nya supaya modul
+// baru tidak diam-diam hilang dari widget statistik dashboard.
 type UtamaSummary struct {
-	TotalUsers      int `json:"totalUsers"`
-	TotalNews       int `json:"totalNews"`
-	TotalArticles   int `json:"totalArticles"`
-	TotalShortlinks int `json:"totalShortlinks"`
-	UnreadContactMessages int `json:"unreadContactMessages"`
+	TotalUsers            int     `json:"totalUsers"`
+	TotalRoles            int     `json:"totalRoles"`
+	TotalNews             int     `json:"totalNews"`
+	TotalArticles         int     `json:"totalArticles"`
+	TotalEvents           int     `json:"totalEvents"`
+	TotalSchedules        int     `json:"totalSchedules"`
+	TotalGalleries        int     `json:"totalGalleries"`
+	TotalStructures       int     `json:"totalStructures"`
+	TotalCatalogBooks     int     `json:"totalCatalogBooks"`
+	TotalDynamicForms     int     `json:"totalDynamicForms"`
+	TotalGoodsProducts    int     `json:"totalGoodsProducts"`
+	TotalFinanceFormats   int     `json:"totalFinanceFormats"`
+	TotalCampaigns        int     `json:"totalCampaigns"`
+	TotalDonationCollected float64 `json:"totalDonationCollected"`
+	TotalComments         int     `json:"totalComments"`
+	TotalShortlinks       int     `json:"totalShortlinks"`
+	TotalSubscribers      int     `json:"totalSubscribers"`
+	UnreadContactMessages int     `json:"unreadContactMessages"`
+	PendingJobs           int     `json:"pendingJobs"`
 }
 
 // Summary adalah response GET /dashboard/summary — hanya satu dari Utama/LDK/
