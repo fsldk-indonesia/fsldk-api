@@ -18,6 +18,10 @@ type Service interface {
 	// withdrawal_service_impl.go).
 	Request(ctx context.Context, campaignID, requesterUserID int64, req withdrawal_dto.CreateRequest) (withdrawal_dto.Response, error)
 	CMSList(ctx context.Context, q dto.ListQuery, status string) ([]withdrawal_dto.Response, int, error)
+	// Detail mengembalikan satu withdrawal untuk halaman detail CMS (timeline
+	// status) — permission-gated sama dengan CMSList (PermWithdrawalApprove),
+	// bukan lagi harus pengaju asli.
+	Detail(ctx context.Context, withdrawalID int64) (withdrawal_dto.Response, error)
 	// Cancel hanya berlaku saat status REQUESTED, SECURITY_CHECK, atau
 	// APPROVED (sebelum diproses) — permission-gated, bukan lagi harus
 	// pengaju asli (revisi 2026-09-01).

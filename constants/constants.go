@@ -172,6 +172,24 @@ const (
 	PermDynamicFormDelete    = "dynamicform.delete"
 	PermDynamicFormPublish   = "dynamicform.publish"
 	PermDynamicFormManageAll = "dynamicform.manage.all"
+
+	PermGoodsView    = "goods.view"
+	PermGoodsCreate  = "goods.create"
+	PermGoodsUpdate  = "goods.update"
+	PermGoodsDelete  = "goods.delete"
+	PermGoodsPublish = "goods.publish"
+
+	PermGoodsCategoryView   = "goodscategory.view"
+	PermGoodsCategoryCreate = "goodscategory.create"
+	PermGoodsCategoryUpdate = "goodscategory.update"
+	PermGoodsCategoryDelete = "goodscategory.delete"
+
+	PermContactView   = "contact.view"
+	PermContactDelete = "contact.delete"
+
+	PermSubscriptionView   = "subscription.view"
+	PermSubscriptionCreate = "subscription.create"
+	PermSubscriptionDelete = "subscription.delete"
 )
 
 // ScheduleCategories are the valid slugs for ms_schedule.category. The
@@ -331,7 +349,18 @@ const (
 	TableQueueJobLog      = "tr_queue_job_log"
 	TableFinanceAuditLog  = "tr_finance_audit_log"
 
-	TableFinanceReconciliationSnapshot = "tr_finance_reconciliation_snapshot"
+	TableGoodsCategory = "lk_goods_category"
+	TableGoods         = "ms_goods"
+	TableGoodsImage    = "ms_goods_image"
+
+	TableSubscriber = "tr_subscriber"
+)
+
+// Status ketersediaan produk FSLDK Goods (ms_goods.availabilityStatus).
+const (
+	GoodsAvailable  = "available"
+	GoodsOutOfStock = "out_of_stock"
+	GoodsComingSoon = "coming_soon"
 )
 
 // Dynamic form lifecycle status (dynamicform module — distinct from the

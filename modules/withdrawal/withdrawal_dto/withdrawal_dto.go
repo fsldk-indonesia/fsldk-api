@@ -38,6 +38,7 @@ type Response struct {
 	Status                   string     `json:"status"`
 	RejectionReason          string     `json:"rejectionReason,omitempty"`
 	ApprovedDate             *time.Time `json:"approvedDate,omitempty"`
+	ExecutedDate             *time.Time `json:"executedDate,omitempty"`
 	CompletedDate            *time.Time `json:"completedDate,omitempty"`
 	CreatedDate              time.Time  `json:"createdDate"`
 }

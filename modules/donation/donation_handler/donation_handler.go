@@ -7,6 +7,7 @@ import "github.com/gin-gonic/gin"
 type Handler interface {
 	Create(c *gin.Context)
 	Detail(c *gin.Context)
+	DownloadReceipt(c *gin.Context)
 	Status(c *gin.Context)
 	PublicRecentDonations(c *gin.Context)
 	Callback(c *gin.Context)

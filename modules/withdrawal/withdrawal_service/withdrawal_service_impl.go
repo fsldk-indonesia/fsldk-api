@@ -696,6 +696,10 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status strin
 	})
 }
 
+func (s *ServiceImpl) Detail(ctx context.Context, withdrawalID int64) (withdrawal_dto.Response, error) {
+	return s.getResponse(ctx, withdrawalID)
+}
+
 func (s *ServiceImpl) list(ctx context.Context, f withdrawal_dto.ListFilter) ([]withdrawal_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, f)
 	if err != nil {
@@ -737,6 +741,10 @@ func toResponse(w withdrawal_model.Withdrawal) withdrawal_dto.Response {
 	if w.ApprovedDate.Valid {
 		t := w.ApprovedDate.Time
 		resp.ApprovedDate = &t
+	}
+	if w.ExecutedDate.Valid {
+		t := w.ExecutedDate.Time
+		resp.ExecutedDate = &t
 	}
 	if w.CompletedDate.Valid {
 		t := w.CompletedDate.Time

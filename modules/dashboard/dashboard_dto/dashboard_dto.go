@@ -70,6 +70,7 @@ type UtamaSummary struct {
 	TotalNews       int `json:"totalNews"`
 	TotalArticles   int `json:"totalArticles"`
 	TotalShortlinks int `json:"totalShortlinks"`
+	UnreadContactMessages int `json:"unreadContactMessages"`
 }
 
 // Summary adalah response GET /dashboard/summary — hanya satu dari Utama/LDK/

@@ -71,6 +71,11 @@ import (
 	"fsldk-api/modules/dynamicform/dynamicform_service"
 	"fsldk-api/pkg/gsheet"
 
+	"fsldk-api/modules/goods"
+	"fsldk-api/modules/goods/goods_handler"
+	"fsldk-api/modules/goods/goods_repository"
+	"fsldk-api/modules/goods/goods_service"
+
 	"fsldk-api/modules/financeformat"
 	"fsldk-api/modules/financeformat/financeformat_handler"
 	"fsldk-api/modules/financeformat/financeformat_repository"
@@ -119,6 +124,11 @@ import (
 	"fsldk-api/modules/upload/upload_service"
 	uploadpkg "fsldk-api/pkg/upload"
 
+	"fsldk-api/modules/contact"
+	"fsldk-api/modules/gallery"
+	"fsldk-api/modules/statistic"
+	"fsldk-api/modules/structure"
+	"fsldk-api/modules/subscription"
 	"fsldk-api/modules/zakat"
 	"fsldk-api/modules/zakat/zakat_handler"
 	"fsldk-api/modules/zakat/zakat_service"
@@ -183,6 +193,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsRepo := news_repository.NewRepository(db)
 	articleRepo := article_repository.NewRepository(db)
 	catalogbookRepo := catalogbook_repository.NewRepository(db)
+	goodsRepo := goods_repository.NewRepository(db)
 	financeformatRepo := financeformat_repository.NewRepository(db)
 	eventRepo := event_repository.NewRepository(db)
 	scheduleRepo := schedule_repository.NewRepository(db)
@@ -217,7 +228,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// Job queue (§1b techspec) — dipakai shortlinkrequest_service untuk kirim
 	// WhatsApp/email asinkron dengan retry, bukan lagi goroutine langsung.
 	jobqueueRepo := jobqueue_repository.NewRepository(db)
-	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg)
+	jobqueueSvc := jobqueue_service.NewService(jobqueueRepo, kirimdevClient, mail, audit, cfg, settingSvc)
 	jobqueueH := jobqueue_handler.NewHandler(jobqueueSvc)
 	workerCount := cfg.JobQueueWorkerCount
 	if workerCount <= 0 {
@@ -245,8 +256,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
-	// Job terjadwal internal (§13.4 techspec) — finance.daily_reconciliation.
-	go reportSvc.RunReconciliationScheduler()
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached
 	// gold-price client (pkg/goldprice), no repository.
 	goldClient := goldprice.NewClient(cfg.ZakatGoldPriceAPIURL, cfg.ZakatGoldPriceFallback, cfg.ZakatGoldPriceCacheMinutes)
@@ -259,6 +268,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	newsSvc := news_service.NewService(newsRepo, commentSvc)
 	articleSvc := article_service.NewService(articleRepo, commentSvc)
 	catalogbookSvc := catalogbook_service.NewService(catalogbookRepo, uploader, commentSvc)
+	goodsSvc := goods_service.NewService(goodsRepo, uploader)
 	eventSvc := event_service.NewService(eventRepo, commentSvc)
 	scheduleSvc := schedule_service.NewService(scheduleRepo)
 	// uploader satisfies FileDeleter; settingSvc satisfies SettingReader for
@@ -307,6 +317,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	articleH := article_handler.NewHandler(articleSvc)
 	catalogbookH := catalogbook_handler.NewHandler(catalogbookSvc)
 	dynamicFormH := dynamicform_handler.NewHandler(dynamicFormSvc)
+	goodsH := goods_handler.NewHandler(goodsSvc)
 	financeformatH := financeformat_handler.NewHandler(financeformatSvc)
 	eventH := event_handler.NewHandler(eventSvc)
 	scheduleH := schedule_handler.NewHandler(scheduleSvc)
@@ -374,6 +385,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	catalogbook.RegisterCMSRoutes(api, catalogbookH, mw)
 	dynamicform.RegisterPublicRoutes(pub, dynamicFormH, mw)
 	dynamicform.RegisterCMSRoutes(api, dynamicFormH, mw)
+	goods.RegisterPublicRoutes(pub, goodsH)
+	goods.RegisterCMSRoutes(api, goodsH, mw)
 	financeformat.RegisterPublicRoutes(pub, financeformatH)
 	financeformat.RegisterCMSRoutes(api, financeformatH, mw)
 	event.RegisterPublicRoutes(pub, eventH)
@@ -412,6 +425,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	withdrawal.RegisterCallbackRoutes(api, withdrawalH, mw)
 
 	zakat.RegisterPublicRoutes(pub, zakatH)
+
+	structure.RegisterRoutes(api, pub, db, mw)
+	gallery.RegisterRoutes(api, pub, db, uploader, mw)
+	contact.RegisterRoutes(api, pub, db, mail, mw)
+	subscription.RegisterRoutes(api, pub, db, mail, cfg.FrontendURL, mw)
+	statistic.RegisterPublicRoutes(pub, db)
 
 	return engine
 }

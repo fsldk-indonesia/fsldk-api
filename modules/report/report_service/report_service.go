@@ -5,7 +5,6 @@ package report_service
 import (
 	"context"
 
-	"fsldk-api/base/dto"
 	"fsldk-api/modules/report/report_dto"
 )
 
@@ -49,11 +48,10 @@ type Service interface {
 	ListWithdrawalReport(ctx context.Context, f report_dto.KantongAmalReportFilter) ([]report_dto.WithdrawalReportRow, int, []report_dto.WithdrawalStatusFunnel, error)
 	ExportWithdrawalReport(ctx context.Context, actorUserID int64, f report_dto.KantongAmalReportFilter) (report_dto.ExportResult, error)
 
-	// RunReconciliation menjalankan satu kali perbandingan lima sumber §15.5
-	// dan menyimpannya sebagai snapshot baru — dipanggil job terjadwal
-	// (RunReconciliationScheduler) maupun manual trigger admin bila perlu.
-	RunReconciliation(ctx context.Context) (report_dto.ReconciliationSnapshotResponse, error)
-	ListReconciliationHistory(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int, error)
+	// GetReconciliation menghitung perbandingan lima sumber §15.5 LIVE saat
+	// dipanggil (real-time, tidak disimpan — Balance Report tidak lagi
+	// berbasis snapshot histori, lihat ReconciliationResponse).
+	GetReconciliation(ctx context.Context) (report_dto.ReconciliationResponse, error)
 	// ListFinanceAuditLog mengembalikan histori audit trail finance §16.1.
 	ListFinanceAuditLog(ctx context.Context, f report_dto.FinanceAuditLogFilter) ([]report_dto.FinanceAuditLogItem, int, error)
 
@@ -64,9 +62,4 @@ type Service interface {
 	// revision-prompt-2.md) — distribusi nominal donasi, distribusi usia
 	// donor, dan progres campaign, sekali panggil.
 	GetAnalytics(ctx context.Context, campaignID int64) (report_dto.AnalyticsResponse, error)
-
-	// RunReconciliationScheduler menjalankan RunReconciliation harian
-	// (goroutine time.Ticker, bukan lewat job queue — §13.4 techspec, job
-	// `finance.daily_reconciliation`) sampai proses berhenti.
-	RunReconciliationScheduler()
 }

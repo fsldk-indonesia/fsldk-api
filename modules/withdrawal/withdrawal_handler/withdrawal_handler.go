@@ -11,6 +11,7 @@ type Handler interface {
 	VerifySecurity(c *gin.Context)
 
 	CMSList(c *gin.Context)
+	Detail(c *gin.Context)
 	Process(c *gin.Context)
 
 	Callback(c *gin.Context)

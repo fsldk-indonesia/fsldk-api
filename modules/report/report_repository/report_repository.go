@@ -5,7 +5,6 @@ import (
 	"context"
 	"time"
 
-	"fsldk-api/base/dto"
 	"fsldk-api/modules/report/report_dto"
 )
 
@@ -44,20 +43,13 @@ type Repository interface {
 	WithdrawalStatusFunnel(ctx context.Context, campaignID int64) ([]report_dto.WithdrawalStatusFunnel, error)
 
 	// DonationPaidTotals mengembalikan jumlah & total nominal seluruh donasi
-	// PAID (sepanjang waktu, bukan per-periode) — dipakai RunReconciliation.
+	// PAID (sepanjang waktu, bukan per-periode) — dipakai GetReconciliation.
 	DonationPaidTotals(ctx context.Context) (count int64, amount float64, err error)
 	// WithdrawalSuccessTotals sama seperti DonationPaidTotals untuk withdrawal SUCCESS.
 	WithdrawalSuccessTotals(ctx context.Context) (count int64, amount float64, err error)
 	// LedgerTotalByType menjumlahkan tr_wallet_ledger.amount untuk satu
-	// entryType sepanjang waktu (seluruh campaign) — dipakai RunReconciliation.
+	// entryType sepanjang waktu (seluruh campaign) — dipakai GetReconciliation.
 	LedgerTotalByType(ctx context.Context, entryType string) (float64, error)
-
-	// CreateReconciliationSnapshot menyimpan satu hasil jalan
-	// finance.daily_reconciliation §15.5.
-	CreateReconciliationSnapshot(ctx context.Context, p report_dto.ReconciliationSnapshotParams) (int64, error)
-	// ListReconciliationSnapshots mengembalikan histori snapshot terbaru
-	// lebih dulu, untuk melihat tren discrepancy dari waktu ke waktu.
-	ListReconciliationSnapshots(ctx context.Context, q dto.ListQuery) ([]report_dto.ReconciliationSnapshotResponse, int64, error)
 
 	// ListFinanceAuditLog mengembalikan histori tr_finance_audit_log §16.1,
 	// terbaru lebih dulu.

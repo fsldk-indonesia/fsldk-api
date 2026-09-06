@@ -27,4 +27,5 @@ type Repository interface {
 	CountNews(ctx context.Context) (int, error)
 	CountArticles(ctx context.Context) (int, error)
 	CountShortlinks(ctx context.Context) (int, error)
+	CountUnreadContactMessages(ctx context.Context) (int, error)
 }

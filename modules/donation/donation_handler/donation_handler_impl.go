@@ -1,6 +1,7 @@
 package donation_handler
 
 import (
+	"fmt"
 	"strconv"
 
 	"fsldk-api/base/appctx"
@@ -54,6 +55,19 @@ func (h *HandlerImpl) Detail(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "", data)
+}
+
+// DownloadReceipt mengunduh langsung PDF "Bukti Donasi" (bukan window.print()
+// browser) — hanya tersedia untuk donasi PAID, sama seperti guard di
+// halaman web-nya (lihat donation_service.GenerateReceiptPDF).
+func (h *HandlerImpl) DownloadReceipt(c *gin.Context) {
+	data, filename, err := h.svc.GenerateReceiptPDF(c.Request.Context(), c.Param("publicRef"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	c.Data(200, "application/pdf", data)
 }
 
 // Callback menerima webhook payment dari Bisabiller. Tidak memakai JWT

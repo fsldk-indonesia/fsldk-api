@@ -110,6 +110,20 @@ func (h *HandlerImpl) CMSList(c *gin.Context) {
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
 }
 
+func (h *HandlerImpl) Detail(c *gin.Context) {
+	id, err := idParam(c)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.Detail(c.Request.Context(), id)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) Process(c *gin.Context) {
 	id, err := idParam(c)
 	if err != nil {

@@ -190,26 +190,15 @@ func (h *HandlerImpl) ExportWithdrawalReport(c *gin.Context) {
 	c.Data(200, result.ContentType, result.Data)
 }
 
-func (h *HandlerImpl) ReconciliationHistory(c *gin.Context) {
-	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.ListReconciliationHistory(c.Request.Context(), q)
+// Reconciliation menghitung perbandingan ledger vs wallet gateway secara
+// LIVE (real-time, bukan histori snapshot — lihat report_service.GetReconciliation).
+func (h *HandlerImpl) Reconciliation(c *gin.Context) {
+	result, err := h.svc.GetReconciliation(c.Request.Context())
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
-	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
-}
-
-// RunReconciliation memicu satu kali jalan finance.daily_reconciliation
-// secara manual (di luar jadwal ticker) — berguna bagi admin yang ingin
-// snapshot terbaru tanpa menunggu siklus harian berikutnya.
-func (h *HandlerImpl) RunReconciliation(c *gin.Context) {
-	result, err := h.svc.RunReconciliation(c.Request.Context())
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Rekonsiliasi dijalankan", result)
+	httphelper.Success(c, "", result)
 }
 
 func (h *HandlerImpl) GlobalLedger(c *gin.Context) {

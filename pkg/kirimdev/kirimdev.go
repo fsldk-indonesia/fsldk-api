@@ -106,6 +106,30 @@ type sendTemplateErrorResponse struct {
 	} `json:"error"`
 }
 
+// normalizePhone mengonversi nomor telepon Indonesia ke format E.164 tanpa
+// "+" yang disyaratkan WhatsApp Cloud API (lihat TemplateMessage.ToPhone).
+// Input dari form (donor/PIC/requester) sering berupa format lokal "08xxx"
+// alih-alih "628xxx" — dikonfirmasi lewat reproduksi manual ke Kirimdev
+// (payload identik: "628xxx" sukses 200, "08xxx" ditolak 400
+// invalid_field_value "Invalid input") bahwa itulah penyebab notifikasi
+// WhatsApp gagal terkirim ke sebagian besar donor, BUKAN parameter template.
+func normalizePhone(phone string) string {
+	p := strings.TrimSpace(phone)
+	p = strings.NewReplacer(" ", "", "-", "", "(", "", ")", "").Replace(p)
+	switch {
+	case strings.HasPrefix(p, "+62"):
+		return p[1:]
+	case strings.HasPrefix(p, "62"):
+		return p
+	case strings.HasPrefix(p, "0"):
+		return "62" + p[1:]
+	case strings.HasPrefix(p, "8"):
+		return "62" + p
+	default:
+		return p
+	}
+}
+
 // SendTemplate mengirim satu pesan template WhatsApp ke msg.ToPhone.
 func (c *Client) SendTemplate(ctx context.Context, msg TemplateMessage) (*SendResult, error) {
 	language := msg.Language
@@ -130,7 +154,7 @@ func (c *Client) SendTemplate(ctx context.Context, msg TemplateMessage) (*SendRe
 
 	payload, err := json.Marshal(sendTemplateRequest{
 		MessagingProduct: "whatsapp",
-		To:               msg.ToPhone,
+		To:               normalizePhone(msg.ToPhone),
 		Type:             "template",
 		Template:         sendTemplateBody{Name: msg.TemplateName, Language: language, Components: components},
 	})

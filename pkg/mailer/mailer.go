@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -22,17 +23,20 @@ import (
 )
 
 const (
-	assetsDir                  = "assets"
-	logoAsset                  = "logo-fsldk.png"
-	logoCID                    = "logo-fsldk.png"
-	templateVerification       = "verification"
-	templatePasswordReset      = "password_reset"
-	templateShortlinkApproved  = "shortlink_approved"
-	templateShortlinkRejected  = "shortlink_rejected"
-	templateFormSubmissionConf = "form_submission_confirmation"
-	templateDonationReceipt    = "donation_receipt"
-	templateDonationInvoice    = "donation_invoice"
-	templateOtpWithdrawal      = "otp_kantong_amal"
+	assetsDir                   = "assets"
+	logoAsset                   = "logo-fsldk.png"
+	logoCID                     = "logo-fsldk.png"
+	templateVerification        = "verification"
+	templatePasswordReset       = "password_reset"
+	templateShortlinkApproved   = "shortlink_approved"
+	templateShortlinkRejected   = "shortlink_rejected"
+	templateFormSubmissionConf  = "form_submission_confirmation"
+	templateDonationReceipt     = "donation_receipt"
+	templateDonationInvoice     = "donation_invoice"
+	templateOtpWithdrawal       = "otp_kantong_amal"
+	templateContactReply        = "contact_reply"
+	templateSubscriptionWelcome = "subscription_welcome"
+	templateUnsubscribeConfirm  = "unsubscribe_confirmation"
 )
 
 // AnswerPair is one label/value row shown in the form-submission confirmation email.
@@ -53,7 +57,11 @@ type Mailer interface {
 	// SendDonationReceipt mengirim konfirmasi donasi lunas (Kantong Amal) —
 	// amount/total/date sudah diformat pemanggil (Rupiah/tanggal Indonesia),
 	// bukan angka mentah, karena template menerima map[string]string.
-	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error
+	// pdfBytes/pdfFilename melampirkan PDF "Bukti Donasi" ke email ini
+	// (revision-prompt-4.md item tambahan) — pdfBytes nil berarti tidak ada
+	// lampiran (mis. pembuatan PDF gagal, email tetap dikirim tanpa lampiran
+	// alih-alih menggagalkan seluruh notifikasi).
+	SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error
 	// SendDonationInvoice dikirim segera setelah donasi dibuat (sebelum
 	// dibayar) — email pertama dari dua email donasi (item 2
 	// revision-prompt-2.md); SendDonationReceipt di atas adalah email kedua.
@@ -62,6 +70,16 @@ type Mailer interface {
 	// Amal ke email yang dikonfigurasi di ms_setting (item 8
 	// revision-prompt-2.md) — menggantikan pengiriman via WhatsApp.
 	SendOtpEmail(toEmail, code, validityText string) error
+	// SendContactReplyEmail mengirimkan balasan resmi atas pesan kontak masuk.
+	SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error
+	// SendSubscriptionWelcomeEmail dikirim setiap kali email berhasil
+	// berlangganan (baru atau berlangganan ulang) newsletter FSLDK —
+	// unsubscribeURL memuat token per-subscriber agar penerima bisa berhenti
+	// berlangganan langsung dari email tanpa perlu login.
+	SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error
+	// SendUnsubscribeConfirmationEmail dikirim setiap kali email berhasil
+	// berhenti berlangganan, sebagai konfirmasi bahwa permintaannya berhasil.
+	SendUnsubscribeConfirmationEmail(toEmail string) error
 }
 
 type smtpMailer struct {
@@ -80,7 +98,7 @@ func (m *smtpMailer) SendVerificationEmail(toEmail, toName, verifyURL string) er
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Verifikasi Email Anda — FSLDK Indonesia", body, verifyURL)
+	return m.send(toEmail, "Verifikasi Email Anda — FSLDK Indonesia", body, verifyURL, nil, "")
 }
 
 func (m *smtpMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) error {
@@ -90,7 +108,7 @@ func (m *smtpMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) er
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Atur Ulang Kata Sandi — FSLDK Indonesia", body, resetURL)
+	return m.send(toEmail, "Atur Ulang Kata Sandi — FSLDK Indonesia", body, resetURL, nil, "")
 }
 
 func (m *smtpMailer) SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error {
@@ -100,7 +118,7 @@ func (m *smtpMailer) SendShortlinkApprovedEmail(toEmail, toName, shortURL string
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Permintaan Shortlink Disetujui — FSLDK Indonesia", body, shortURL)
+	return m.send(toEmail, "Permintaan Shortlink Disetujui — FSLDK Indonesia", body, shortURL, nil, "")
 }
 
 func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) error {
@@ -110,7 +128,7 @@ func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) 
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "")
+	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "", nil, "")
 }
 
 func (m *smtpMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error {
@@ -121,10 +139,10 @@ func (m *smtpMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle s
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Konfirmasi Pengisian Formulir: "+formTitle+" — FSLDK Indonesia", body, "")
+	return m.send(toEmail, "Konfirmasi Pengisian Formulir: "+formTitle+" — FSLDK Indonesia", body, "", nil, "")
 }
 
-func (m *smtpMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string) error {
+func (m *smtpMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error {
 	body, err := generateFromAsset(templateDonationReceipt, map[string]string{
 		"Name": toName, "CampaignTitle": campaignTitle, "Amount": amount, "Total": total,
 		"Date": dateStr, "PublicRef": publicRef, "URL": receiptURL, "LogoCID": logoCID,
@@ -132,7 +150,7 @@ func (m *smtpMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount,
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Konfirmasi Donasi Diterima — FSLDK Indonesia", body, receiptURL)
+	return m.send(toEmail, "Konfirmasi Donasi Diterima — FSLDK Indonesia", body, receiptURL, pdfBytes, pdfFilename)
 }
 
 func (m *smtpMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount, qrURL, expiredDateStr string) error {
@@ -143,7 +161,21 @@ func (m *smtpMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount,
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Konfirmasi Donasi — FSLDK Indonesia", body, qrURL)
+	return m.send(toEmail, "Konfirmasi Donasi — FSLDK Indonesia", body, qrURL, nil, "")
+}
+
+func (m *smtpMailer) SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error {
+	body, err := generateFromAsset(templateContactReply, map[string]string{
+		"Name":            toName,
+		"OriginalSubject": originalSubject,
+		"OriginalMessage": originalMessage,
+		"ReplyBody":       replyBody,
+		"LogoCID":         logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, subject, body, "", nil, "")
 }
 
 func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
@@ -153,13 +185,37 @@ func (m *smtpMailer) SendOtpEmail(toEmail, code, validityText string) error {
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Kode OTP Penarikan Saldo Kantong Amal — FSLDK Indonesia", body, "")
+	return m.send(toEmail, "Kode OTP Penarikan Saldo Kantong Amal — FSLDK Indonesia", body, "", nil, "")
 }
 
-func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
+func (m *smtpMailer) SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error {
+	body, err := generateFromAsset(templateSubscriptionWelcome, map[string]string{
+		"URL": unsubscribeURL, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Terima Kasih Telah Berlangganan — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) SendUnsubscribeConfirmationEmail(toEmail string) error {
+	body, err := generateFromAsset(templateUnsubscribeConfirm, map[string]string{
+		"LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Anda Berhasil Berhenti Berlangganan — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) send(to, subject, htmlBody, link string, attachData []byte, attachFilename string) error {
 	// Mode pengembangan: SMTP belum dikonfigurasi → cetak tautan ke log.
-	if m.cfg.SMTPHost == "" {
-		log.Printf("[MAILER:DEV] Email ke %s | Subjek: %s | Tautan: %s", to, subject, link)
+	if m.cfg.SMTPHost == "" || m.cfg.SMTPUsername == "" {
+		attachNote := ""
+		if len(attachData) > 0 {
+			attachNote = fmt.Sprintf(" | Lampiran: %s (%d byte)", attachFilename, len(attachData))
+		}
+		log.Printf("[MAILER:DEV] Email ke %s | Subjek: %s | Tautan: %s%s", to, subject, link, attachNote)
 		return nil
 	}
 
@@ -169,6 +225,12 @@ func (m *smtpMailer) send(to, subject, htmlBody, link string) error {
 	msg.SetHeader("Subject", subject)
 	msg.SetBody("text/html", htmlBody)
 	msg.Embed(filepath.Join(assetsDir, logoAsset))
+	if len(attachData) > 0 {
+		msg.Attach(attachFilename, gomail.SetCopyFunc(func(w io.Writer) error {
+			_, err := w.Write(attachData)
+			return err
+		}))
+	}
 
 	dialer := gomail.NewDialer(m.cfg.SMTPHost, m.cfg.SMTPPort, m.cfg.SMTPUsername, m.cfg.SMTPPassword)
 	return dialer.DialAndSend(msg)

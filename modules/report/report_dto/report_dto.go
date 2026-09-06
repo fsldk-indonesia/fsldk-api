@@ -130,46 +130,28 @@ type WithdrawalStatusFunnel struct {
 	Count  int64  `gorm:"column:cnt" json:"count"`
 }
 
-// ReconciliationSnapshotResponse adalah satu baris histori rekonsiliasi
-// harian §15.5 — snapshot tersimpan, bukan dihitung ulang saat halaman dibuka.
-type ReconciliationSnapshotResponse struct {
-	SnapshotID                 int64          `gorm:"column:snapshotID" json:"snapshotID"`
-	SnapshotDate                time.Time      `gorm:"column:snapshotDate" json:"snapshotDate"`
-	DonationPaidCount            int64         `gorm:"column:donationPaidCount" json:"donationPaidCount"`
-	DonationPaidAmount           float64       `gorm:"column:donationPaidAmount" json:"donationPaidAmount"`
-	LedgerDonationCreditAmount   float64       `gorm:"column:ledgerDonationCreditAmount" json:"ledgerDonationCreditAmount"`
-	WithdrawalSuccessCount       int64         `gorm:"column:withdrawalSuccessCount" json:"withdrawalSuccessCount"`
-	WithdrawalSuccessAmount      float64       `gorm:"column:withdrawalSuccessAmount" json:"withdrawalSuccessAmount"`
-	ExpectedBalance              float64       `gorm:"column:expectedBalance" json:"expectedBalance"`
-	GatewayWalletBalance         float64       `gorm:"column:gatewayWalletBalance" json:"gatewayWalletBalance"`
-	DiscrepancyAmount            float64       `gorm:"column:discrepancyAmount" json:"discrepancyAmount"`
+// ReconciliationResponse adalah hasil rekonsiliasi §15.5 dihitung LIVE saat
+// endpoint dipanggil — tidak lagi disimpan sebagai snapshot histori (revisi
+// revision-prompt-4.md item baru: Balance Report jadi real-time, tabel
+// tr_finance_reconciliation_snapshot dihapus, lihat migrasi 0033).
+type ReconciliationResponse struct {
+	DonationPaidCount          int64   `json:"donationPaidCount"`
+	DonationPaidAmount         float64 `json:"donationPaidAmount"`
+	LedgerDonationCreditAmount float64 `json:"ledgerDonationCreditAmount"`
+	WithdrawalSuccessCount     int64   `json:"withdrawalSuccessCount"`
+	WithdrawalSuccessAmount    float64 `json:"withdrawalSuccessAmount"`
+	ExpectedBalance            float64 `json:"expectedBalance"`
+	GatewayWalletBalance       float64 `json:"gatewayWalletBalance"`
+	DiscrepancyAmount          float64 `json:"discrepancyAmount"`
 	// SettlementPendingAmount = jumlah donasi PAID dalam SettlementMinutes menit
-	// sebelum snapshot ini dijalankan — masih mungkin belum settle penuh di
-	// wallet gateway saat itu, jadi selisih sebesar ini ditoleransi (tidak
-	// dianggap anomali). Setara "Settlement Pending" di ldksyahid-app.
-	SettlementPendingAmount      float64       `gorm:"column:settlementPendingAmount" json:"settlementPendingAmount"`
-	SettlementMinutes            int           `gorm:"column:settlementMinutes" json:"settlementMinutes"`
-	HasAnomaly                   bool          `gorm:"column:hasAnomaly" json:"hasAnomaly"`
-	GatewayError                 *string        `gorm:"column:gatewayError" json:"gatewayError,omitempty"`
-	CreatedDate                  time.Time     `gorm:"column:createdDate" json:"createdDate"`
-}
-
-// ReconciliationSnapshotParams menampung hasil satu kali jalan
-// finance.daily_reconciliation, siap disimpan sebagai baris snapshot baru.
-type ReconciliationSnapshotParams struct {
-	SnapshotDate               time.Time
-	DonationPaidCount          int64
-	DonationPaidAmount         float64
-	LedgerDonationCreditAmount float64
-	WithdrawalSuccessCount     int64
-	WithdrawalSuccessAmount    float64
-	ExpectedBalance            float64
-	GatewayWalletBalance       float64
-	DiscrepancyAmount          float64
-	SettlementPendingAmount    float64
-	SettlementMinutes          int
-	HasAnomaly                 bool
-	GatewayError               string
+	// terakhir — masih mungkin belum settle penuh di wallet gateway, jadi
+	// selisih sebesar ini ditoleransi (tidak dianggap anomali). Setara
+	// "Settlement Pending" di ldksyahid-app.
+	SettlementPendingAmount float64   `json:"settlementPendingAmount"`
+	SettlementMinutes       int       `json:"settlementMinutes"`
+	HasAnomaly              bool      `json:"hasAnomaly"`
+	GatewayError            *string   `json:"gatewayError,omitempty"`
+	CheckedDate             time.Time `json:"checkedDate"`
 }
 
 // GlobalLedgerFilter menampung parameter laporan debit/kredit global (item 6
