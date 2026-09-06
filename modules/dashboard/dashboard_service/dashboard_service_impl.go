@@ -45,7 +45,8 @@ func (s *ServiceImpl) levelisasiFormID(ctx context.Context) int64 {
 }
 
 // utamaSummary membangun ringkasan dashboard CMS Utama — metrik administrasi
-// sistem, sengaja terpisah total dari metrik Levelisasi/Kader Puskomnas.
+// sistem PLUS ringkasan jaringan Levelisasi nasional (lihat komentar
+// dashboard_dto.UtamaSummary untuk alasan keduanya sekarang digabung di sini).
 //
 // Setiap hitungan modul di bawah ini SENGAJA non-fatal (di-log via `_` bukan
 // early-return apperror.Internal) kecuali lima metrik inti yang sudah ada
@@ -86,6 +87,16 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 	totalSubscribers, _ := s.repo.CountActiveSubscribers(ctx)
 	pendingJobs, _ := s.repo.CountPendingJobs(ctx)
 
+	// Ringkasan jaringan Levelisasi nasional — query IDENTIK dengan cabang
+	// Puskomnas di Summary() (parentOrganizationID nil = scope nasional).
+	formID := s.levelisasiFormID(ctx)
+	networkStatusCounts, _ := s.repo.StatusBuckets(ctx, formID, nil)
+	networkTotalLDK, _ := s.repo.CountLDK(ctx, nil)
+	networkTotalPuskomda, _ := s.repo.CountPuskomda(ctx)
+	networkKaderAktif, _ := s.repo.CountActiveKader(ctx, nil)
+	networkLevelDistribution, _ := s.repo.LevelDistribution(ctx)
+	networkPerPuskomda, _ := s.repo.PerPuskomdaBreakdown(ctx)
+
 	return dashboard_dto.Summary{
 		OrganizationTypeCode: "FSLDK",
 		Utama: &dashboard_dto.UtamaSummary{
@@ -99,6 +110,10 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 			TotalComments: totalComments, TotalShortlinks: totalShortlinks,
 			TotalSubscribers: totalSubscribers, UnreadContactMessages: unreadMessages,
 			PendingJobs: pendingJobs,
+			StatusCounts: networkStatusCounts,
+			NetworkTotalLDK: networkTotalLDK, NetworkTotalPuskomda: networkTotalPuskomda,
+			NetworkKaderAktif: networkKaderAktif, NetworkLevelDistribution: networkLevelDistribution,
+			NetworkPerPuskomda: networkPerPuskomda,
 		},
 	}, nil
 }

@@ -62,14 +62,21 @@ type PuskomnasSummary struct {
 }
 
 // UtamaSummary adalah ringkasan dashboard khusus CMS Utama (FSLDK) — metrik
-// administrasi sistem (pengguna, konten), SENGAJA tidak memuat metrik
-// Levelisasi/Kader Puskomnas (miss-development-prompt-3.md poin 5: CMS
-// Utama harus beda dari dashboard Puskomnas, bukan menduplikasinya).
+// administrasi sistem (pengguna, konten) SATU set, PLUS ringkasan jaringan
+// Levelisasi nasional (StatusCounts + Network*) SET LAIN. Sebelumnya bagian
+// kedua ini sengaja tidak dimuat di sini (lihat miss-development-prompt-3.md
+// poin 5) supaya CMS Utama tidak menduplikasi dashboard Puskomnas — namun
+// atas permintaan eksplisit, Super Admin butuh melihat kondisi jaringan
+// nasional ini juga langsung dari CMS Utama tanpa pindah shell ke
+// cms-puskomnas. Nilainya dihitung persis sama seperti cabang Puskomnas di
+// Summary() (StatusBuckets/CountLDK/dst. dengan parentOrganizationID nil —
+// scope nasional), BUKAN duplikasi query terpisah.
 //
-// Setiap field di sini berpasangan dengan satu modul yang tampil di sidebar
-// shell CMS Utama (lihat app.routes.ts fsldk-web, children dari path 'cms')
-// — field baru ditambah di sini SEKALIGUS repo/service count-nya supaya modul
-// baru tidak diam-diam hilang dari widget statistik dashboard.
+// Setiap field administrasi-sistem di sini berpasangan dengan satu modul
+// yang tampil di sidebar shell CMS Utama (lihat app.routes.ts fsldk-web,
+// children dari path 'cms') — field baru ditambah di sini SEKALIGUS
+// repo/service count-nya supaya modul baru tidak diam-diam hilang dari
+// widget statistik dashboard.
 type UtamaSummary struct {
 	TotalUsers            int     `json:"totalUsers"`
 	TotalRoles            int     `json:"totalRoles"`
@@ -90,6 +97,15 @@ type UtamaSummary struct {
 	TotalSubscribers      int     `json:"totalSubscribers"`
 	UnreadContactMessages int     `json:"unreadContactMessages"`
 	PendingJobs           int     `json:"pendingJobs"`
+
+	// Ringkasan jaringan Levelisasi nasional — sama persis dengan yang
+	// dipakai PuskomnasSummary (lihat komentar di atas).
+	StatusCounts
+	NetworkTotalLDK          int                 `json:"networkTotalLDK"`
+	NetworkTotalPuskomda     int                 `json:"networkTotalPuskomda"`
+	NetworkKaderAktif        int                 `json:"networkKaderAktif"`
+	NetworkLevelDistribution []LevelCount        `json:"networkLevelDistribution"`
+	NetworkPerPuskomda       []PuskomdaBreakdown `json:"networkPerPuskomda"`
 }
 
 // Summary adalah response GET /dashboard/summary — hanya satu dari Utama/LDK/
