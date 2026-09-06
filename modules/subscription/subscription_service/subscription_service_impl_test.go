@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"fsldk-api/base/dto"
+	"fsldk-api/pkg/mailer"
+
 	"fsldk-api/modules/subscription/subscription_dto"
 	"fsldk-api/modules/subscription/subscription_model"
 	"fsldk-api/modules/subscription/subscription_repository"
@@ -29,7 +31,12 @@ func (f *fakeMailer) SendDonationInvoice(toEmail, toName, campaignTitle, amount,
 	return nil
 }
 func (f *fakeMailer) SendOtpEmail(toEmail, code, validityText string) error { return nil }
-func (f *fakeMailer) SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error { return nil }
+func (f *fakeMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []mailer.AnswerPair, submittedAt string) error {
+	return nil
+}
+func (f *fakeMailer) SendContactReplyEmail(toEmail, toName, subject, replyBody, originalSubject, originalMessage string) error {
+	return nil
+}
 func (f *fakeMailer) SendSubscriptionWelcomeEmail(toEmail, unsubscribeURL string) error {
 	f.welcomeEmailsSent++
 	return nil

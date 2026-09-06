@@ -4,6 +4,8 @@
 package config
 
 import (
+	"log"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -99,6 +101,18 @@ type AppConfig struct {
 	ZakatGoldPriceAPIURL       string `mapstructure:"ZAKAT_GOLD_PRICE_API_URL"`
 	ZakatGoldPriceFallback     int    `mapstructure:"ZAKAT_GOLD_PRICE_FALLBACK"`      // Rp/gram, served when upstream fails
 	ZakatGoldPriceCacheMinutes int    `mapstructure:"ZAKAT_GOLD_PRICE_CACHE_MINUTES"` // TTL of a successful upstream result
+
+	// Google Sheets mirror (pkg/gsheet + modules/dynamicform). All empty by
+	// default → the feature is off and pkg/gsheet degrades to no-ops.
+	GSheetSyncEnabled      bool   `mapstructure:"GSHEET_SYNC_ENABLED"`      // global kill switch
+	GSheetCredentialsJSON  string `mapstructure:"GSHEET_CREDENTIALS_JSON"`  // path to a service-account key file
+	GSheetRootFolderID     string `mapstructure:"GSHEET_ROOT_FOLDER_ID"`    // Drive folder each form's spreadsheet is created in (Shared Drive recommended)
+	GSheetImpersonateEmail string `mapstructure:"GSHEET_IMPERSONATE_EMAIL"` // optional: Workspace user for domain-wide delegation
+	GSheetTabName          string `mapstructure:"GSHEET_TAB_NAME"`          // default tab name for new spreadsheets
+	// OAuth-user alternative (used only when GSHEET_CREDENTIALS_JSON is empty).
+	GSheetOAuthClientID     string `mapstructure:"GSHEET_OAUTH_CLIENT_ID"`
+	GSheetOAuthClientSecret string `mapstructure:"GSHEET_OAUTH_CLIENT_SECRET"`
+	GSheetOAuthRefreshToken string `mapstructure:"GSHEET_OAUTH_REFRESH_TOKEN"`
 }
 
 // JobQueueBackoffSchedule mem-parsing JOBQUEUE_BACKOFF_SCHEDULE_SECONDS
@@ -193,12 +207,49 @@ func Load() (AppConfig, error) {
 			return AppConfig{}, err
 		}
 	}
+	if used := viper.ConfigFileUsed(); used != "" {
+		log.Printf("[CONFIG] app.env dimuat dari %s", used)
+	} else {
+		wd, _ := os.Getwd()
+		log.Printf("[CONFIG] app.env TIDAK ditemukan (cwd=%s) — hanya memakai default + environment OS. "+
+			"Jalankan server dari dalam folder fsldk-api/.", wd)
+	}
 
 	var cfg AppConfig
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return AppConfig{}, err
 	}
+	resolveGSheet(&cfg)
 	return cfg, nil
+}
+
+// resolveGSheet wires the Google Sheets mirror the same way the reference app
+// (ldksyahid-app DynamicFormGDriveService) does: it reuses the existing Google
+// Drive OAuth-user credentials (GOOGLE_DRIVE_CLIENT_ID / _CLIENT_SECRET /
+// _REFRESH_TOKEN) and a root Drive folder (GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID)
+// when the dedicated GSHEET_* keys are not set. The reference has no separate
+// on/off switch — the integration is active whenever the credentials and root
+// folder exist — so we auto-enable in that case unless GSHEET_SYNC_ENABLED was
+// set explicitly.
+func resolveGSheet(cfg *AppConfig) {
+	if cfg.GSheetOAuthClientID == "" {
+		cfg.GSheetOAuthClientID = viper.GetString("GOOGLE_DRIVE_CLIENT_ID")
+	}
+	if cfg.GSheetOAuthClientSecret == "" {
+		cfg.GSheetOAuthClientSecret = viper.GetString("GOOGLE_DRIVE_CLIENT_SECRET")
+	}
+	if cfg.GSheetOAuthRefreshToken == "" {
+		cfg.GSheetOAuthRefreshToken = viper.GetString("GOOGLE_DRIVE_REFRESH_TOKEN")
+	}
+	if cfg.GSheetRootFolderID == "" {
+		cfg.GSheetRootFolderID = viper.GetString("GDRIVE_DYNAMIC_FORM_ROOT_FOLDER_ID")
+	}
+
+	if !viper.IsSet("GSHEET_SYNC_ENABLED") {
+		hasSA := cfg.GSheetCredentialsJSON != ""
+		hasOAuth := cfg.GSheetOAuthClientID != "" && cfg.GSheetOAuthClientSecret != "" && cfg.GSheetOAuthRefreshToken != ""
+		cfg.GSheetSyncEnabled = (hasSA || hasOAuth) && cfg.GSheetRootFolderID != ""
+	}
 }
 
 func setDefaults() {
@@ -256,4 +307,10 @@ func setDefaults() {
 	viper.SetDefault("ZAKAT_GOLD_PRICE_API_URL", "https://logam-mulia-api.iamutaki.workers.dev/api/prices/logammulia")
 	viper.SetDefault("ZAKAT_GOLD_PRICE_FALLBACK", 2600000)
 	viper.SetDefault("ZAKAT_GOLD_PRICE_CACHE_MINUTES", 60)
+
+	// NOTE: sengaja TIDAK memakai viper.SetDefault untuk GSHEET_SYNC_ENABLED —
+	// viper.SetDefault membuat viper.IsSet() mengembalikan true, sehingga
+	// resolveGSheet() tidak bisa membedakan "operator men-set eksplisit" vs
+	// "tidak diisi sama sekali". Zero value bool (false) sudah cukup.
+	viper.SetDefault("GSHEET_TAB_NAME", "Responses")
 }

@@ -30,6 +30,7 @@ const (
 	templatePasswordReset       = "password_reset"
 	templateShortlinkApproved   = "shortlink_approved"
 	templateShortlinkRejected   = "shortlink_rejected"
+	templateFormSubmissionConf  = "form_submission_confirmation"
 	templateDonationReceipt     = "donation_receipt"
 	templateDonationInvoice     = "donation_invoice"
 	templateOtpWithdrawal       = "otp_kantong_amal"
@@ -38,12 +39,21 @@ const (
 	templateUnsubscribeConfirm  = "unsubscribe_confirmation"
 )
 
+// AnswerPair is one label/value row shown in the form-submission confirmation email.
+type AnswerPair struct {
+	Label string
+	Value string
+}
+
 // Mailer adalah kontrak layanan email.
 type Mailer interface {
 	SendVerificationEmail(toEmail, toName, verifyURL string) error
 	SendPasswordResetEmail(toEmail, toName, resetURL string) error
 	SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error
 	SendShortlinkRejectedEmail(toEmail, toName, reason string) error
+	// SendFormSubmissionConfirmation confirms a dynamicform submission to the
+	// respondent. Best-effort: callers log failures and never fail the submit.
+	SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error
 	// SendDonationReceipt mengirim konfirmasi donasi lunas (Kantong Amal) —
 	// amount/total/date sudah diformat pemanggil (Rupiah/tanggal Indonesia),
 	// bukan angka mentah, karena template menerima map[string]string.
@@ -119,6 +129,17 @@ func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) 
 		return err
 	}
 	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error {
+	body, err := generateFromAssetData(templateFormSubmissionConf, map[string]any{
+		"Name": toName, "FormTitle": formTitle, "Answers": answers,
+		"SubmittedAt": submittedAt, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Konfirmasi Pengisian Formulir: "+formTitle+" — FSLDK Indonesia", body, "", nil, "")
 }
 
 func (m *smtpMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error {
@@ -229,6 +250,25 @@ func generateFromAsset(assetName string, data map[string]string) (string, error)
 		return "", err
 	}
 
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// generateFromAssetData is generateFromAsset for templates that need richer
+// data than map[string]string (e.g. a range over answer rows).
+func generateFromAssetData(assetName string, data any) (string, error) {
+	path := filepath.Join(assetsDir, "email_template", assetName+".html")
+	templateData, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("gagal membaca template email %s: %w", path, err)
+	}
+	t, err := template.New("emailTemplate").Parse(string(templateData))
+	if err != nil {
+		return "", err
+	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {
 		return "", err

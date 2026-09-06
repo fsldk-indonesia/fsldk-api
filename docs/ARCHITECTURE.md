@@ -199,6 +199,7 @@ templateData, _ := os.ReadFile(path)
 | `0009_shortlink_request.up.sql` | Tabel `ms_shortlink_request` (alur permintaan publik + persetujuan admin di atas modul shortlink, lihat §12) + permission `shortlink.approve` → Super Admin & Editor |
 | `0010_job_queue.up.sql` | Tabel `tr_job_queue` + `tr_whatsapp_message_log` (job queue, §13) + permission `jobqueue.*` → **Super Admin only** |
 | `0011_shortlink_request_whatsapp_reply.up.sql` | `ALTER TABLE ms_shortlink_request ADD COLUMN reviewedVia` (jalur approval kedua via balasan WhatsApp, §12) |
+| `0033_shortlink_sidebar_group.up.sql` | `UPDATE lk_permission.menuRoute` untuk `shortlink.view`/`shortlink.approve` supaya berbagi prefix `/cms/shortlink/` — mengelompokkan keduanya jadi satu grup dropdown sidebar "Shortlink" di `fsldk-web` (lihat ARCHITECTURE.md §7 di `fsldk-web`), tanpa kolom/tabel baru |
 
 `0005_comment.up.sql` dan `0005_event.up.sql` sengaja berbagi nomor urut yang sama (ditambahkan independen oleh pekerjaan berbeda) — ini aman karena `migrations.Run()` mengurutkan berdasarkan **nama file lengkap** (alfabetis: `comment` < `event`) dan mencatat status penerapan per nama file di `schema_migrations`, bukan per nomor urut semata.
 
