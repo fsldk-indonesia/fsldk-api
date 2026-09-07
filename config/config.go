@@ -269,7 +269,7 @@ func setDefaults() {
 	viper.SetDefault("DB_MAX_OPEN_CONN", 50)
 	viper.SetDefault("DB_MAX_IDLE_CONN", 10)
 
-	viper.SetDefault("JWT_ACCESS_EXPIRE_MINUTES", 60)
+	viper.SetDefault("JWT_ACCESS_EXPIRE_MINUTES", 1440)
 	viper.SetDefault("JWT_REFRESH_EXPIRE_MINUTES", 43200)
 
 	viper.SetDefault("GOOGLE_DEFAULT_ROLE", "Kontributor")
