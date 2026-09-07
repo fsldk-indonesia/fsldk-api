@@ -447,6 +447,74 @@ Approve/Reject menolak (`409 Conflict`) bila permintaan sudah pernah diproses (`
 
 ---
 
+## 8c. QR Code (`/qrcodes`)
+
+Generator kode QR yang **menggantikan** peran "tautan pendek" dengan gambar QR. Isi QR adalah `destinationURL` **langsung** — TIDAK ada kunci/slug, tidak ada redirect lewat domain ini, tidak ada pelacakan pindaian (kalau ada kunci + redirect, ini sama saja dengan Shortlink §8). Setiap baris menyimpan opsi kustomisasi gambar: warna depan/belakang (`#RRGGBB`), URL ikon tengah (di-upload lewat `POST /uploads/image`), dan teks caption yang dirender di bawah kode. Gambar PNG dirender server (skip2/go-qrcode + compositing) — level koreksi kesalahan dinaikkan otomatis ke tertinggi saat ada ikon tengah.
+
+| Method | Endpoint | Auth | Deskripsi |
+|---|---|:---:|---|
+| GET | `/public/qrcodes/:id/image` | ❌ | Gambar PNG QR (`Content-Type: image/png`) untuk baris `:id`, sudah menerapkan warna/ikon/caption. Query `size` (piksel sisi area QR, 128–1024, default 512). |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/qrcodes` | `qrcode.view` | Daftar QR Code (query: `page`, `limit`, `search`) |
+| GET | `/qrcodes/:id` | `qrcode.view` | Detail QR Code |
+| POST | `/qrcodes` | `qrcode.create` | Buat QR Code baru |
+| PUT | `/qrcodes/:id` | `qrcode.update` | Perbarui tujuan/label/kustomisasi |
+| DELETE | `/qrcodes/:id` | `qrcode.delete` | Hapus QR Code |
+
+**`POST /qrcodes`** (bentuk sama untuk `PUT /qrcodes/:id`)
+```json
+{
+  "destinationURL": "https://fsldk-indonesia.com/agenda",
+  "label": "Banner Agenda 2026",
+  "foregroundColor": "#00933B",
+  "backgroundColor": "#FFFFFF",
+  "centerIconKey": "instagram",
+  "centerIconURL": "data:image/png;base64,iVBOR...",
+  "captionText": "Scan untuk info lengkap"
+}
+```
+Hanya `destinationURL` wajib. `foregroundColor`/`backgroundColor` divalidasi `hexcolor` (default `#16211C`/`#FFFFFF` — selaras tema). `captionText` maks 120 karakter.
+
+**Ikon tengah** — dua bentuk `centerIconURL` didukung (maks 40000 char):
+- **data URI PNG** — ikon *preset* yang dikomposisi di frontend (kotak putih ber-radius + border & glyph outline berwarna = warna QR). `centerIconKey` menyertai (`fsldk` | `link` | `browser` | `instagram` | `tiktok` | `youtube` | `x` | `facebook`) hanya sebagai penanda supaya form CMS memulihkan pilihan & meng-generate ulang saat warna berubah — backend tidak menafsirkannya.
+- **URL `/uploads/...`** — ikon kustom (unggah via `POST /uploads/image`, CMS-only). Rasio aspek asli dipertahankan (tidak digepengkan).
+
+Bentuk lain diabaikan (QR dirender tanpa ikon). Response menyertakan `imageURL` absolut (`{APP_URL}/api/v1/public/qrcodes/{id}/image`).
+
+---
+
+## 8d. Permintaan QR Code (`/qrcode-requests`)
+
+Alur permintaan publik + persetujuan admin di atas modul QR Code (§8c) — cerminan penuh Permintaan Shortlink (§8a), termasuk **dua jalur penyelesaian race-safe** (CMS `qrcode.approve` ATAU balasan WhatsApp PIC via webhook Kirimdev yang sama, `POST /public/webhooks/kirimdev` — di-fan-out ke modul ini bila balasan bukan milik shortlink), transaksi atomik pembuatan `ms_qrcode` saat approve, dan notifikasi WhatsApp + email lewat job queue.
+
+> **Catatan template WhatsApp:** 3 template (`qrcode_request_notice`, `qrcode_approved`, `qrcode_rejected`) harus didaftarkan dulu di Meta/Kirimdev. Sampai itu dilakukan, jalur WhatsApp dorman (enqueue tetap dicoba lalu gagal async) — jalur CMS approve/reject + notifikasi email tidak terpengaruh.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate Limit | Deskripsi |
+|---|---|---|---|
+| POST | `/public/qrcode-requests` | 3x / menit / IP | Ajukan permintaan QR Code baru (status awal `pending`) |
+| GET | `/public/qrcode-requests/pic` | — | `{ "picName": "...", "picWhatsapp": "..." }` dari `qrcode_pic_name`/`qrcode_pic_whatsapp` grup `layanan`; `picWhatsapp` bisa `""` bila belum dikonfigurasi (bukan error) |
+
+Body `POST /public/qrcode-requests`: `requesterName`, `requesterEmail`, `requesterWhatsapp`, `destinationURL`, `note` (wajib) + `foregroundColor`, `backgroundColor`, `centerIconKey`, `centerIconURL`, `captionText` (opsional — sama seperti §8c). **Tidak ada `requestedKey`.** Form publik punya editor kustomisasi + pratinjau (pratinjau memakai tautan CONTOH `https://fsldk.or.id`, bukan URL tujuan). Ikon di form publik hanya lewat **preset** (data URI — endpoint `/uploads` butuh login). Nilai kustomisasi disimpan di `ms_qrcode_request` dan disalin ke `ms_qrcode` saat approve — barulah QR mengarah ke `destinationURL` asli. Notifikasi WhatsApp ke pemohon berisi **tautan unduh** gambar QR hasil approve (`imageURL?size=1024`).
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/qrcode-requests` | `qrcode.view` | Daftar permintaan (query: `page`, `limit`, `search`, `status=pending\|approved\|rejected`) |
+| GET | `/qrcode-requests/:id` | `qrcode.view` | Detail satu permintaan |
+| POST | `/qrcode-requests/:id/approve` | `qrcode.approve` | Setujui — buat baris `ms_qrcode` (warna default, tanpa ikon/caption; admin menyesuaikan di §8c) + notifikasi requester |
+| POST | `/qrcode-requests/:id/reject` | `qrcode.approve` | Tolak — `{ "rejectionReason": "..." }` + notifikasi requester |
+
+Approve/Reject menolak (`409 Conflict`) bila `status != pending`. Response menyertakan `reviewedVia` (`"cms"` | `"whatsapp"`) dan `imageURL` (terisi setelah approved).
+
+---
+
 ## 8b. Kalkulator Zakat (`/zakat`)
 
 Halaman publik `/kalkulator-zakat` di frontend menghitung 7 jenis zakat sepenuhnya di browser (data & rumus hardcoded). Satu-satunya endpoint backend adalah proxy harga emas Antam ber-cache — tanpa tabel DB, permission, atau menu CMS.

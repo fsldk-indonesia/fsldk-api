@@ -24,6 +24,8 @@ func (f *fakeMailer) SendVerificationEmail(toEmail, toName, verifyURL string) er
 func (f *fakeMailer) SendPasswordResetEmail(toEmail, toName, resetURL string) error     { return nil }
 func (f *fakeMailer) SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error { return nil }
 func (f *fakeMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) error   { return nil }
+func (f *fakeMailer) SendQRCodeApprovedEmail(toEmail, toName, imageURL string) error { return nil }
+func (f *fakeMailer) SendQRCodeRejectedEmail(toEmail, toName, reason string) error   { return nil }
 func (f *fakeMailer) SendDonationReceipt(toEmail, toName, campaignTitle, amount, total, dateStr, publicRef, receiptURL string, pdfBytes []byte, pdfFilename string) error {
 	return nil
 }

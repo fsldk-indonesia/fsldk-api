@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"fsldk-api/base/token"
@@ -109,6 +110,14 @@ import (
 	"fsldk-api/modules/shortlink/shortlinkrequest_repository"
 	"fsldk-api/modules/shortlink/shortlinkrequest_service"
 
+	"fsldk-api/modules/qrcode"
+	"fsldk-api/modules/qrcode/qrcode_handler"
+	"fsldk-api/modules/qrcode/qrcode_repository"
+	"fsldk-api/modules/qrcode/qrcode_service"
+	"fsldk-api/modules/qrcode/qrcoderequest_handler"
+	"fsldk-api/modules/qrcode/qrcoderequest_repository"
+	"fsldk-api/modules/qrcode/qrcoderequest_service"
+
 	"fsldk-api/modules/setting"
 	"fsldk-api/modules/setting/setting_handler"
 	"fsldk-api/modules/setting/setting_repository"
@@ -201,6 +210,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkRepo := shortlink_repository.NewRepository(db)
 	reportRepo := report_repository.NewRepository(db)
 	shortlinkReqRepo := shortlinkrequest_repository.NewRepository(db)
+	qrcodeRepo := qrcode_repository.NewRepository(db)
+	qrcodeReqRepo := qrcoderequest_repository.NewRepository(db)
 	settingRepo := setting_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
@@ -220,6 +231,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	roleSvc := role_service.NewService(roleRepo)
 	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
+	// apiBaseURL dipakai qrcode_service/qrcoderequest_service membentuk ImageURL
+	// absolut (mis. untuk email notifikasi) — AppURL + prefix grup /api/v1.
+	apiBaseURL := strings.TrimRight(cfg.AppURL, "/") + "/api/v1"
+	// "assets/uploads" = folder fisik yang sama dipakai uploadpkg.NewUploader —
+	// qrcode_service membacanya untuk menempelkan ikon tengah pada gambar QR.
+	qrcodeSvc := qrcode_service.NewService(qrcodeRepo, apiBaseURL, "assets/uploads")
 	settingSvc := setting_service.NewService(settingRepo)
 	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,
 		cfg.KirimdevTemplateLanguage, cfg.KirimdevWebhookSecrets(),
@@ -254,6 +271,10 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// shortlinkReqSvc di-inject jobqueueSvc — satu nilai memenuhi dua interface
 	// sempit JobEnqueuer + WhatsAppMessageResolver sekaligus (§6 techspec).
 	shortlinkReqSvc := shortlinkrequest_service.NewService(shortlinkReqRepo, shortlinkSvc, jobqueueSvc, jobqueueSvc, settingSvc, cfg.FrontendURL)
+	// qrcodeReqSvc mengikuti pola yang sama: jobqueueSvc memenuhi JobEnqueuer +
+	// WhatsAppMessageResolver sekaligus. Pembuatan baris ms_qrcode saat approve
+	// terjadi atomik di dalam repo (ApproveTx), jadi tidak perlu qrcode_service.
+	qrcodeReqSvc := qrcoderequest_service.NewService(qrcodeReqRepo, jobqueueSvc, jobqueueSvc, settingSvc, apiBaseURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached
@@ -323,7 +344,12 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	scheduleH := schedule_handler.NewHandler(scheduleSvc)
 	dashH := dashboard_handler.NewHandler(dashSvc)
 	shortlinkH := shortlink_handler.NewHandler(shortlinkSvc)
-	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc)
+	qrcodeH := qrcode_handler.NewHandler(qrcodeSvc)
+	qrcodeReqH := qrcoderequest_handler.NewHandler(qrcodeReqSvc)
+	// shortlinkReqH juga menerima qrcodeReqSvc: satu-satunya route webhook
+	// Kirimdev di-fan-out ke modul QR Code request bila balasannya bukan
+	// milik shortlink.
+	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc, qrcodeReqSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	zakatH := zakat_handler.NewHandler(zakatSvc)
@@ -398,6 +424,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlink.RegisterResolveRoute(pub, shortlinkH)
 	shortlink.RegisterRequestPublicRoutes(pub, shortlinkReqH)
 	shortlink.RegisterRequestCMSRoutes(api, shortlinkReqH, mw)
+
+	qrcode.RegisterCMSRoutes(api, qrcodeH, mw)
+	qrcode.RegisterImageRoute(pub, qrcodeH)
+	qrcode.RegisterRequestPublicRoutes(pub, qrcodeReqH)
+	qrcode.RegisterRequestCMSRoutes(api, qrcodeReqH, mw)
 
 	setting.RegisterCMSRoutes(api, settingH, mw)
 	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)

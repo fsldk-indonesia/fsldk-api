@@ -37,6 +37,8 @@ const (
 	JobTypeWhatsAppTemplate       = "whatsapp_template"
 	JobTypeEmailShortlinkApproved = "email_shortlink_approved"
 	JobTypeEmailShortlinkRejected = "email_shortlink_rejected"
+	JobTypeEmailQRCodeApproved    = "email_qrcode_approved"
+	JobTypeEmailQRCodeRejected    = "email_qrcode_rejected"
 
 	StatusPending    = "pending"
 	StatusProcessing = "processing"
@@ -44,6 +46,7 @@ const (
 	StatusFailed     = "failed"
 
 	CorrelationTypeShortlinkRequest = "shortlink_request"
+	CorrelationTypeQRCodeRequest    = "qrcode_request"
 
 	// Kantong Amal (Phase 8) — notifikasi WhatsApp donasi/campaign/withdrawal.
 	CorrelationTypeDonation   = "donation"

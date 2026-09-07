@@ -313,6 +313,20 @@ func (s *ServiceImpl) executeJob(ctx context.Context, job jobqueue_model.Job) {
 		} else {
 			err = s.mailer.SendShortlinkRejectedEmail(p.ToEmail, p.ToName, p.Reason)
 		}
+	case jobqueue_model.JobTypeEmailQRCodeApproved:
+		var p jobqueue_dto.QRCodeApprovedEmailPayload
+		if uerr := json.Unmarshal([]byte(job.Payload), &p); uerr != nil {
+			err = uerr
+		} else {
+			err = s.mailer.SendQRCodeApprovedEmail(p.ToEmail, p.ToName, p.ImageURL)
+		}
+	case jobqueue_model.JobTypeEmailQRCodeRejected:
+		var p jobqueue_dto.QRCodeRejectedEmailPayload
+		if uerr := json.Unmarshal([]byte(job.Payload), &p); uerr != nil {
+			err = uerr
+		} else {
+			err = s.mailer.SendQRCodeRejectedEmail(p.ToEmail, p.ToName, p.Reason)
+		}
 	default:
 		if fn, ok := s.lookupHandler(job.JobType); ok {
 			err = fn(ctx, job.Payload)

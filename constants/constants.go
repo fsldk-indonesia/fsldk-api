@@ -91,6 +91,12 @@ const (
 	PermShortlinkUpdate = "shortlink.update"
 	PermShortlinkDelete = "shortlink.delete"
 
+	PermQRCodeView    = "qrcode.view"
+	PermQRCodeCreate  = "qrcode.create"
+	PermQRCodeUpdate  = "qrcode.update"
+	PermQRCodeDelete  = "qrcode.delete"
+	PermQRCodeApprove = "qrcode.approve"
+
 	PermOrganizationCreate          = "organization.create"
 	PermOrganizationDeactivate      = "organization.deactivate"
 	PermOrganizationProfileManage   = "organization.profile.manage"
@@ -297,6 +303,8 @@ const (
 	TableArticleCategory  = "lk_article_category"
 	TableShortlink        = "ms_shortlink"
 	TableShortlinkRequest = "ms_shortlink_request"
+	TableQRCode           = "ms_qrcode"
+	TableQRCodeRequest    = "ms_qrcode_request"
 	TableComment          = "ms_comment"
 	TableCommentReaction  = "tr_comment_reaction"
 	TableUserLoginLog     = "tr_user_login_log"
