@@ -9,11 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterPublicRoutes mendaftarkan endpoint publik goods.
-func RegisterPublicRoutes(pub *gin.RouterGroup, h goods_handler.Handler) {
-	pub.GET("/goods", h.PublicList)
+// RegisterPublicRoutes mendaftarkan endpoint publik goods. /goods dan
+// /goods/:slug memakai OptionalAuth() (bukan tanpa middleware sama sekali)
+// supaya handler tahu identitas caller BILA kebetulan sedang login — dipakai
+// menyembunyikan purchaseUrl/purchaseButtonLabel dari tamu & akun
+// Pengunjung/self-registrasi (lihat HandlerImpl.canSeePurchaseLink), tanpa
+// mewajibkan login untuk sekadar melihat katalog.
+func RegisterPublicRoutes(pub *gin.RouterGroup, h goods_handler.Handler, mw *middlewares.Middleware) {
+	pub.GET("/goods", mw.OptionalAuth(), h.PublicList)
 	pub.GET("/goods-categories", h.PublicCategories)
-	pub.GET("/goods/:slug", h.PublicDetail)
+	pub.GET("/goods/:slug", mw.OptionalAuth(), h.PublicDetail)
 }
 
 // RegisterCMSRoutes mendaftarkan endpoint CMS goods (produk & kategori).

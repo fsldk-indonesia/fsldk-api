@@ -196,6 +196,80 @@ func (r *RepositoryImpl) CountUnreadContactMessages(ctx context.Context) (int, e
 	return int(count), err
 }
 
+// countTable adalah helper generik untuk hitungan total baris satu tabel —
+// dipakai oleh widget statistik CMS Utama yang tidak butuh filter apa pun,
+// supaya method-method di bawah tidak mengulang boilerplate WithContext/Count.
+func (r *RepositoryImpl) countTable(ctx context.Context, table string) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table(table).Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CountRoles(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_role")
+}
+
+func (r *RepositoryImpl) CountEvents(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_event")
+}
+
+func (r *RepositoryImpl) CountSchedules(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_schedule")
+}
+
+func (r *RepositoryImpl) CountGalleries(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_gallery")
+}
+
+func (r *RepositoryImpl) CountStructures(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_structure")
+}
+
+func (r *RepositoryImpl) CountCatalogBooks(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_catalog_book")
+}
+
+func (r *RepositoryImpl) CountDynamicForms(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_dynamic_form")
+}
+
+func (r *RepositoryImpl) CountGoodsProducts(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_goods")
+}
+
+func (r *RepositoryImpl) CountFinanceFormats(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_finance_format")
+}
+
+func (r *RepositoryImpl) CountCampaigns(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_campaign")
+}
+
+// SumDonationCollected menjumlahkan nominal donasi yang statusnya sudah PAID
+// (donasi PENDING/EXPIRED/FAILED/dll tidak dihitung sebagai dana terkumpul).
+func (r *RepositoryImpl) SumDonationCollected(ctx context.Context) (float64, error) {
+	var total sql.NullFloat64
+	err := r.db.WithContext(ctx).Table("tr_donation").
+		Select("SUM(amount)").Where("paymentStatus = ?", "PAID").Scan(&total).Error
+	return total.Float64, err
+}
+
+func (r *RepositoryImpl) CountComments(ctx context.Context) (int, error) {
+	return r.countTable(ctx, "ms_comment")
+}
+
+func (r *RepositoryImpl) CountActiveSubscribers(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("tr_subscriber").Where("isActive = 1").Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) CountPendingJobs(ctx context.Context) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("tr_job_queue").Where("status = ?", "pending").Count(&count).Error
+	return int(count), err
+}
+
 func (r *RepositoryImpl) PerPuskomdaBreakdown(ctx context.Context) ([]dashboard_dto.PuskomdaBreakdown, error) {
 	var rows []dashboard_dto.PuskomdaBreakdown
 	err := r.db.WithContext(ctx).Table("ms_organization p").

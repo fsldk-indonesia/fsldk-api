@@ -9,6 +9,7 @@ import (
 	"fsldk-api/base/dto"
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/validation"
+	"fsldk-api/config"
 	"fsldk-api/modules/goods/goods_dto"
 	"fsldk-api/modules/goods/goods_service"
 
@@ -16,10 +17,31 @@ import (
 )
 
 // HandlerImpl adalah implementasi Handler.
-type HandlerImpl struct{ svc goods_service.Service }
+type HandlerImpl struct {
+	svc goods_service.Service
+	cfg config.AppConfig
+}
 
 // NewHandler membuat Handler goods.
-func NewHandler(svc goods_service.Service) Handler { return &HandlerImpl{svc: svc} }
+func NewHandler(svc goods_service.Service, cfg config.AppConfig) Handler {
+	return &HandlerImpl{svc: svc, cfg: cfg}
+}
+
+// canSeePurchaseLink menentukan apakah caller endpoint publik goods boleh
+// melihat purchaseUrl/purchaseButtonLabel — SENGAJA disembunyikan dari tamu
+// (belum login) maupun akun "Pengunjung"/role default self-registrasi
+// (GOOGLE_DEFAULT_ROLE/REGISTER_DEFAULT_ROLE), karena kedua role itu bisa
+// didapat siapa pun lewat pendaftaran mandiri dalam hitungan detik — kalau
+// role itu ikut lolos, tautan pembelian pada dasarnya tetap terbuka untuk
+// umum. Hanya akun Kader (hasil verifikasi, bukan sekadar mendaftar) dan
+// akun ber-akses CMS/portal (LDK/Puskomda/Puskomnas/Utama) yang boleh lihat.
+func (h *HandlerImpl) canSeePurchaseLink(c *gin.Context) bool {
+	role := appctx.RoleName(c)
+	if role == "" {
+		return false
+	}
+	return role != h.cfg.RegisterDefaultRole && role != h.cfg.GoogleDefaultRole
+}
 
 func idParam(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -74,6 +96,12 @@ func (h *HandlerImpl) PublicList(c *gin.Context) {
 		httphelper.Error(c, err)
 		return
 	}
+	if !h.canSeePurchaseLink(c) {
+		for i := range data {
+			data[i].PurchaseUrl = ""
+			data[i].PurchaseButtonLabel = ""
+		}
+	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
 }
 
@@ -82,6 +110,10 @@ func (h *HandlerImpl) PublicDetail(c *gin.Context) {
 	if err != nil {
 		httphelper.Error(c, err)
 		return
+	}
+	if !h.canSeePurchaseLink(c) {
+		data.PurchaseUrl = ""
+		data.PurchaseButtonLabel = ""
 	}
 	httphelper.Success(c, "", data)
 }
