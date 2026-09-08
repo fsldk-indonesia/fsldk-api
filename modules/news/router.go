@@ -29,5 +29,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h news_handler.Handler, mw *middlewa
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermNewsPublish), h.Publish)
 		g.PATCH("/:id/featured", mw.RequirePermission(constants.PermNewsUpdate), h.Featured)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermNewsDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermNewsDelete), h.BulkDelete)
 	}
 }

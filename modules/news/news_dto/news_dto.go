@@ -28,11 +28,33 @@ type FeaturedRequest struct {
 // Filter menampung parameter penyaringan daftar berita (dipakai repository & service).
 type Filter struct {
 	Search        string
+	Reporter      string // LIKE terhadap newsReporter — filter kolom "Reporter" CMS
+	CategoryName  string // LIKE terhadap categoryName — filter kolom "Kategori" CMS (free text, bukan dropdown categoryID)
 	CategorySlug  string
 	CategoryID    int64
 	PublishedOnly bool
 	Status        string // "published" | "draft" | ""
+	DateFrom      string // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
+	DateTo        string // "YYYY-MM-DD", inklusif
 	Limit         int
 	Offset        int
 	OrderBy       string
+}
+
+// CMSFilter menampung parameter filter khusus endpoint CMS list (di luar
+// dto.ListQuery yang sudah menampung search/page/limit/sort) — dipisah dari
+// Filter (dipakai repository) supaya signature service.CMSList tidak terus
+// bertambah parameter positional setiap kali kolom filter baru ditambahkan.
+type CMSFilter struct {
+	Status       string
+	CategoryID   int64
+	Reporter     string
+	CategoryName string
+	DateFrom     string
+	DateTo       string
+}
+
+// BulkDeleteRequest adalah body untuk menghapus banyak berita sekaligus.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }

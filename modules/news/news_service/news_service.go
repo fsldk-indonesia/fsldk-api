@@ -21,7 +21,7 @@ type CommentCleaner interface {
 // Service adalah kontrak logika bisnis berita.
 type Service interface {
 	PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]news_model.News, int, error)
-	CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]news_model.News, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, f news_dto.CMSFilter) ([]news_model.News, int, error)
 	PublicDetail(ctx context.Context, slug string) (news_model.News, error)
 	Get(ctx context.Context, id int64) (news_model.News, error)
 	Featured(ctx context.Context, limit int) ([]news_model.News, error)
@@ -31,4 +31,5 @@ type Service interface {
 	SetPublished(ctx context.Context, id int64, published bool, updatedBy int64) error
 	SetFeatured(ctx context.Context, id int64, featured bool, updatedBy int64) error
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) error
 }

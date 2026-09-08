@@ -39,11 +39,23 @@ func (r *RepositoryImpl) List(ctx context.Context, f news_dto.Filter) ([]news_mo
 		like := "%" + f.Search + "%"
 		q = q.Where("(n.newsTitle LIKE ? OR n.newsExcerpt LIKE ?)", like, like)
 	}
+	if f.Reporter != "" {
+		q = q.Where("n.newsReporter LIKE ?", "%"+f.Reporter+"%")
+	}
+	if f.CategoryName != "" {
+		q = q.Where("c.categoryName LIKE ?", "%"+f.CategoryName+"%")
+	}
 	if f.CategorySlug != "" {
 		q = q.Where("c.categorySlug = ?", f.CategorySlug)
 	}
 	if f.CategoryID > 0 {
 		q = q.Where("n.categoryID = ?", f.CategoryID)
+	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(n.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(n.createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64
