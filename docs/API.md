@@ -317,6 +317,96 @@ Marketplace/product catalog — **bukan e-commerce**: tidak ada cart/checkout/pa
 
 ---
 
+## 6c. Perpustakaan / Katalog Buku (`/catalog-books`)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/catalog-books` | Daftar buku published (query: `page`, `limit`, `search`, `category`, `language`, `authorType`, `availability`) |
+| GET | `/public/catalog-books/:slug` | Detail buku |
+| POST | `/public/catalog-books/:id/like` | Like/dukung buku (rate limit 20/5 menit, tanpa auth) |
+| GET | `/public/catalog-book-categories` \| `-languages` \| `-author-types` \| `-availability-types` | Daftar nilai referensi untuk filter/form |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/catalog-books` | `catalogbook.view` | Daftar seluruh buku (semua status) |
+| GET | `/catalog-books/:id` | `catalogbook.view` | Detail untuk pengelolaan |
+| POST | `/catalog-books` | `catalogbook.create` | Buat entri buku baru |
+| PUT | `/catalog-books/:id` | `catalogbook.update` | Perbarui |
+| PATCH | `/catalog-books/:id/publish` | `catalogbook.publish` | Publish/tarik publikasi |
+| DELETE | `/catalog-books/:id` | `catalogbook.delete` | Hapus |
+
+---
+
+## 6d. Jadwal Kegiatan (`/schedules`)
+
+Agenda/jadwal kegiatan organisasi (kajian, rapat, daurah, dst. — lihat `constants.ScheduleCategories`), bukan jadwal sholat (jadwal sholat di frontend berasal dari API publik pihak ketiga `api.myquran.com`, tanpa melibatkan backend ini sama sekali).
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/schedules` | Daftar jadwal published (query: `page`, `limit`, `category`, `search`) |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/schedules` | `schedule.view` | Daftar seluruh jadwal (semua status) |
+| GET | `/schedules/:id` | `schedule.view` | Detail untuk pengelolaan |
+| POST | `/schedules` | `schedule.create` | Buat jadwal baru (`category` wajib salah satu `ScheduleCategories`) |
+| PUT | `/schedules/:id` | `schedule.update` | Perbarui |
+| PATCH | `/schedules/:id/publish` | `schedule.publish` | Publish/tarik publikasi |
+| DELETE | `/schedules/:id` | `schedule.delete` | Hapus |
+
+---
+
+## 6e. Struktur Organisasi (`/structures`)
+
+Arsip **kepengurusan per periode** (batch/period + nama/deskripsi struktur + logo & gambar bagan) — bukan visi/misi/struktur organisasi statis yang tampil di section "Tentang" Beranda (itu tetap teks hardcoded di frontend, lihat catatan di penutup dokumen ini). Fitur ini murni CRUD sederhana, tanpa status draft/publish.
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/structures` | Daftar seluruh struktur kepengurusan (urut periode terbaru) |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/structures` | `structure.view` | Daftar untuk pengelolaan |
+| GET | `/structures/:id` | `structure.view` | Detail |
+| POST | `/structures` | `structure.create` | Buat entri struktur baru — `logoImage`/`structureImage` wajib (hasil `POST /uploads/image`, §13) |
+| PUT | `/structures/:id` | `structure.update` | Perbarui |
+| DELETE | `/structures/:id` | `structure.delete` | Hapus |
+
+---
+
+## 6f. Galeri (`/galleries`)
+
+Galeri foto per album (satu `gallery` = satu album/event, berisi banyak `photo`).
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/galleries` | Daftar album published |
+| GET | `/public/galleries/:id` | Detail album |
+| GET | `/public/galleries/:id/photos` | Foto dalam album |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/galleries` | `gallery.view` | Daftar album (semua status) |
+| GET | `/galleries/:id` | `gallery.view` | Detail album |
+| POST | `/galleries` | `gallery.create` | Buat album baru |
+| PUT | `/galleries/:id` | `gallery.update` | Perbarui album |
+| DELETE | `/galleries/:id` | `gallery.delete` | Hapus album (+ seluruh foto di dalamnya) |
+| GET | `/galleries/:id/photos` | `gallery.view` | Daftar foto (semua status) untuk pengelolaan |
+| POST | `/galleries/:id/photos` | `gallery.update` | Tambah foto (URL hasil `POST /uploads/image`, §13) |
+| PUT | `/galleries/:id/photos/:photoID` | `gallery.update` | Perbarui caption/foto |
+| DELETE | `/galleries/:id/photos/:photoID` | `gallery.update` | Hapus foto |
+| POST | `/galleries/:id/photos/reorder` | `gallery.update` | Susun ulang urutan tampil foto |
+
+---
+
 ## 7. Komentar (`/comments`)
 
 Dipakai bersama oleh Artikel, Berita, dan Event — `contentType` (`article`/`news`/`event`) + `contentID` menunjuk ke konten manapun tanpa foreign key (lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention)). Balasan dibatasi **1 level** (tidak bisa membalas balasan).
@@ -464,6 +554,99 @@ Response `result`: `{ "success": true, "price": 2750000, "source": "antam-live",
 
 ---
 
+## 8c. Kantong Amal — Ringkasan
+
+Sistem crowdfunding donasi (empat modul backend terpisah — `campaign`, `donation`, `wallet`, `withdrawal` — dipetakan ke **satu** modul frontend `kantong-amal`, lihat ARCHITECTURE.md/`fsldk-web` §2). Payment gateway: **BisaTopup/Bisabiller** (QRIS), kredensial & alur go-live di [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md). Permission-nya diprefix `kantong_amal.*` walau kode Go modulnya terpisah per entity.
+
+## 8d. Kantong Amal — Campaign (`/campaigns`)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/campaigns` | Daftar campaign published (query: `page`, `limit`, `search`, `category`) |
+| GET | `/public/campaigns/:slug` | Detail campaign + progres donasi terkumpul |
+| GET | `/public/campaign-categories` | Daftar kategori campaign |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/campaigns` | `kantong_amal.campaign.view` | Daftar seluruh campaign (semua status) |
+| GET | `/campaigns/lite` | `kantong_amal.campaign.view` | Daftar ringkas (untuk dropdown/pemilihan campaign di form lain) |
+| GET | `/campaigns/:id` | `kantong_amal.campaign.view` | Detail untuk pengelolaan |
+| POST | `/campaigns` | `kantong_amal.campaign.create` | Buat campaign baru (draft) |
+| PUT | `/campaigns/:id` | `kantong_amal.campaign.update` | Perbarui |
+| DELETE | `/campaigns/:id` | `kantong_amal.campaign.delete` | Hapus |
+| POST | `/campaigns/:id/publish` | `kantong_amal.campaign.publish` | Publikasikan |
+| POST | `/campaigns/:id/pause` \| `/resume` \| `/archive` | `kantong_amal.campaign.moderate` | Jeda/lanjutkan/arsipkan penggalangan |
+
+## 8e. Kantong Amal — Donation (`/donations`, `/campaigns/:slug/donate`)
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| POST | `/public/campaigns/:slug/donate` | Buat donasi (login opsional — donatur anonim didukung), rate limit 30/5 menit. Merespons instruksi pembayaran QRIS BisaTopup |
+| GET | `/public/campaigns/:slug/donations` | Donasi terbaru pada campaign tsb (untuk feed "Donasi Terkini") |
+| GET | `/public/donations/:publicRef` | Detail donasi via referensi publik (bukan ID DB internal) |
+| GET | `/public/donations/:publicRef/receipt.pdf` | Unduh kwitansi PDF |
+| GET | `/public/donations/:publicRef/status` | Polling status pembayaran (rate limit 60/10 menit) |
+| POST | `/public/payments/callback` | Webhook callback pembayaran dari BisaTopup (signature-verified) |
+| GET | `/me/donations` | ✅🔒 (login+verified) Riwayat donasi milik akun sendiri |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/donations` | `kantong_amal.donation.view` | Daftar seluruh donasi |
+| GET | `/donations/:id` | `kantong_amal.donation.view` | Detail donasi |
+| POST | `/donations` | `kantong_amal.donation.create` | Catat donasi manual (mis. transfer di luar sistem) |
+| PUT | `/donations/:id` | `kantong_amal.donation.update` | Koreksi data donasi |
+| DELETE | `/donations/:id` | `kantong_amal.donation.delete` | Hapus |
+
+## 8f. Kantong Amal — Wallet (`/wallet`) — ✅🔒
+
+Saldo & buku besar (ledger) internal per campaign — read-only dari CMS, ditulis otomatis oleh sistem saat donasi settle/withdrawal disetujui.
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/wallet/balance` | `kantong_amal.wallet.view` | Saldo saat ini |
+| GET | `/wallet/ledger` | `kantong_amal.wallet.view` | Riwayat mutasi (debit/kredit) |
+
+## 8g. Kantong Amal — Withdrawal / Penarikan Dana (`/withdrawals`, `/transfer`)
+
+| Method | Endpoint | Auth | Deskripsi |
+|---|---|:---:|---|
+| POST | `/campaigns/:id/withdrawals` | ✅🔒 `kantong_amal.withdrawal.request` | Ajukan penarikan dana campaign |
+| GET | `/transfer/banks` | ✅🔒 (login+verified) | Daftar bank tujuan transfer yang didukung |
+| POST | `/transfer/inquiry` | ✅🔒 (login+verified) | Validasi nomor rekening tujuan sebelum submit |
+| POST | `/withdrawals/callback/:secret` | Publik (secret di path, bukan header) | Callback status disbursement dari BisaTopup/Bisabiller |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/withdrawals` | `kantong_amal.withdrawal.approve` | Daftar permintaan penarikan (**catatan**: kode permission dipertahankan `approve` walau maker-checker sudah dihapus 2026-08-30 — kini menggerbang akses lihat/kelola, bukan aksi approve terpisah) |
+| GET | `/withdrawals/:id` | `kantong_amal.withdrawal.approve` | Detail |
+| POST | `/withdrawals/:id/cancel` | `kantong_amal.withdrawal.request` | Batalkan permintaan (pemohon) |
+| POST | `/withdrawals/:id/security-verify/otp` | `kantong_amal.withdrawal.request` | Kirim OTP verifikasi keamanan (rate limit 1/5 menit) |
+| POST | `/withdrawals/:id/security-verify` | `kantong_amal.withdrawal.request` | Verifikasi OTP (rate limit 1/5 menit) |
+| POST | `/withdrawals/:id/process` | `kantong_amal.withdrawal.process` | Proses pencairan ke bank tujuan |
+
+## 8h. Kantong Amal — Laporan Keuangan (`/reports/*`) — ✅🔒
+
+Bagian dari modul Go `report` yang sama dengan §12 (Laporan Pendataan), tapi prefix/permission terpisah (`kantong_amal.report.*`/`kantong_amal.audit.*`) karena domainnya finansial, bukan submission.
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/reports/balance` \| `/reports/balance/export` | `kantong_amal.report.view` / `.export` | Laporan saldo |
+| GET | `/reports/campaigns` \| `/reports/campaigns/export` | `kantong_amal.report.view` / `.export` | Laporan per campaign |
+| GET | `/reports/donations` \| `/reports/donations/export` | `kantong_amal.report.view` / `.export` | Laporan donasi |
+| GET | `/reports/withdrawals` \| `/reports/withdrawals/export` | `kantong_amal.report.view` / `.export` | Laporan penarikan dana |
+| GET | `/reports/reconciliation` | `kantong_amal.report.view` | Rekonsiliasi saldo vs. wallet gateway (toleransi `BISATOPUP_SETTLEMENT_MINUTES_CROWDFUNDING`) |
+| GET | `/reports/ledger-global` | `kantong_amal.report.view` | Buku besar gabungan seluruh campaign |
+| GET | `/reports/analytics` | `kantong_amal.report.view` | Ringkasan analitik (tren donasi, dsb.) |
+| GET | `/reports/audit-log` | `kantong_amal.audit.view` | Log audit aksi finansial |
+
+---
+
 ## 9. Organization (`/organizations`, `/me/organizations`) — ✅🔒
 
 Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") caller diresolusi server-side dari `organizationID`/`organizationTypeCode` (cascade: LDK→diri sendiri, Puskomda→diri+LDK di bawahnya, Puskomnas→seluruh organisasi) **atau** `wildcardTierAccess` (mem-bypass cascade untuk akun seperti Super Admin) — **tidak pernah** dipercaya dari input klien. Endpoint bertanda `RequireOrganizationScope` menolak (`403`) permintaan ke `:id` di luar cakupan caller, terlepas dari apa yang ditampilkan UI.
@@ -484,6 +667,53 @@ Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") calle
 ```json
 { "organizationTypeCode": "LDK", "organizationName": "LDK Contoh", "organizationCode": "CONTOH", "parentOrganizationID": 2, "provinceName": "...", "cityName": "...", "contactEmail": "...", "contactPhone": "..." }
 ```
+
+---
+
+## 9a. Kontak — Pesan Masuk (`/contact`)
+
+Kotak masuk pesan dari form "Hubungi Kami" publik — **bukan** section "Kontak" (alamat/media sosial) di Beranda, yang tetap teks hardcoded di frontend (lihat catatan penutup dokumen ini).
+
+| Method | Endpoint | Rate limit | Deskripsi |
+|---|---|---|---|
+| POST | `/public/contact` | 0.5x/menit/IP (burst 5) | Kirim pesan dari form kontak publik |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/contact` | `contact.view` | Daftar pesan masuk (query: `page`, `limit`, `search`, `isRead`) |
+| GET | `/contact/:id` | `contact.view` | Detail pesan |
+| PATCH | `/contact/:id/read` | `contact.view` | Tandai sudah dibaca |
+| POST | `/contact/:id/reply` | `contact.view` | Balas pesan lewat email (`subject`+`message`) |
+| DELETE | `/contact/:id` | `contact.delete` | Hapus pesan |
+
+## 9b. Newsletter / Subscriber (`/subscribers`)
+
+| Method | Endpoint | Rate limit | Deskripsi |
+|---|---|---|---|
+| POST | `/public/subscribers` | 0.5x/menit/IP (burst 5) | Berlangganan newsletter (email) |
+| POST | `/public/subscribers/unsubscribe` | 0.5x/menit/IP (burst 5) | Berhenti berlangganan |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/subscribers` | `subscription.view` | Daftar subscriber |
+| GET | `/subscribers/:id` | `subscription.view` | Detail |
+| POST | `/subscribers/bulk` | `subscription.create` | Tambah banyak email sekaligus (impor) |
+| PUT | `/subscribers/:id` | `subscription.create` | Perbarui |
+| DELETE | `/subscribers/:id` | `subscription.delete` | Hapus |
+| POST | `/subscribers/bulk-delete` | `subscription.delete` | Hapus massal |
+
+## 9c. Statistik Jaringan (Publik) (`/network-stats`)
+
+Sepenuhnya publik, tanpa permission/menu CMS — dipakai landing page untuk menampilkan sebaran LDK/Puskomda secara agregat.
+
+| Method | Endpoint | Deskripsi |
+|---|---|---|
+| GET | `/public/network-stats` | Ringkasan jumlah LDK/Puskomda/Puskomnas aktif secara nasional |
+| GET | `/public/network-stats/directory` | Direktori sebaran organisasi (untuk peta/daftar publik) |
 
 ---
 
@@ -641,6 +871,12 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `submission.review.tier1/approve.tier1` | Verifikasi/Persetujuan Wilayah (Puskomda) | `submission.review.tier2` | Verifikasi Akhir (Puskomnas) |
 | `submission.level.establish/publish/reopen/reassess` | Penetapan Level/Publikasi/Koreksi (Puskomnas) | `kader.deactivate` | Nonaktifkan Kader (LDK) |
 | `report.region.view/export` | Laporan Wilayah (Puskomda) | `report.national.view/export` | Laporan Nasional (Puskomnas) |
+| `catalogbook.view/create/update/delete/publish` | Perpustakaan / Katalog Buku | `schedule.view/create/update/delete/publish` | Jadwal Kegiatan |
+| `structure.view/create/update/delete` | Struktur Organisasi (kepengurusan per periode) | `gallery.view/create/update/delete` | Galeri |
+| `contact.view/delete` | Kontak (pesan masuk) | `subscription.view/create/delete` | Newsletter / Subscriber |
+| `dynamicform.view/create/update/delete/publish/manage.all` | Formulir Dinamis | `kantong_amal.campaign.view/create/update/delete/publish/moderate` | Kantong Amal — Campaign |
+| `kantong_amal.donation.view/create/update/delete` | Kantong Amal — Donasi | `kantong_amal.wallet.view` | Kantong Amal — Wallet |
+| `kantong_amal.withdrawal.request/approve/process` | Kantong Amal — Penarikan Dana | `kantong_amal.report.view/export`, `kantong_amal.audit.view` | Kantong Amal — Laporan & Audit |
 
 `comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention).
 
@@ -659,7 +895,7 @@ Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per
 
 `wildcardTierAccess` (kolom `SET('LDK','PUSKOMDA','PUSKOMNAS')` di `ms_user`) mem-bypass cascade organisasi untuk akun sepert Super Admin — lihat [Arsitektur §11](./ARCHITECTURE.md#11-organization-scope--cascade-access). Detail lengkap seed role/permission modul ini: [`migrations/0005_organization_access.up.sql`](../migrations/0005_organization_access.up.sql) s.d. [`0009_audit_reporting.up.sql`](../migrations/0009_audit_reporting.up.sql).
 
-> Konten Landing Page (visi/misi/struktur organisasi/kontak) tidak dikelola via API/database — dikelola sebagai teks tetap (hardcoded) langsung di frontend `fsldk-web`.
+> Section "Tentang" (visi/misi) & "Kontak" (alamat/media sosial) pada Beranda tetap teks tetap (hardcoded) langsung di frontend `fsldk-web`, **tidak** dikelola via API/database — jangan disamakan dengan modul `structure` (§6e, arsip kepengurusan per periode) atau `contact` (§9a, kotak masuk pesan form "Hubungi Kami"), yang meski namanya mirip adalah fitur CMS asli dan berbeda tujuan.
 
 ---
 

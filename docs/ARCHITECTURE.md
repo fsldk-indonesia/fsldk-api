@@ -28,11 +28,17 @@ Aliran dependensi **selalu satu arah**: Handler → Service → Repository. Lapi
 
 ## 2. Struktur Modul (Subfolder + Interface/Impl)
 
-Setiap modul fitur (`auth`, `user`, `role`, `permission`, `news`, `article`, `event`, `comment`, `shortlink`, `setting`, `jobqueue`, `dashboard`, `organization`, `submission_form`, `submission`, `report`) memiliki struktur subfolder yang identik. Contoh modul `news`:
+Setiap modul fitur di bawah `modules/` (30 modul per artikel ini: `auth`, `user`, `role`, `permission`, `news`, `article`, `event`, `catalogbook`, `schedule`, `structure`, `gallery`, `contact`, `subscription`, `statistic`, `financeformat`, `goods`, `comment`, `shortlink`, `zakat`, `campaign`, `donation`, `wallet`, `withdrawal`, `dynamicform`, `setting`, `jobqueue`, `dashboard`, `organization`, `submission_form`, `submission`, `report`) memiliki struktur subfolder yang identik. Kontrak endpoint lengkap tiap modul ada di [`API.md`](./API.md); daftar di atas berubah seiring waktu — anggap sebagai contoh, bukan satu-satunya sumber kebenaran (jalankan `ls modules/` untuk daftar aktual). Contoh modul `news`:
 
 > Modul `upload` (unggah gambar/dokumen CMS, lihat §8) sengaja **tanpa** `_model`/`_repository` — tidak ada data yang disimpan ke database, hanya berkas ke disk lewat [`pkg/upload`](../pkg/upload) — sehingga hanya punya `upload_dto`, `upload_service`, `upload_handler`, `router.go`.
 >
 > Modul `submission` adalah satu-satunya modul yang **tidak** memakai `RequireOrganizationScope` generik di router-nya (lihat §5) — kepemilikan submission diperiksa di service layer sendiri (`checkOrgAccess`), karena submission ber-subjek `ORGANIZATION` terkunci ke organisasi pemanggil sedangkan ber-subjek `KADER` bebas menunjuk organisasi manapun, dua aturan yang tidak bisa diwakili satu middleware path/query param generik. Lihat §11.
+>
+> **Kantong Amal** (crowdfunding donasi) adalah SATU domain fitur yang sengaja dipecah jadi **empat** modul Go terpisah — `campaign`, `donation`, `wallet`, `withdrawal` — bukan satu modul besar, karena masing-masing punya siklus hidup & tabel sendiri (campaign punya status publish/pause/archive; donation dan wallet ditulis sistem, bukan CRUD manusia biasa; withdrawal punya alur verifikasi keamanan OTP + callback disbursement gateway pembayaran). Permission-nya tetap satu prefix bersama `kantong_amal.*` walau kodenya terpisah. Frontend memetakan keempatnya ke **satu** modul `kantong-amal` (lihat ARCHITECTURE.md `fsldk-web` §2) — kebalikan dari konvensi 1:1 modul yang berlaku di tempat lain. Detail endpoint lengkap: [API.md §8c–§8h](./API.md#8c-kantong-amal--ringkasan); payment gateway (BisaTopup/Bisabiller QRIS) & alur go-live: [DEPLOYMENT.md](./DEPLOYMENT.md).
+>
+> **`dynamicform`** (Formulir Dinamis) adalah form builder generik terpisah dari `submission_form` (form builder khusus Levelisasi LDK/Sensus Kader, §9/§10 API.md) — dipakai untuk formulir ad-hoc (pendaftaran event, survei, dsb.) dengan draft-per-sesi, sinkronisasi opsional ke Google Sheets (lewat `jobqueue`, lihat [Instalasi §5b](./INSTALLATION.md#5b-opsional-konfigurasi-google-sheets-untuk-formulir-dinamis)), dan ekspor CSV.
+>
+> **`zakat`** adalah satu-satunya modul tanpa `_model`/`_repository` DAN tanpa tabel database sama sekali (mirip `upload` di atas, tapi lebih ekstrem — bahkan tanpa penyimpanan berkas) — kalkulasi 7 jenis zakat dilakukan sepenuhnya di browser, backend hanya menyediakan satu endpoint proxy harga emas ber-cache (lihat [API.md §8b](./API.md#8b-kalkulator-zakat-zakat)).
 
 ```
 modules/news/
@@ -200,6 +206,12 @@ templateData, _ := os.ReadFile(path)
 | `0010_job_queue.up.sql` | Tabel `tr_job_queue` + `tr_whatsapp_message_log` (job queue, §13) + permission `jobqueue.*` → **Super Admin only** |
 | `0011_shortlink_request_whatsapp_reply.up.sql` | `ALTER TABLE ms_shortlink_request ADD COLUMN reviewedVia` (jalur approval kedua via balasan WhatsApp, §12) |
 | `0033_shortlink_sidebar_group.up.sql` | `UPDATE lk_permission.menuRoute` untuk `shortlink.view`/`shortlink.approve` supaya berbagi prefix `/cms/shortlink/` — mengelompokkan keduanya jadi satu grup dropdown sidebar "Shortlink" di `fsldk-web` (lihat ARCHITECTURE.md §7 di `fsldk-web`), tanpa kolom/tabel baru |
+| `0014`–`0031` (berbagai) | Skema Kantong Amal (crowdfunding): campaign/donation/wallet/withdrawal, OTP keamanan penarikan, rekonsiliasi saldo, audit finansial — ditambahkan bertahap seiring fitur berkembang, lihat nama file masing-masing (`0024_kantong_amal_audit.up.sql`, `0027_kantong_amal_reconciliation.up.sql`, dst.) |
+| `0032_contact.up.sql`, `0032_dynamicform.up.sql`, `0032_notification_settings.up.sql` | Berbagi nomor urut sama (pola sama seperti `0005_comment`/`0005_event` di atas) — tabel `ms_contact_message`, engine Formulir Dinamis, dan setting notifikasi |
+| `0033_dynamicform_gdrive_folders.up.sql`, `0033_drop_reconciliation_snapshot.up.sql` | Juga berbagi nomor urut dengan `0033_shortlink_sidebar_group.up.sql` di atas |
+| `0034`–`0036` | `0034_goods.up.sql` (FSLDK Goods), `0034_dynamicform_header_image.up.sql`, `0035_goods_sidebar_group.up.sql`, `0035_dynamicform_part2.up.sql`, `0036_subscription.up.sql` (Newsletter), `0036_dynamicform_drop_collaborator.up.sql` |
+
+> Tabel di atas berhenti didetailkan satu-per-satu mulai `0014` — 56 berkas migration ada per artikel ini (`ls migrations/*.up.sql \| wc -l`), bertambah terus seiring fitur baru. Untuk melihat migration TERBARU yang belum tercatat di sini, jalankan `ls -t migrations/*.up.sql | head` atau `git log --oneline -- migrations/`; jangan asumsikan tabel ini lengkap.
 
 `0005_comment.up.sql` dan `0005_event.up.sql` sengaja berbagi nomor urut yang sama (ditambahkan independen oleh pekerjaan berbeda) — ini aman karena `migrations.Run()` mengurutkan berdasarkan **nama file lengkap** (alfabetis: `comment` < `event`) dan mencatat status penerapan per nama file di `schema_migrations`, bukan per nomor urut semata.
 

@@ -43,19 +43,24 @@ Mengikuti pola `ldksyahid-app` — password lokal (wajib verifikasi email) & Goo
 
 Base URL: `/api/v1`. Detail lengkap pada [`docs/API.md`](./docs/API.md).
 
+Sekitar 30 modul terdaftar di [`docs/API.md`](./docs/API.md) §1–§15 (termasuk lettered sub-section §6a–§6f, §8a–§8h, §9a–§9c, §14a–§14b) — tabel di bawah cuma cuplikan, bukan daftar lengkap.
+
 | Grup | Contoh |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/google`, `GET /auth/email/verify/:token`, `POST /auth/email/resend`, `/auth/refresh-token`, `GET /auth/me` |
-| User | `GET/POST /users`, `PUT /users/:id`, `PATCH /users/:id/status`, `GET /users/mention-search` (@mention komentar, siapa pun login+verified) |
-| Role | `GET/POST /roles`, `PUT /roles/:id/permissions`, `GET /roles/:id/users` |
-| Menu | `GET /me/menus`, `GET /permissions` |
-| Berita | `GET /public/news`, `GET /public/news/:slug`, `GET/POST /news`, `PATCH /news/:id/publish` |
-| Artikel | `GET /public/articles`, `GET/POST /articles`, `PATCH /articles/:id/publish` |
-| Event | `GET /public/events`, `GET /public/events/:slug`, `GET/POST /events`, `PUT/DELETE /events/:id` |
+| User / Role / Permission | `GET/POST /users`, `PUT /users/:id`, `GET /users/mention-search` (@mention), `GET/POST /roles`, `PUT /roles/:id/permissions`, `GET /me/menus` |
+| Konten editorial | Berita (`/news`), Artikel (`/articles`), Event (`/events`), Perpustakaan (`/catalog-books`), Format Keuangan (`/finance-formats`), FSLDK Goods (`/goods`), Jadwal (`/schedules`), Galeri (`/galleries`), Struktur Organisasi (`/structures`) — pola serupa: `GET /public/<modul>` (list/detail) + CRUD CMS + (untuk sebagian besar) `PATCH .../publish` |
 | Komentar | `GET /public/comments`, `POST /comments`, `PUT/DELETE /comments/:id` (pemilik atau `comment.update`/`comment.delete`), `POST /comments/:id/react` |
-| Shortlink | `GET /public/shortlinks/:key` (redirect publik), `GET/POST /shortlinks`, `PUT/DELETE /shortlinks/:id` |
+| Shortlink | `GET /public/shortlinks/:key` (redirect publik), `GET/POST /shortlinks`, `PUT/DELETE /shortlinks/:id`, `/shortlink-requests` (pengajuan publik + approval CMS) |
+| Kalkulator Zakat | `GET /public/zakat/gold-price` — satu-satunya endpoint, kalkulasi 7 jenis zakat di browser |
+| Kantong Amal (crowdfunding) | Campaign (`/campaigns`), Donasi (`/campaigns/:slug/donate`, `/donations`), Wallet (`/wallet/balance`), Penarikan Dana (`/withdrawals`), Laporan Keuangan (`/reports/balance`, `/reports/reconciliation`, dst.) — lihat [API.md §8c–§8h](./docs/API.md#8c-kantong-amal--ringkasan) |
+| Formulir Dinamis | `GET /public/dynamicforms/:slug`, `POST .../submit`, `GET/POST /dynamicforms` (builder CMS), `.../analytics`, `.../gsheet/connect` |
+| Organisasi & Pendataan | `/organizations`, `/me/organizations` (hierarki LDK/Puskomda/Puskomnas), `/submission-forms` (form builder Levelisasi/Sensus Kader), `/submissions` + `/kaders` (pengisian/review/persetujuan), `/reports/submissions/export` |
+| Kontak & Newsletter | `POST /public/contact` (kotak masuk pesan), `/contact` (CMS), `POST /public/subscribers` (langganan), `/subscribers` (CMS) |
+| Statistik Publik | `GET /public/network-stats`, `GET /public/network-stats/directory` |
 | Upload | `POST /uploads/image`, `POST /uploads/document` |
-| Dashboard | `GET /dashboard/summary` |
+| Dashboard | `GET /dashboard/summary` — tier-aware (bentuk response beda per `organizationTypeCode`) |
+| App Settings / Job Queue | `/settings`, `/job-queue` — Super Admin only |
 | Sistem | `GET /health`, `GET /version` |
 
 ## Standar Response
