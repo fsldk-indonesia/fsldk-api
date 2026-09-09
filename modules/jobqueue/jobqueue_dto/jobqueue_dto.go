@@ -64,3 +64,18 @@ type ShortlinkRejectedEmailPayload struct {
 	ToName  string `json:"toName"`
 	Reason  string `json:"reason"`
 }
+
+// QRCodeApprovedEmailPayload adalah payload jobType=email_qrcode_approved.
+type QRCodeApprovedEmailPayload struct {
+	ToEmail  string `json:"toEmail"`
+	ToName   string `json:"toName"`
+	PageURL  string `json:"pageURL"`  // halaman detail/unduh QR di frontend
+	ImageURL string `json:"imageURL"` // gambar PNG mentah (untuk <img> inline di email)
+}
+
+// QRCodeRejectedEmailPayload adalah payload jobType=email_qrcode_rejected.
+type QRCodeRejectedEmailPayload struct {
+	ToEmail string `json:"toEmail"`
+	ToName  string `json:"toName"`
+	Reason  string `json:"reason"`
+}

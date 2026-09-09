@@ -30,6 +30,8 @@ const (
 	templatePasswordReset       = "password_reset"
 	templateShortlinkApproved   = "shortlink_approved"
 	templateShortlinkRejected   = "shortlink_rejected"
+	templateQRCodeApproved      = "qrcode_approved"
+	templateQRCodeRejected      = "qrcode_rejected"
 	templateFormSubmissionConf  = "form_submission_confirmation"
 	templateDonationReceipt     = "donation_receipt"
 	templateDonationInvoice     = "donation_invoice"
@@ -51,6 +53,12 @@ type Mailer interface {
 	SendPasswordResetEmail(toEmail, toName, resetURL string) error
 	SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error
 	SendShortlinkRejectedEmail(toEmail, toName, reason string) error
+	// SendQRCodeApprovedEmail memberi tahu pemohon bahwa permintaan QR Code
+	// disetujui. pageURL = halaman detail/unduh QR di frontend (tombol utama);
+	// imageURL = gambar PNG mentah (untuk pratinjau <img> inline di email).
+	// Best-effort: pemanggil mencatat kegagalan.
+	SendQRCodeApprovedEmail(toEmail, toName, pageURL, imageURL string) error
+	SendQRCodeRejectedEmail(toEmail, toName, reason string) error
 	// SendFormSubmissionConfirmation confirms a dynamicform submission to the
 	// respondent. Best-effort: callers log failures and never fail the submit.
 	SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error
@@ -129,6 +137,26 @@ func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) 
 		return err
 	}
 	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "", nil, "")
+}
+
+func (m *smtpMailer) SendQRCodeApprovedEmail(toEmail, toName, pageURL, imageURL string) error {
+	body, err := generateFromAsset(templateQRCodeApproved, map[string]string{
+		"Name": toName, "PageURL": pageURL, "ImageURL": imageURL, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Permintaan QR Code Disetujui — FSLDK Indonesia", body, pageURL, nil, "")
+}
+
+func (m *smtpMailer) SendQRCodeRejectedEmail(toEmail, toName, reason string) error {
+	body, err := generateFromAsset(templateQRCodeRejected, map[string]string{
+		"Name": toName, "Reason": reason, "LogoCID": logoCID,
+	})
+	if err != nil {
+		return err
+	}
+	return m.send(toEmail, "Permintaan QR Code Ditolak — FSLDK Indonesia", body, "", nil, "")
 }
 
 func (m *smtpMailer) SendFormSubmissionConfirmation(toEmail, toName, formTitle string, answers []AnswerPair, submittedAt string) error {
