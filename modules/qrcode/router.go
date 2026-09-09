@@ -27,10 +27,11 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h qrcode_handler.Handler, mw *middle
 	}
 }
 
-// RegisterImageRoute mendaftarkan endpoint publik (tanpa auth) yang
-// mengembalikan gambar PNG QR untuk sebuah baris, dipanggil dari
-// /api/v1/public/qrcodes/:id/image.
+// RegisterImageRoute mendaftarkan endpoint publik (tanpa auth): metadata
+// ringkas QR (`/api/v1/public/qrcodes/:id`) untuk halaman detail/unduh, dan
+// gambar PNG-nya (`/api/v1/public/qrcodes/:id/image`).
 func RegisterImageRoute(rg *gin.RouterGroup, h qrcode_handler.Handler) {
+	rg.GET("/qrcodes/:id", h.PublicDetail)
 	rg.GET("/qrcodes/:id/image", h.Image)
 }
 

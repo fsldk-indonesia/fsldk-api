@@ -54,9 +54,10 @@ type Mailer interface {
 	SendShortlinkApprovedEmail(toEmail, toName, shortURL string) error
 	SendShortlinkRejectedEmail(toEmail, toName, reason string) error
 	// SendQRCodeApprovedEmail memberi tahu pemohon bahwa permintaan QR Code
-	// disetujui. imageURL adalah tautan gambar PNG QR yang bisa diunduh.
+	// disetujui. pageURL = halaman detail/unduh QR di frontend (tombol utama);
+	// imageURL = gambar PNG mentah (untuk pratinjau <img> inline di email).
 	// Best-effort: pemanggil mencatat kegagalan.
-	SendQRCodeApprovedEmail(toEmail, toName, imageURL string) error
+	SendQRCodeApprovedEmail(toEmail, toName, pageURL, imageURL string) error
 	SendQRCodeRejectedEmail(toEmail, toName, reason string) error
 	// SendFormSubmissionConfirmation confirms a dynamicform submission to the
 	// respondent. Best-effort: callers log failures and never fail the submit.
@@ -138,14 +139,14 @@ func (m *smtpMailer) SendShortlinkRejectedEmail(toEmail, toName, reason string) 
 	return m.send(toEmail, "Permintaan Shortlink Ditolak — FSLDK Indonesia", body, "", nil, "")
 }
 
-func (m *smtpMailer) SendQRCodeApprovedEmail(toEmail, toName, imageURL string) error {
+func (m *smtpMailer) SendQRCodeApprovedEmail(toEmail, toName, pageURL, imageURL string) error {
 	body, err := generateFromAsset(templateQRCodeApproved, map[string]string{
-		"Name": toName, "ImageURL": imageURL, "LogoCID": logoCID,
+		"Name": toName, "PageURL": pageURL, "ImageURL": imageURL, "LogoCID": logoCID,
 	})
 	if err != nil {
 		return err
 	}
-	return m.send(toEmail, "Permintaan QR Code Disetujui — FSLDK Indonesia", body, imageURL, nil, "")
+	return m.send(toEmail, "Permintaan QR Code Disetujui — FSLDK Indonesia", body, pageURL, nil, "")
 }
 
 func (m *smtpMailer) SendQRCodeRejectedEmail(toEmail, toName, reason string) error {

@@ -318,7 +318,7 @@ func (s *ServiceImpl) executeJob(ctx context.Context, job jobqueue_model.Job) {
 		if uerr := json.Unmarshal([]byte(job.Payload), &p); uerr != nil {
 			err = uerr
 		} else {
-			err = s.mailer.SendQRCodeApprovedEmail(p.ToEmail, p.ToName, p.ImageURL)
+			err = s.mailer.SendQRCodeApprovedEmail(p.ToEmail, p.ToName, p.PageURL, p.ImageURL)
 		}
 	case jobqueue_model.JobTypeEmailQRCodeRejected:
 		var p jobqueue_dto.QRCodeRejectedEmailPayload

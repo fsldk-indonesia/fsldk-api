@@ -42,6 +42,19 @@ type UpdateRequest struct {
 	CaptionText     string `json:"captionText" validate:"omitempty,max=120"`
 }
 
+// PublicResponse adalah subset QR Code yang aman ditampilkan tanpa auth —
+// dipakai halaman publik detail/unduh QR (`/qr/:id` di frontend), tautannya
+// dikirim ke pemohon lewat WhatsApp/email saat permintaan disetujui. Tidak
+// membocorkan warna/ikon/pembuat.
+type PublicResponse struct {
+	QRCodeID       int64  `json:"qrCodeID"`
+	Label          string `json:"label"`
+	DestinationURL string `json:"destinationURL"`
+	CaptionText    string `json:"captionText"`
+	ImageURL       string `json:"imageURL"`
+	CreatedDate    string `json:"createdDate"`
+}
+
 // ListFilter menampung parameter penyaringan daftar QR Code.
 type ListFilter struct {
 	Search  string

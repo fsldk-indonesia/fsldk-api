@@ -274,7 +274,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// qrcodeReqSvc mengikuti pola yang sama: jobqueueSvc memenuhi JobEnqueuer +
 	// WhatsAppMessageResolver sekaligus. Pembuatan baris ms_qrcode saat approve
 	// terjadi atomik di dalam repo (ApproveTx), jadi tidak perlu qrcode_service.
-	qrcodeReqSvc := qrcoderequest_service.NewService(qrcodeReqRepo, jobqueueSvc, jobqueueSvc, settingSvc, apiBaseURL)
+	qrcodeReqSvc := qrcoderequest_service.NewService(qrcodeReqRepo, jobqueueSvc, jobqueueSvc, settingSvc, apiBaseURL, cfg.FrontendURL)
 	uploadSvc := upload_service.NewService(uploader)
 	reportSvc := report_service.NewService(reportRepo, formRepo, orgSvc, audit, bisatopupClient, cfg)
 	// Zakat calculator — DB-less; the service wraps the in-memory-cached

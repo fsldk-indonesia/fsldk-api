@@ -114,27 +114,32 @@ func detectIntent(payload kirimdev.InboundWebhookPayload) (action string, ok boo
 // lintas tabel (ms_qrcode + ms_qrcode_request) dimiliki repository
 // (repo.ApproveTx). Notifikasi lewat jobqueue via JobEnqueuer.
 type ServiceImpl struct {
-	repo       qrcoderequest_repository.Repository
-	jobs       JobEnqueuer
-	resolver   WhatsAppMessageResolver
-	setting    SettingReader
-	apiBaseURL string
+	repo        qrcoderequest_repository.Repository
+	jobs        JobEnqueuer
+	resolver    WhatsAppMessageResolver
+	setting     SettingReader
+	apiBaseURL  string
+	frontendURL string
 }
 
-// NewService membuat Service QR Code request.
+// NewService membuat Service QR Code request. frontendURL dipakai membentuk
+// tautan halaman detail/unduh QR (`{frontendURL}/qr/{id}`) yang dikirim ke
+// pemohon saat permintaan disetujui.
 func NewService(
 	repo qrcoderequest_repository.Repository,
 	jobs JobEnqueuer,
 	resolver WhatsAppMessageResolver,
 	setting SettingReader,
 	apiBaseURL string,
+	frontendURL string,
 ) Service {
 	return &ServiceImpl{
-		repo:       repo,
-		jobs:       jobs,
-		resolver:   resolver,
-		setting:    setting,
-		apiBaseURL: strings.TrimRight(apiBaseURL, "/"),
+		repo:        repo,
+		jobs:        jobs,
+		resolver:    resolver,
+		setting:     setting,
+		apiBaseURL:  strings.TrimRight(apiBaseURL, "/"),
+		frontendURL: strings.TrimRight(frontendURL, "/"),
 	}
 }
 
@@ -143,6 +148,14 @@ func (s *ServiceImpl) imageURL(qrCodeID int64) string {
 		return ""
 	}
 	return s.apiBaseURL + "/public/qrcodes/" + strconv.FormatInt(qrCodeID, 10) + "/image"
+}
+
+// detailPageURL adalah halaman web publik detail/unduh QR di frontend.
+func (s *ServiceImpl) detailPageURL(qrCodeID int64) string {
+	if qrCodeID == 0 {
+		return ""
+	}
+	return s.frontendURL + "/qr/" + strconv.FormatInt(qrCodeID, 10)
 }
 
 func (s *ServiceImpl) toResponse(m qrcoderequest_model.QRCodeRequest) qrcoderequest_dto.Response {
@@ -423,17 +436,14 @@ func (s *ServiceImpl) HandleWhatsAppReply(ctx context.Context, payload kirimdev.
 
 func (s *ServiceImpl) enqueueApprovedNotifications(ctx context.Context, req qrcoderequest_model.QRCodeRequest, qrCodeID int64) {
 	imageURL := s.imageURL(qrCodeID)
-	// Yang dikirim ke pengaju lewat WhatsApp adalah tautan UNDUH gambar QR
-	// hasil approve (ukuran cetak 1024px), bukan tautan tujuan.
-	downloadURL := imageURL
-	if downloadURL != "" {
-		downloadURL += "?size=1024"
-	}
+	// Yang dikirim ke pengaju adalah tautan HALAMAN detail/unduh QR (pratinjau
+	// gambar + tombol unduh + keterangan), bukan tautan gambar mentah ke API.
+	pageURL := s.detailPageURL(qrCodeID)
 	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
 		Queue: jobqueue_model.QueueWhatsApp, JobType: jobqueue_model.JobTypeWhatsAppTemplate,
 		Payload: kirimdev.TemplateMessage{
 			ToPhone: req.RequesterWhatsapp, TemplateName: "qrcode_approved",
-			Params: []string{req.RequesterName, downloadURL},
+			Params: []string{req.RequesterName, pageURL},
 		},
 		CorrelationType: jobqueue_model.CorrelationTypeQRCodeRequest, CorrelationID: req.QRCodeRequestID,
 	}); err != nil {
@@ -441,7 +451,7 @@ func (s *ServiceImpl) enqueueApprovedNotifications(ctx context.Context, req qrco
 	}
 	if _, err := s.jobs.Enqueue(ctx, jobqueue_dto.EnqueueInput{
 		Queue: jobqueue_model.QueueEmail, JobType: jobqueue_model.JobTypeEmailQRCodeApproved,
-		Payload:         jobqueue_dto.QRCodeApprovedEmailPayload{ToEmail: req.RequesterEmail, ToName: req.RequesterName, ImageURL: imageURL},
+		Payload:         jobqueue_dto.QRCodeApprovedEmailPayload{ToEmail: req.RequesterEmail, ToName: req.RequesterName, PageURL: pageURL, ImageURL: imageURL},
 		CorrelationType: jobqueue_model.CorrelationTypeQRCodeRequest, CorrelationID: req.QRCodeRequestID,
 	}); err != nil {
 		log.Printf("[QRCODE-REQUEST] Approve: gagal enqueue email ke requester: %v", err)

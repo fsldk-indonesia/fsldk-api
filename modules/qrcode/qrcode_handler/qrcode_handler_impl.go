@@ -112,6 +112,19 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 	httphelper.Success(c, "QR Code berhasil dihapus", nil)
 }
 
+func (h *HandlerImpl) PublicDetail(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	res, err := h.svc.PublicGet(c.Request.Context(), id)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", res)
+}
+
 func (h *HandlerImpl) Image(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {

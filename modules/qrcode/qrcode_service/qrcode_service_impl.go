@@ -109,6 +109,21 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64) (qrcode_dto.Response, e
 	return s.toResponse(q), nil
 }
 
+func (s *ServiceImpl) PublicGet(ctx context.Context, id int64) (qrcode_dto.PublicResponse, error) {
+	q, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return qrcode_dto.PublicResponse{}, apperror.NotFound("QR Code tidak ditemukan")
+	}
+	return qrcode_dto.PublicResponse{
+		QRCodeID:       q.QRCodeID,
+		Label:          nz(q.Label),
+		DestinationURL: q.DestinationURL,
+		CaptionText:    nz(q.CaptionText),
+		ImageURL:       s.imageURL(q.QRCodeID),
+		CreatedDate:    q.CreatedDate.Format("2006-01-02 15:04:05"),
+	}, nil
+}
+
 // buildModel menormalkan input DTO ke nilai model siap-simpan (warna default,
 // trim string).
 func buildModel(destinationURL, label, fg, bg, icon, iconKey, caption string) qrcode_model.QRCode {

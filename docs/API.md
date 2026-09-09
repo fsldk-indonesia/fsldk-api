@@ -543,6 +543,7 @@ Generator kode QR yang **menggantikan** peran "tautan pendek" dengan gambar QR. 
 
 | Method | Endpoint | Auth | Deskripsi |
 |---|---|:---:|---|
+| GET | `/public/qrcodes/:id` | ❌ | Metadata ringkas satu QR: `{ qrCodeID, label, destinationURL, captionText, imageURL, createdDate }` — dipakai halaman publik detail/unduh (`{FRONTEND_URL}/qr/:id`). Tidak membocorkan warna/ikon/pembuat. 404 kalau tidak ada. |
 | GET | `/public/qrcodes/:id/image` | ❌ | Gambar PNG QR (`Content-Type: image/png`) untuk baris `:id`, sudah menerapkan warna/ikon/caption. Query `size` (piksel sisi area QR, 128–1024, default 512). |
 
 ### CMS — ✅🔒 + permission
@@ -590,7 +591,7 @@ Alur permintaan publik + persetujuan admin di atas modul QR Code (§8c) — cerm
 | POST | `/public/qrcode-requests` | 3x / menit / IP | Ajukan permintaan QR Code baru (status awal `pending`) |
 | GET | `/public/qrcode-requests/pic` | — | `{ "picName": "...", "picWhatsapp": "..." }` dari `qrcode_pic_name`/`qrcode_pic_whatsapp` grup `layanan`; `picWhatsapp` bisa `""` bila belum dikonfigurasi (bukan error) |
 
-Body `POST /public/qrcode-requests`: `requesterName`, `requesterEmail`, `requesterWhatsapp`, `destinationURL`, `note` (wajib) + `foregroundColor`, `backgroundColor`, `centerIconKey`, `centerIconURL`, `captionText` (opsional — sama seperti §8c). **Tidak ada `requestedKey`.** Form publik punya editor kustomisasi + pratinjau (pratinjau memakai tautan CONTOH `https://fsldk.or.id`, bukan URL tujuan). Ikon di form publik hanya lewat **preset** (data URI — endpoint `/uploads` butuh login). Nilai kustomisasi disimpan di `ms_qrcode_request` dan disalin ke `ms_qrcode` saat approve — barulah QR mengarah ke `destinationURL` asli. Notifikasi WhatsApp ke pemohon berisi **tautan unduh** gambar QR hasil approve (`imageURL?size=1024`).
+Body `POST /public/qrcode-requests`: `requesterName`, `requesterEmail`, `requesterWhatsapp`, `destinationURL`, `note` (wajib) + `foregroundColor`, `backgroundColor`, `centerIconKey`, `centerIconURL`, `captionText` (opsional — sama seperti §8c). **Tidak ada `requestedKey`.** Form publik punya editor kustomisasi + pratinjau (pratinjau memakai tautan CONTOH `https://fsldk.or.id`, bukan URL tujuan). Ikon di form publik hanya lewat **preset** (data URI — endpoint `/uploads` butuh login). Nilai kustomisasi disimpan di `ms_qrcode_request` dan disalin ke `ms_qrcode` saat approve — barulah QR mengarah ke `destinationURL` asli. Notifikasi WhatsApp + email ke pemohon berisi **tautan halaman detail/unduh** QR hasil approve (`{FRONTEND_URL}/qr/{id}` — halaman web dengan pratinjau, tombol unduh, & keterangan), bukan lagi tautan gambar mentah ke API.
 
 ### CMS — ✅🔒 + permission
 

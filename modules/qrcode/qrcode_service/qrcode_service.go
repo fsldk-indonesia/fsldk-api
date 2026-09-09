@@ -12,6 +12,9 @@ import (
 type Service interface {
 	List(ctx context.Context, q dto.ListQuery) ([]qrcode_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (qrcode_dto.Response, error)
+	// PublicGet mengembalikan subset QR Code tanpa auth untuk halaman
+	// detail/unduh publik.
+	PublicGet(ctx context.Context, id int64) (qrcode_dto.PublicResponse, error)
 	Create(ctx context.Context, req qrcode_dto.CreateRequest, actorID int64) (qrcode_dto.Response, error)
 	Update(ctx context.Context, id int64, req qrcode_dto.UpdateRequest, actorID int64) (qrcode_dto.Response, error)
 	Delete(ctx context.Context, id int64) error
