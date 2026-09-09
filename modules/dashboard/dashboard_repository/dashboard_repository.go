@@ -41,6 +41,7 @@ type Repository interface {
 	SumDonationCollected(ctx context.Context) (float64, error)
 	CountComments(ctx context.Context) (int, error)
 	CountShortlinks(ctx context.Context) (int, error)
+	CountQrcodes(ctx context.Context) (int, error)
 	CountActiveSubscribers(ctx context.Context) (int, error)
 	CountUnreadContactMessages(ctx context.Context) (int, error)
 	CountPendingJobs(ctx context.Context) (int, error)

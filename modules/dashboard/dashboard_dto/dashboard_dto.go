@@ -94,6 +94,7 @@ type UtamaSummary struct {
 	TotalDonationCollected float64 `json:"totalDonationCollected"`
 	TotalComments         int     `json:"totalComments"`
 	TotalShortlinks       int     `json:"totalShortlinks"`
+	TotalQrcodes          int     `json:"totalQrcodes"`
 	TotalSubscribers      int     `json:"totalSubscribers"`
 	UnreadContactMessages int     `json:"unreadContactMessages"`
 	PendingJobs           int     `json:"pendingJobs"`
