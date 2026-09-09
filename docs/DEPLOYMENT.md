@@ -45,6 +45,36 @@ Sudah dicoba dihapus dari Kirimdev tapi API mereka **tidak menyediakan endpoint 
 - [ ] Review wording 3 template email (`donation_invoice.html`, `donation_receipt.html`, `otp_kantong_amal.html`) — draft baru, belum direview PIC FSLDK.
 - [ ] Isi baris `ms_setting` (`settingGroup='kantong_amal'`, `settingKey='withdrawal_otp_email'`) dengan alamat email produksi yang benar-benar dipantau tim keuangan — migration `0029` men-seed nilai default `yusufwijaya3@gmail.com`, **wajib diverifikasi/diganti** sebelum go-live production (baris ini sengaja `isHide=true`, tidak muncul di App Settings UI — ubah langsung lewat DB atau endpoint `PUT /settings/:id` bila diekspos internal).
 
+### 1a. Template QR Code Request
+
+> **Tidak ada mekanisme registrasi template di dalam kode.** `pkg/kirimdev.Client` hanya punya `SendTemplate` (mengirim pakai nama template yang **sudah** ada & di-approve di Kirimdev/Meta). Registrasi = manual call API Kirimdev `POST {KIRIMDEV_BASE_URL}/{KIRIMDEV_PHONE_NUMBER_ID}/templates` (kategori `UTILITY`, `"language":"id"`), lalu tunggu review Meta sampai `approved`. Checklist ini adalah "registri"-nya.
+
+**Template Shortlink** (`shortlink_request_notice`, `shortlink_approved`, `shortlink_rejected`) **sudah terdaftar & `approved`** di akun Kirimdev — tidak perlu didata ulang di sini.
+
+**Template QR Code** — **disubmit 2026-09-07** lewat API Kirimdev, seluruhnya status **`pending`** (menunggu review Meta):
+
+| Nama Template | Event | Call site | Params (urutan, terverifikasi dari kode) | Tombol QUICK_REPLY | Kirimdev template id | Status |
+|---|---|---|---|---|---|---|
+| `qrcode_request_notice` | Permintaan QR Code baru masuk → ke PIC | `qrcoderequest_service_impl.go` `Submit()` | 1 nama PIC, 2 nama pemohon, 3 URL tujuan | `Setujui` (payload `approve`), `Tolak` (payload `reject`) | `tmpl_3WAVDNGQZMJ5FDJ2N0QRNCH02N` | **pending** (submitted 2026-09-07) |
+| `qrcode_approved` | Permintaan disetujui → ke pemohon | `qrcoderequest_service_impl.go` `enqueueApprovedNotifications()` | 1 nama pemohon, 2 **tautan halaman detail/unduh QR** (`{FRONTEND_URL}/qr/{id}` — bukan lagi tautan gambar mentah ke API; halaman itu menampilkan pratinjau + tombol unduh + keterangan) | — | `tmpl_C6JMZHHA5MRBWMVZ3CMX0AWNX9` | **pending** (submitted 2026-09-07) |
+| `qrcode_rejected` | Permintaan ditolak → ke pemohon | `qrcoderequest_service_impl.go` `enqueueRejectedNotifications()` | 1 nama pemohon, 2 alasan penolakan | — | `tmpl_PCYXSEXBHZHETJ97KDZHSRCT2E` | **pending** (submitted 2026-09-07) |
+
+Sampai `approved`, tiap job `whatsapp_template` QR Code akan `failed` setelah 5x retry (terlihat di CMS Job Queue `GET /api/v1/job-queue`) — jalur **CMS approve/reject + notifikasi email tetap jalan**, hanya jalur WhatsApp yang dorman. Semua pengiriman juga digerbang saklar global `ms_setting` grup `notifikasi` key `whatsapp_enabled` (migration `0032_notification_settings`, tampil di App Settings CMS).
+
+> ⚠️ `qrcode_request_notice` didaftarkan dengan 2 tombol QUICK_REPLY (`Setujui`/`Tolak`) — payload custom `approve`/`reject` diinjeksi per-pesan oleh `qrcoderequest_service` (`ButtonPayloads`), string itu yang dicocokkan `detectIntent()`. Body meminta PIC **membalas (reply)** pesan supaya `context.id` balasan bisa dipakai resolusi otomatis (fallback: pencocokan pending-terbaru per-nomor, akurat hanya kalau PIC punya tepat 1 request pending).
+
+**Body terdaftar (kategori UTILITY, `id`):**
+- `qrcode_request_notice` — `Halo {{1}}, ada permintaan QR Code baru menunggu persetujuan.\n\nPemohon: {{2}}\nTujuan: {{3}}\n\nBalas (reply) pesan ini, lalu tekan tombol di bawah untuk menyetujui atau menolak.`
+- `qrcode_approved` — `Halo {{1}}, permintaan QR Code kamu sudah *disetujui* dan siap dipakai!\n\nUnduh gambar QR di sini: {{2}}\n\nGambar QR langsung mengarah ke tautan tujuanmu.`
+- `qrcode_rejected` — `Halo {{1}}, mohon maaf permintaan QR Code kamu *ditolak*.\n\nAlasan: {{2}}\n\nKamu bisa mengajukan permintaan baru setelah menyesuaikan hal di atas.`
+
+**Sebelum go-live (QR Code):**
+- [x] 3 template disubmit ke Kirimdev/Meta (2026-09-07) — status `pending`.
+- [ ] Pantau sampai `approved` (`GET {KIRIMDEV_BASE_URL}/{phone_number_id}/templates/{name}`). Meta bisa reclassify kategori (mis. `qrcode_approved` → MARKETING seperti `shortlink_approved`) atau minta revisi wording — kalau nama dipaksa berubah, update `TemplateName` di `qrcoderequest_service_impl.go` + tabel ini.
+- [ ] Isi `ms_setting` grup `layanan`: `qrcode_pic_name` / `qrcode_pic_whatsapp` (lewat App Settings CMS) — kosong = notifikasi PIC di-skip (bukan error).
+- [ ] `whatsapp_enabled` (App Settings) = `true` di production.
+- [ ] Kirim 1 pesan uji per template lewat Kirimdev dashboard untuk cek rendering parameter.
+
 ## 2. Revisi Alur Campaign & Withdrawal (2026-08-30, round 1)
 
 Perubahan produk signifikan pasca go-live-readiness Phase 14 — dicatat di sini karena mengubah apa yang perlu diverifikasi di smoke test §4:

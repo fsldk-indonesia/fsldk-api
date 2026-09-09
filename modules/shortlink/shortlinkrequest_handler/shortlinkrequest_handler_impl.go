@@ -11,6 +11,7 @@ import (
 	"fsldk-api/base/dto"
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/validation"
+	"fsldk-api/modules/qrcode/qrcoderequest_service"
 	"fsldk-api/modules/shortlink/shortlinkrequest_dto"
 	"fsldk-api/modules/shortlink/shortlinkrequest_service"
 	"fsldk-api/pkg/kirimdev"
@@ -30,16 +31,27 @@ type DeliveryStatusHandler interface {
 	HandleMessageSent(ctx context.Context, kirimdevMessageID, wamid string) error
 }
 
+// QRCodeReplyHandler adalah slice sempit qrcoderequest_service.Service yang
+// dipakai HandlerImpl mem-fan-out balasan WhatsApp inbound ke modul QR Code
+// request — Kirimdev hanya mem-POST ke satu URL webhook, jadi handler ini
+// mencoba modul shortlink dulu lalu jatuh ke modul QR Code bila balasannya
+// bukan milik shortlink. Setiap Service memfilter berdasar CorrelationType-nya
+// sendiri sehingga urutan pemanggilan aman.
+type QRCodeReplyHandler interface {
+	HandleWhatsAppReply(ctx context.Context, payload kirimdev.InboundWebhookPayload) (qrcoderequest_service.WhatsAppReplyOutcome, error)
+}
+
 // HandlerImpl adalah implementasi Handler.
 type HandlerImpl struct {
 	svc      shortlinkrequest_service.Service
 	kirimdev *kirimdev.Client
 	jobs     DeliveryStatusHandler
+	qrReply  QRCodeReplyHandler
 }
 
 // NewHandler membuat Handler shortlink request.
-func NewHandler(svc shortlinkrequest_service.Service, kirimdevClient *kirimdev.Client, jobs DeliveryStatusHandler) Handler {
-	return &HandlerImpl{svc: svc, kirimdev: kirimdevClient, jobs: jobs}
+func NewHandler(svc shortlinkrequest_service.Service, kirimdevClient *kirimdev.Client, jobs DeliveryStatusHandler, qrReply QRCodeReplyHandler) Handler {
+	return &HandlerImpl{svc: svc, kirimdev: kirimdevClient, jobs: jobs, qrReply: qrReply}
 }
 
 func idParam(c *gin.Context) (int64, bool) {
@@ -188,10 +200,25 @@ func (h *HandlerImpl) KirimdevWebhook(c *gin.Context) {
 
 	outcome, err := h.svc.HandleWhatsAppReply(c.Request.Context(), payload)
 	if err != nil {
-		log.Printf("[KIRIMDEV-WEBHOOK] gagal proses balasan (outcome=%s): %v", outcome, err)
+		log.Printf("[KIRIMDEV-WEBHOOK] gagal proses balasan shortlink (outcome=%s): %v", outcome, err)
 	} else {
-		log.Printf("[KIRIMDEV-WEBHOOK] balasan diproses, outcome=%s", outcome)
+		log.Printf("[KIRIMDEV-WEBHOOK] balasan shortlink diproses, outcome=%s", outcome)
 	}
+
+	// Fan-out ke modul QR Code request bila balasan ini bukan milik shortlink
+	// (nomor PIC beda / tidak ada request pending yang cocok). qrcoderequest
+	// memfilter sendiri berdasar CorrelationTypeQRCodeRequest, jadi memanggilnya
+	// untuk balasan yang jelas milik shortlink pun tidak berefek.
+	if h.qrReply != nil &&
+		(outcome == shortlinkrequest_service.OutcomeIgnoredNotPIC || outcome == shortlinkrequest_service.OutcomeAmbiguousOrNotFound) {
+		qrOutcome, qrErr := h.qrReply.HandleWhatsAppReply(c.Request.Context(), payload)
+		if qrErr != nil {
+			log.Printf("[KIRIMDEV-WEBHOOK] gagal proses balasan qrcode (outcome=%s): %v", qrOutcome, qrErr)
+		} else {
+			log.Printf("[KIRIMDEV-WEBHOOK] balasan qrcode diproses, outcome=%s", qrOutcome)
+		}
+	}
+
 	// Selalu 200 KECUALI signature gagal — bukan lagi log only (§1a.5/§6 techspec).
 	httphelper.Success(c, "OK", nil)
 }
