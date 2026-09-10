@@ -12,4 +12,5 @@ type Handler interface {
 	Update(c *gin.Context)
 	SetStatus(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 }

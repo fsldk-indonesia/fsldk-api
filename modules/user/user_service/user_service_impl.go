@@ -19,6 +19,8 @@ import (
 var sortColumns = map[string]string{
 	"fullName":    "u.fullName",
 	"email":       "u.email",
+	"roleName":    "r.roleName",
+	"isActive":    "u.isActive",
 	"createdDate": "u.createdDate",
 }
 
@@ -154,13 +156,25 @@ func containsTier(wildcardTierAccess, tier string) bool {
 	return false
 }
 
-func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, roleID int64) ([]user_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, f user_dto.CMSFilter) ([]user_dto.Response, int, error) {
+	var isActive *bool
+	switch f.Status {
+	case "active":
+		v := true
+		isActive = &v
+	case "inactive":
+		v := false
+		isActive = &v
+	}
 	users, total, err := s.repo.List(ctx, user_dto.ListFilter{
-		Search:  q.Search,
-		RoleID:  roleID,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "u.createdDate DESC"),
+		Search:   q.Search,
+		Email:    f.Email,
+		RoleID:   f.RoleID,
+		RoleName: f.RoleName,
+		IsActive: isActive,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "u.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
@@ -297,6 +311,20 @@ func (s *ServiceImpl) Delete(ctx context.Context, id, actorID int64) error {
 	}
 	if err := s.repo.SoftDelete(ctx, id, actorID); err != nil {
 		return apperror.Internal("")
+	}
+	return nil
+}
+
+// BulkDelete deactivates multiple users, reusing Delete's validation (guard
+// terhadap menghapus diri sendiri, cek eksistensi) per ID. Best-effort seperti
+// pola bulk-delete CMS lainnya (news, article): ID yang sudah tidak ada atau
+// gagal validasi individual dilewati saja, tidak menggagalkan seluruh batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64, actorID int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada pengguna yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id, actorID)
 	}
 	return nil
 }

@@ -32,7 +32,13 @@ func idParam(c *gin.Context) (int64, bool) {
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	roleID, _ := strconv.ParseInt(c.Query("roleID"), 10, 64)
-	data, total, err := h.svc.List(c.Request.Context(), q, roleID)
+	f := user_dto.CMSFilter{
+		Status:   c.Query("status"),
+		RoleID:   roleID,
+		RoleName: c.Query("role"),
+		Email:    c.Query("email"),
+	}
+	data, total, err := h.svc.List(c.Request.Context(), q, f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -139,4 +145,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Pengguna berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req user_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs, appctx.UserID(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Pengguna terpilih berhasil dihapus", nil)
 }

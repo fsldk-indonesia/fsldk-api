@@ -103,8 +103,17 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 		like := "%" + f.Search + "%"
 		base = base.Where("(u.fullName LIKE ? OR u.email LIKE ?)", like, like)
 	}
+	if f.Email != "" {
+		base = base.Where("u.email LIKE ?", "%"+f.Email+"%")
+	}
 	if f.RoleID > 0 {
 		base = base.Where("u.roleID = ?", f.RoleID)
+	}
+	if f.RoleName != "" {
+		base = base.Where("r.roleName LIKE ?", "%"+f.RoleName+"%")
+	}
+	if f.IsActive != nil {
+		base = base.Where("u.isActive = ?", *f.IsActive)
 	}
 
 	var total int64
