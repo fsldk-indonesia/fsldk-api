@@ -15,6 +15,9 @@ import (
 
 var sortColumns = map[string]string{
 	"articleTitle":  "a.articleTitle",
+	"articleWriter": "a.articleWriter",
+	"categoryName":  "c.categoryName",
+	"isPublished":   "a.isPublished",
 	"publishedDate": "a.publishedDate",
 	"createdDate":   "a.createdDate",
 }
@@ -37,9 +40,10 @@ func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categoryS
 	})
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]article_model.Article, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, f article_dto.CMSFilter) ([]article_model.Article, int, error) {
 	return s.list(ctx, article_dto.Filter{
-		Search: q.Search, Status: status, CategoryID: categoryID,
+		Search: q.Search, Status: f.Status, CategoryID: f.CategoryID,
+		Writer: f.Writer, CategoryName: f.CategoryName, DateFrom: f.DateFrom, DateTo: f.DateTo,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "a.createdDate DESC"),
 	})
 }
@@ -142,6 +146,21 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	// §3.1a), so comments aren't cascaded by the database — clean them up
 	// explicitly. A failure here does not roll back the article delete.
 	_ = s.comment.DeleteByContent(ctx, "article", id)
+	return nil
+}
+
+// BulkDelete deletes multiple article rows, reusing Delete's validation/
+// comment-cleanup per ID. Best-effort like the CMS bulk-delete pattern
+// elsewhere (news, comment, dynamicform, subscription): an ID already gone
+// (deleted by another admin in the meantime) is silently skipped rather than
+// failing the whole batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada artikel yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
 	return nil
 }
 

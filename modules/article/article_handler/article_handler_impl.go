@@ -87,7 +87,15 @@ func (h *HandlerImpl) Categories(c *gin.Context) {
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	categoryID, _ := strconv.ParseInt(c.Query("categoryID"), 10, 64)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("status"), categoryID)
+	f := article_dto.CMSFilter{
+		Status:       c.Query("status"),
+		CategoryID:   categoryID,
+		Writer:       c.Query("writer"),
+		CategoryName: c.Query("category"),
+		DateFrom:     c.Query("dateFrom"),
+		DateTo:       c.Query("dateTo"),
+	}
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -162,4 +170,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Artikel berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req article_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Artikel terpilih berhasil dihapus", nil)
 }
