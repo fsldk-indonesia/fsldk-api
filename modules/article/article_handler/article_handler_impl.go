@@ -86,14 +86,12 @@ func (h *HandlerImpl) Categories(c *gin.Context) {
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	categoryID, _ := strconv.ParseInt(c.Query("categoryID"), 10, 64)
 	f := article_dto.CMSFilter{
-		Status:       c.Query("status"),
-		CategoryID:   categoryID,
-		Writer:       c.Query("writer"),
-		CategoryName: c.Query("category"),
-		DateFrom:     c.Query("dateFrom"),
-		DateTo:       c.Query("dateTo"),
+		Status:      dto.ParseCSV(c.Query("status")),
+		CategoryIDs: dto.ParseInt64CSV(c.Query("category")),
+		Writer:      c.Query("writer"),
+		DateFrom:    c.Query("dateFrom"),
+		DateTo:      c.Query("dateTo"),
 	}
 	data, total, err := h.svc.CMSList(c.Request.Context(), q, f)
 	if err != nil {

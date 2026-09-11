@@ -29,10 +29,21 @@ func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
 
 func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]article_model.Article, int64, error) {
 	q := r.baseQuery(ctx)
-	if f.PublishedOnly || f.Status == "published" {
+	if f.PublishedOnly {
 		q = q.Where("a.isPublished = 1")
-	} else if f.Status == "draft" {
-		q = q.Where("a.isPublished = 0")
+	} else if len(f.Status) > 0 {
+		vals := make([]bool, 0, len(f.Status))
+		for _, s := range f.Status {
+			switch s {
+			case "published":
+				vals = append(vals, true)
+			case "draft":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			q = q.Where("a.isPublished IN ?", vals)
+		}
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
@@ -41,14 +52,11 @@ func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]arti
 	if f.Writer != "" {
 		q = q.Where("a.articleWriter LIKE ?", "%"+f.Writer+"%")
 	}
-	if f.CategoryName != "" {
-		q = q.Where("c.categoryName LIKE ?", "%"+f.CategoryName+"%")
-	}
 	if f.CategorySlug != "" {
 		q = q.Where("c.categorySlug = ?", f.CategorySlug)
 	}
-	if f.CategoryID > 0 {
-		q = q.Where("a.categoryID = ?", f.CategoryID)
+	if len(f.CategoryIDs) > 0 {
+		q = q.Where("a.categoryID IN ?", f.CategoryIDs)
 	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(a.createdDate) >= ?", f.DateFrom)

@@ -21,14 +21,13 @@ type PublishRequest struct {
 // Filter menampung parameter penyaringan daftar artikel (dipakai repository & service).
 type Filter struct {
 	Search        string
-	Writer        string // LIKE terhadap articleWriter — filter kolom "Penulis" CMS
-	CategoryName  string // LIKE terhadap categoryName — filter kolom "Kategori" CMS (free text, bukan dropdown categoryID)
+	Writer        string  // LIKE terhadap articleWriter — filter kolom "Penulis" CMS
 	CategorySlug  string
-	CategoryID    int64
+	CategoryIDs   []int64 // exact match (IN) — filter kolom "Kategori" CMS, multi-select by ID
 	PublishedOnly bool
-	Status        string // "published" | "draft" | ""
-	DateFrom      string // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
-	DateTo        string // "YYYY-MM-DD", inklusif
+	Status        []string // "published" | "draft" — multi-select (IN), kosong = semua status
+	DateFrom      string   // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
+	DateTo        string   // "YYYY-MM-DD", inklusif
 	Limit         int
 	Offset        int
 	OrderBy       string
@@ -38,13 +37,14 @@ type Filter struct {
 // dto.ListQuery yang sudah menampung search/page/limit/sort) — dipisah dari
 // Filter (dipakai repository) supaya signature service.CMSList tidak terus
 // bertambah parameter positional setiap kali kolom filter baru ditambahkan.
+// Status/CategoryIDs multi-select (checkbox) — dikirim frontend sebagai query
+// param comma-separated, di-parse handler lewat dto.ParseCSV/ParseInt64CSV.
 type CMSFilter struct {
-	Status       string
-	CategoryID   int64
-	Writer       string
-	CategoryName string
-	DateFrom     string
-	DateTo       string
+	Status      []string
+	CategoryIDs []int64
+	Writer      string
+	DateFrom    string
+	DateTo      string
 }
 
 // BulkDeleteRequest adalah body untuk menghapus banyak artikel sekaligus.

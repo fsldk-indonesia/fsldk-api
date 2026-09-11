@@ -30,10 +30,24 @@ func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
 
 func (r *RepositoryImpl) List(ctx context.Context, f news_dto.Filter) ([]news_model.News, int64, error) {
 	q := r.baseQuery(ctx)
-	if f.PublishedOnly || f.Status == "published" {
+	if f.PublishedOnly {
 		q = q.Where("n.isPublished = 1")
-	} else if f.Status == "draft" {
-		q = q.Where("n.isPublished = 0")
+	} else if len(f.Status) > 0 {
+		// Multi-select (checkbox) — "published"/"draft" dipetakan ke isPublished
+		// 1/0, nilai lain diabaikan. Kedua opsi dicentang sekaligus = tanpa
+		// filter secara alami (klausa IN mencakup semuanya), tidak perlu ditangani khusus.
+		vals := make([]bool, 0, len(f.Status))
+		for _, s := range f.Status {
+			switch s {
+			case "published":
+				vals = append(vals, true)
+			case "draft":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			q = q.Where("n.isPublished IN ?", vals)
+		}
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
@@ -42,14 +56,11 @@ func (r *RepositoryImpl) List(ctx context.Context, f news_dto.Filter) ([]news_mo
 	if f.Reporter != "" {
 		q = q.Where("n.newsReporter LIKE ?", "%"+f.Reporter+"%")
 	}
-	if f.CategoryName != "" {
-		q = q.Where("c.categoryName LIKE ?", "%"+f.CategoryName+"%")
-	}
 	if f.CategorySlug != "" {
 		q = q.Where("c.categorySlug = ?", f.CategorySlug)
 	}
-	if f.CategoryID > 0 {
-		q = q.Where("n.categoryID = ?", f.CategoryID)
+	if len(f.CategoryIDs) > 0 {
+		q = q.Where("n.categoryID IN ?", f.CategoryIDs)
 	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(n.createdDate) >= ?", f.DateFrom)

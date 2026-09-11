@@ -106,14 +106,22 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 	if f.Email != "" {
 		base = base.Where("u.email LIKE ?", "%"+f.Email+"%")
 	}
-	if f.RoleID > 0 {
-		base = base.Where("u.roleID = ?", f.RoleID)
+	if len(f.RoleIDs) > 0 {
+		base = base.Where("u.roleID IN ?", f.RoleIDs)
 	}
-	if f.RoleName != "" {
-		base = base.Where("r.roleName LIKE ?", "%"+f.RoleName+"%")
-	}
-	if f.IsActive != nil {
-		base = base.Where("u.isActive = ?", *f.IsActive)
+	if len(f.Status) > 0 {
+		vals := make([]bool, 0, len(f.Status))
+		for _, s := range f.Status {
+			switch s {
+			case "active":
+				vals = append(vals, true)
+			case "inactive":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			base = base.Where("u.isActive IN ?", vals)
+		}
 	}
 
 	var total int64

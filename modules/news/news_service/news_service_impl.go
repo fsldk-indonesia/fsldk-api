@@ -43,8 +43,8 @@ func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categoryS
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, f news_dto.CMSFilter) ([]news_model.News, int, error) {
 	return s.list(ctx, news_dto.Filter{
-		Search: q.Search, Status: f.Status, CategoryID: f.CategoryID,
-		Reporter: f.Reporter, CategoryName: f.CategoryName, DateFrom: f.DateFrom, DateTo: f.DateTo,
+		Search: q.Search, Status: f.Status, CategoryIDs: f.CategoryIDs,
+		Reporter: f.Reporter, DateFrom: f.DateFrom, DateTo: f.DateTo,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "n.createdDate DESC"),
 	})
 }

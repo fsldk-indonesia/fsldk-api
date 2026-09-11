@@ -31,12 +31,10 @@ func idParam(c *gin.Context) (int64, bool) {
 
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	roleID, _ := strconv.ParseInt(c.Query("roleID"), 10, 64)
 	f := user_dto.CMSFilter{
-		Status:   c.Query("status"),
-		RoleID:   roleID,
-		RoleName: c.Query("role"),
-		Email:    c.Query("email"),
+		Status:  dto.ParseCSV(c.Query("status")),
+		RoleIDs: dto.ParseInt64CSV(c.Query("role")),
+		Email:   c.Query("email"),
 	}
 	data, total, err := h.svc.List(c.Request.Context(), q, f)
 	if err != nil {

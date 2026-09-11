@@ -157,24 +157,14 @@ func containsTier(wildcardTierAccess, tier string) bool {
 }
 
 func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, f user_dto.CMSFilter) ([]user_dto.Response, int, error) {
-	var isActive *bool
-	switch f.Status {
-	case "active":
-		v := true
-		isActive = &v
-	case "inactive":
-		v := false
-		isActive = &v
-	}
 	users, total, err := s.repo.List(ctx, user_dto.ListFilter{
-		Search:   q.Search,
-		Email:    f.Email,
-		RoleID:   f.RoleID,
-		RoleName: f.RoleName,
-		IsActive: isActive,
-		Limit:    q.Limit,
-		Offset:   q.Offset(),
-		OrderBy:  q.OrderBy(sortColumns, "u.createdDate DESC"),
+		Search:  q.Search,
+		Email:   f.Email,
+		RoleIDs: f.RoleIDs,
+		Status:  f.Status,
+		Limit:   q.Limit,
+		Offset:  q.Offset(),
+		OrderBy: q.OrderBy(sortColumns, "u.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
