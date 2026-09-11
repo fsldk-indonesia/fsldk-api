@@ -537,75 +537,6 @@ Approve/Reject menolak (`409 Conflict`) bila permintaan sudah pernah diproses (`
 
 ---
 
-## 8c. QR Code (`/qrcodes`)
-
-Generator kode QR yang **menggantikan** peran "tautan pendek" dengan gambar QR. Isi QR adalah `destinationURL` **langsung** — TIDAK ada kunci/slug, tidak ada redirect lewat domain ini, tidak ada pelacakan pindaian (kalau ada kunci + redirect, ini sama saja dengan Shortlink §8). Setiap baris menyimpan opsi kustomisasi gambar: warna depan/belakang (`#RRGGBB`), URL ikon tengah (di-upload lewat `POST /uploads/image`), dan teks caption yang dirender di bawah kode. Gambar PNG dirender server (skip2/go-qrcode + compositing) — level koreksi kesalahan dinaikkan otomatis ke tertinggi saat ada ikon tengah.
-
-| Method | Endpoint | Auth | Deskripsi |
-|---|---|:---:|---|
-| GET | `/public/qrcodes/:id` | ❌ | Metadata ringkas satu QR: `{ qrCodeID, label, destinationURL, captionText, imageURL, createdDate }` — dipakai halaman publik detail/unduh (`{FRONTEND_URL}/qr/:id`). Tidak membocorkan warna/ikon/pembuat. 404 kalau tidak ada. |
-| GET | `/public/qrcodes/:id/image` | ❌ | Gambar PNG QR (`Content-Type: image/png`) untuk baris `:id`, sudah menerapkan warna/ikon/caption. Query `size` (piksel sisi area QR, 128–1024, default 512). |
-
-### CMS — ✅🔒 + permission
-
-| Method | Endpoint | Permission | Deskripsi |
-|---|---|---|---|
-| GET | `/qrcodes` | `qrcode.view` | Daftar QR Code (query: `page`, `limit`, `search`) |
-| GET | `/qrcodes/:id` | `qrcode.view` | Detail QR Code |
-| POST | `/qrcodes` | `qrcode.create` | Buat QR Code baru |
-| PUT | `/qrcodes/:id` | `qrcode.update` | Perbarui tujuan/label/kustomisasi |
-| DELETE | `/qrcodes/:id` | `qrcode.delete` | Hapus QR Code |
-
-**`POST /qrcodes`** (bentuk sama untuk `PUT /qrcodes/:id`)
-```json
-{
-  "destinationURL": "https://fsldk-indonesia.com/agenda",
-  "label": "Banner Agenda 2026",
-  "foregroundColor": "#00933B",
-  "backgroundColor": "#FFFFFF",
-  "centerIconKey": "instagram",
-  "centerIconURL": "data:image/png;base64,iVBOR...",
-  "captionText": "Scan untuk info lengkap"
-}
-```
-Hanya `destinationURL` wajib. `foregroundColor`/`backgroundColor` divalidasi `hexcolor` (default `#16211C`/`#FFFFFF` — selaras tema). `captionText` maks 120 karakter.
-
-**Ikon tengah** — dua bentuk `centerIconURL` didukung (maks 40000 char):
-- **data URI PNG** — ikon *preset* yang dikomposisi di frontend (kotak putih ber-radius + border & glyph outline berwarna = warna QR). `centerIconKey` menyertai (`fsldk` | `link` | `browser` | `instagram` | `tiktok` | `youtube` | `x` | `facebook`) hanya sebagai penanda supaya form CMS memulihkan pilihan & meng-generate ulang saat warna berubah — backend tidak menafsirkannya.
-- **URL `/uploads/...`** — ikon kustom (unggah via `POST /uploads/image`, CMS-only). Rasio aspek asli dipertahankan (tidak digepengkan).
-
-Bentuk lain diabaikan (QR dirender tanpa ikon). Response menyertakan `imageURL` absolut (`{APP_URL}/api/v1/public/qrcodes/{id}/image`).
-
----
-
-## 8d. Permintaan QR Code (`/qrcode-requests`)
-
-Alur permintaan publik + persetujuan admin di atas modul QR Code (§8c) — cerminan penuh Permintaan Shortlink (§8a), termasuk **dua jalur penyelesaian race-safe** (CMS `qrcode.approve` ATAU balasan WhatsApp PIC via webhook Kirimdev yang sama, `POST /public/webhooks/kirimdev` — di-fan-out ke modul ini bila balasan bukan milik shortlink), transaksi atomik pembuatan `ms_qrcode` saat approve, dan notifikasi WhatsApp + email lewat job queue.
-
-> **Catatan template WhatsApp:** 3 template (`qrcode_request_notice`, `qrcode_approved`, `qrcode_rejected`) harus didaftarkan dulu di Meta/Kirimdev. Sampai itu dilakukan, jalur WhatsApp dorman (enqueue tetap dicoba lalu gagal async) — jalur CMS approve/reject + notifikasi email tidak terpengaruh.
-
-### Publik (tanpa auth)
-
-| Method | Endpoint | Rate Limit | Deskripsi |
-|---|---|---|---|
-| POST | `/public/qrcode-requests` | 3x / menit / IP | Ajukan permintaan QR Code baru (status awal `pending`) |
-| GET | `/public/qrcode-requests/pic` | — | `{ "picName": "...", "picWhatsapp": "..." }` dari `qrcode_pic_name`/`qrcode_pic_whatsapp` grup `layanan`; `picWhatsapp` bisa `""` bila belum dikonfigurasi (bukan error) |
-
-Body `POST /public/qrcode-requests`: `requesterName`, `requesterEmail`, `requesterWhatsapp`, `destinationURL`, `note` (wajib) + `foregroundColor`, `backgroundColor`, `centerIconKey`, `centerIconURL`, `captionText` (opsional — sama seperti §8c). **Tidak ada `requestedKey`.** Form publik punya editor kustomisasi + pratinjau (pratinjau memakai tautan CONTOH `https://fsldk.or.id`, bukan URL tujuan). Ikon di form publik hanya lewat **preset** (data URI — endpoint `/uploads` butuh login). Nilai kustomisasi disimpan di `ms_qrcode_request` dan disalin ke `ms_qrcode` saat approve — barulah QR mengarah ke `destinationURL` asli. Notifikasi WhatsApp + email ke pemohon berisi **tautan halaman detail/unduh** QR hasil approve (`{FRONTEND_URL}/qr/{id}` — halaman web dengan pratinjau, tombol unduh, & keterangan), bukan lagi tautan gambar mentah ke API.
-
-### CMS — ✅🔒 + permission
-
-| Method | Endpoint | Permission | Deskripsi |
-|---|---|---|---|
-| GET | `/qrcode-requests` | `qrcode.view` | Daftar permintaan (query: `page`, `limit`, `search`, `status=pending\|approved\|rejected`) |
-| GET | `/qrcode-requests/:id` | `qrcode.view` | Detail satu permintaan |
-| POST | `/qrcode-requests/:id/approve` | `qrcode.approve` | Setujui — buat baris `ms_qrcode` (warna default, tanpa ikon/caption; admin menyesuaikan di §8c) + notifikasi requester |
-| POST | `/qrcode-requests/:id/reject` | `qrcode.approve` | Tolak — `{ "rejectionReason": "..." }` + notifikasi requester |
-
-Approve/Reject menolak (`409 Conflict`) bila `status != pending`. Response menyertakan `reviewedVia` (`"cms"` | `"whatsapp"`) dan `imageURL` (terisi setelah approved).
-
----
-
 ## 8b. Kalkulator Zakat (`/zakat`)
 
 Halaman publik `/kalkulator-zakat` di frontend menghitung 7 jenis zakat sepenuhnya di browser (data & rumus hardcoded). Satu-satunya endpoint backend adalah proxy harga emas Antam ber-cache — tanpa tabel DB, permission, atau menu CMS.
@@ -713,6 +644,75 @@ Bagian dari modul Go `report` yang sama dengan §12 (Laporan Pendataan), tapi pr
 | GET | `/reports/ledger-global` | `kantong_amal.report.view` | Buku besar gabungan seluruh campaign |
 | GET | `/reports/analytics` | `kantong_amal.report.view` | Ringkasan analitik (tren donasi, dsb.) |
 | GET | `/reports/audit-log` | `kantong_amal.audit.view` | Log audit aksi finansial |
+
+---
+
+## 8i. QR Code (`/qrcodes`)
+
+Generator kode QR yang **menggantikan** peran "tautan pendek" dengan gambar QR. Isi QR adalah `destinationURL` **langsung** — TIDAK ada kunci/slug, tidak ada redirect lewat domain ini, tidak ada pelacakan pindaian (kalau ada kunci + redirect, ini sama saja dengan Shortlink §8). Setiap baris menyimpan opsi kustomisasi gambar: warna depan/belakang (`#RRGGBB`), URL ikon tengah (di-upload lewat `POST /uploads/image`), dan teks caption yang dirender di bawah kode. Gambar PNG dirender server (skip2/go-qrcode + compositing) — level koreksi kesalahan dinaikkan otomatis ke tertinggi saat ada ikon tengah.
+
+| Method | Endpoint | Auth | Deskripsi |
+|---|---|:---:|---|
+| GET | `/public/qrcodes/:id` | ❌ | Metadata ringkas satu QR: `{ qrCodeID, label, destinationURL, captionText, imageURL, createdDate }` — dipakai halaman publik detail/unduh (`{FRONTEND_URL}/qr/:id`). Tidak membocorkan warna/ikon/pembuat. 404 kalau tidak ada. |
+| GET | `/public/qrcodes/:id/image` | ❌ | Gambar PNG QR (`Content-Type: image/png`) untuk baris `:id`, sudah menerapkan warna/ikon/caption. Query `size` (piksel sisi area QR, 128–1024, default 512). |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/qrcodes` | `qrcode.view` | Daftar QR Code (query: `page`, `limit`, `search`) |
+| GET | `/qrcodes/:id` | `qrcode.view` | Detail QR Code |
+| POST | `/qrcodes` | `qrcode.create` | Buat QR Code baru |
+| PUT | `/qrcodes/:id` | `qrcode.update` | Perbarui tujuan/label/kustomisasi |
+| DELETE | `/qrcodes/:id` | `qrcode.delete` | Hapus QR Code |
+
+**`POST /qrcodes`** (bentuk sama untuk `PUT /qrcodes/:id`)
+```json
+{
+  "destinationURL": "https://fsldk-indonesia.com/agenda",
+  "label": "Banner Agenda 2026",
+  "foregroundColor": "#00933B",
+  "backgroundColor": "#FFFFFF",
+  "centerIconKey": "instagram",
+  "centerIconURL": "data:image/png;base64,iVBOR...",
+  "captionText": "Scan untuk info lengkap"
+}
+```
+Hanya `destinationURL` wajib. `foregroundColor`/`backgroundColor` divalidasi `hexcolor` (default `#16211C`/`#FFFFFF` — selaras tema). `captionText` maks 120 karakter.
+
+**Ikon tengah** — dua bentuk `centerIconURL` didukung (maks 40000 char):
+- **data URI PNG** — ikon *preset* yang dikomposisi di frontend (kotak putih ber-radius + border & glyph outline berwarna = warna QR). `centerIconKey` menyertai (`fsldk` | `link` | `browser` | `instagram` | `tiktok` | `youtube` | `x` | `facebook`) hanya sebagai penanda supaya form CMS memulihkan pilihan & meng-generate ulang saat warna berubah — backend tidak menafsirkannya.
+- **URL `/uploads/...`** — ikon kustom (unggah via `POST /uploads/image`, CMS-only). Rasio aspek asli dipertahankan (tidak digepengkan).
+
+Bentuk lain diabaikan (QR dirender tanpa ikon). Response menyertakan `imageURL` absolut (`{APP_URL}/api/v1/public/qrcodes/{id}/image`).
+
+---
+
+## 8j. Permintaan QR Code (`/qrcode-requests`)
+
+Alur permintaan publik + persetujuan admin di atas modul QR Code (§8i) — cerminan penuh Permintaan Shortlink (§8a), termasuk **dua jalur penyelesaian race-safe** (CMS `qrcode.approve` ATAU balasan WhatsApp PIC via webhook Kirimdev yang sama, `POST /public/webhooks/kirimdev` — di-fan-out ke modul ini bila balasan bukan milik shortlink), transaksi atomik pembuatan `ms_qrcode` saat approve, dan notifikasi WhatsApp + email lewat job queue.
+
+> **Catatan template WhatsApp:** 3 template (`qrcode_request_notice`, `qrcode_approved`, `qrcode_rejected`) harus didaftarkan dulu di Meta/Kirimdev. Sampai itu dilakukan, jalur WhatsApp dorman (enqueue tetap dicoba lalu gagal async) — jalur CMS approve/reject + notifikasi email tidak terpengaruh.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate Limit | Deskripsi |
+|---|---|---|---|
+| POST | `/public/qrcode-requests` | 3x / menit / IP | Ajukan permintaan QR Code baru (status awal `pending`) |
+| GET | `/public/qrcode-requests/pic` | — | `{ "picName": "...", "picWhatsapp": "..." }` dari `qrcode_pic_name`/`qrcode_pic_whatsapp` grup `layanan`; `picWhatsapp` bisa `""` bila belum dikonfigurasi (bukan error) |
+
+Body `POST /public/qrcode-requests`: `requesterName`, `requesterEmail`, `requesterWhatsapp`, `destinationURL`, `note` (wajib) + `foregroundColor`, `backgroundColor`, `centerIconKey`, `centerIconURL`, `captionText` (opsional — sama seperti §8i). **Tidak ada `requestedKey`.** Form publik punya editor kustomisasi + pratinjau (pratinjau memakai tautan CONTOH `https://fsldk.or.id`, bukan URL tujuan). Ikon di form publik hanya lewat **preset** (data URI — endpoint `/uploads` butuh login). Nilai kustomisasi disimpan di `ms_qrcode_request` dan disalin ke `ms_qrcode` saat approve — barulah QR mengarah ke `destinationURL` asli. Notifikasi WhatsApp + email ke pemohon berisi **tautan halaman detail/unduh** QR hasil approve (`{FRONTEND_URL}/qr/{id}` — halaman web dengan pratinjau, tombol unduh, & keterangan), bukan lagi tautan gambar mentah ke API.
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/qrcode-requests` | `qrcode.view` | Daftar permintaan (query: `page`, `limit`, `search`, `status=pending\|approved\|rejected`) |
+| GET | `/qrcode-requests/:id` | `qrcode.view` | Detail satu permintaan |
+| POST | `/qrcode-requests/:id/approve` | `qrcode.approve` | Setujui — buat baris `ms_qrcode` (warna default, tanpa ikon/caption; admin menyesuaikan di §8i) + notifikasi requester |
+| POST | `/qrcode-requests/:id/reject` | `qrcode.approve` | Tolak — `{ "rejectionReason": "..." }` + notifikasi requester |
+
+Approve/Reject menolak (`409 Conflict`) bila `status != pending`. Response menyertakan `reviewedVia` (`"cms"` | `"whatsapp"`) dan `imageURL` (terisi setelah approved).
 
 ---
 
@@ -878,8 +878,9 @@ Kedua endpoint menyimpan berkas ke `assets/uploads/` dengan nama acak (hex 16 by
 |---|---|---|
 | GET | `/dashboard/summary` | Ringkasan **tier-aware** — bentuk response berbeda sesuai `organizationTypeCode` caller |
 
-Response selalu `{ "organizationTypeCode": "LDK\|PUSKOMDA\|PUSKOMNAS", "ldk"?, "puskomda"?, "puskomnas"? }` — hanya satu dari tiga kunci opsional yang terisi:
+Response selalu `{ "organizationTypeCode": "FSLDK\|LDK\|PUSKOMDA\|PUSKOMNAS", "utama"?, "ldk"?, "puskomda"?, "puskomnas"? }` — hanya satu dari empat kunci opsional yang terisi:
 
+- **`utama`** (shell CMS Utama/FSLDK): metrik administrasi sistem — satu field per modul sidebar CMS Utama — `{ totalUsers, totalRoles, totalNews, totalArticles, totalEvents, totalSchedules, totalGalleries, totalStructures, totalCatalogBooks, totalDynamicForms, totalGoodsProducts, totalFinanceFormats, totalCampaigns, totalDonationCollected, totalComments, totalShortlinks, totalQrcodes, totalSubscribers, unreadContactMessages, pendingJobs }` — **PLUS** ringkasan jaringan Levelisasi nasional (field sama persis dengan cabang `puskomnas` di bawah, diberi prefix `network*`, dihitung dengan scope nasional): `{ belumMengisi, menungguVerifikasi, perluRevisi, terverifikasi, networkTotalLDK, networkTotalPuskomda, networkKaderAktif, networkLevelDistribution: [{levelCode, levelLabel, count}], networkPerPuskomda: [{organizationID, organizationName, totalLDK, kaderAktif}] }`. `totalQrcodes` (jumlah baris `ms_qrcode`) adalah field terbaru — tiap modul CMS Utama baru **wajib** menambah pasangan field di sini sekaligus count-nya di `dashboard_service` supaya tidak diam-diam hilang dari widget statistik (lihat komentar `UtamaSummary` di `dashboard_dto.go`).
 - **`ldk`**: `{ submissionStatus, lastUpdatedDate?, levelCode?, levelLabel?, kaderPending, kaderActive, recentNotes: [{note, createdDate}] }`
 - **`puskomda`**: `{ totalLDK, belumMengisi, menungguVerifikasi, perluRevisi, terverifikasi, totalKaderAktif }`
 - **`puskomnas`**: `{ totalLDKNasional, belumMengisi, menungguVerifikasi, perluRevisi, terverifikasi, levelEstablishedCount, totalPuskomda, totalKaderAktifNasional, levelDistribution: [{levelCode, levelLabel, count}], perPuskomda: [{organizationID, organizationName, totalLDK, kaderAktif}] }`
@@ -932,7 +933,7 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `user.view/create/update/delete` | Pengguna | `role.view/create/update/delete` | Role |
 | `shortlink.view/create/update/delete/approve` | Shortlink (+ Permintaan Shortlink) | `event.view/create/update/delete` | Event |
 | `financeformat.view/create/update/delete/publish` | Format Keuangan | `goods.view/create/update/delete/publish` | FSLDK Goods (Produk) |
-| `goodscategory.view/create/update/delete` | FSLDK Goods (Kategori) | | |
+| `goodscategory.view/create/update/delete` | FSLDK Goods (Kategori) | `qrcode.view/create/update/delete/approve` | QR Code (+ Permintaan QR Code) |
 | `comment.view/update/delete` | Komentar | `setting.view/update` | App Settings |
 | `jobqueue.view/retry/delete` | Job Queue | `organization.create/profile.manage/deactivate` | Organisasi |
 | `organization.ldk.list/ldk.list.national/puskomda.list` | Organisasi (daftar) | `submission_form.view/manage` | Form Builder |
@@ -949,9 +950,9 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 
 `comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention).
 
-`shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§14a/§14b) — keduanya modul operasional platform, bukan konten editorial.
+`shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `qrcode.approve` mengikuti pola persis yang sama (§8j) — permission terpisah dari `qrcode.create/update/delete`, dipegang Super Admin & Editor. `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§14a/§14b) — keduanya modul operasional platform, bukan konten editorial.
 
-Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/event/financeformat penuh termasuk `shortlink.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), dan [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql).
+Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/qrcode/event/financeformat penuh termasuk `shortlink.approve`/`qrcode.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/qrcode/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql), [`0037_qrcode.up.sql`](../migrations/0037_qrcode.up.sql), dan [`0038_qrcode_request.up.sql`](../migrations/0038_qrcode_request.up.sql).
 
 Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per akun, tanpa multi-role:
 
