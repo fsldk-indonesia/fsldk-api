@@ -140,7 +140,7 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 // since any verified user may mention any other active user (including
 // themselves).
 func (r *RepositoryImpl) SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error) {
-	q := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Where("u.isActive = ?", true)
+	q := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Joins(joinOrg).Where("u.isActive = ?", true)
 	if search != "" {
 		q = q.Where("u.fullName LIKE ?", "%"+search+"%")
 	}
