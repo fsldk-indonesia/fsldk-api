@@ -30,6 +30,21 @@ func (r *RepositoryImpl) List(ctx context.Context, f schedule_dto.Filter) ([]sch
 	q := r.baseQuery(ctx)
 	if f.ActiveOnly {
 		q = q.Where("s.isActive = 1")
+	} else if len(f.ActiveStatuses) > 0 {
+		// Multi-select (checkbox) — "active"/"inactive" mapped to isActive
+		// 1/0, same convention as news_repository.List.
+		vals := make([]bool, 0, len(f.ActiveStatuses))
+		for _, s := range f.ActiveStatuses {
+			switch s {
+			case "active":
+				vals = append(vals, true)
+			case "inactive":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			q = q.Where("s.isActive IN ?", vals)
+		}
 	}
 	if f.Search != "" {
 		q = q.Where("s.title LIKE ?", "%"+f.Search+"%")

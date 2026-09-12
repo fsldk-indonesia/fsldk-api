@@ -34,9 +34,17 @@ type Filter struct {
 	DateFrom   string // "YYYY-MM-DD", optional — lower bound of the overlap window
 	DateTo     string // "YYYY-MM-DD", optional — upper bound of the overlap window
 	ActiveOnly bool   // true for the public endpoint, false for CMS
-	Limit      int
-	Offset     int
-	OrderBy    string
+	// ActiveStatuses is the CMS-only "active"/"inactive" multi-select
+	// (checkbox), distinct from ActiveOnly above — mirrors news_dto.Filter.Status.
+	ActiveStatuses []string
+	Limit          int
+	Offset         int
+	OrderBy        string
+}
+
+// BulkDeleteRequest is the body for deleting multiple schedules at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // Response is the schedule shape returned by the API: dates as "YYYY-MM-DD",

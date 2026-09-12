@@ -25,5 +25,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h schedule_handler.Handler, mw *midd
 		g.PUT("/:id", mw.RequirePermission(constants.PermScheduleUpdate), h.Update)
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermSchedulePublish), h.Publish)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermScheduleDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermScheduleDelete), h.BulkDelete)
 	}
 }

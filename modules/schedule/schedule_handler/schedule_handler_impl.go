@@ -72,11 +72,27 @@ func (h *HandlerImpl) PublicList(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+// splitQuery splits a comma-separated query param into a non-empty string slice.
+func splitQuery(v string) []string {
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if s := strings.TrimSpace(p); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 func (h *HandlerImpl) parseFilter(c *gin.Context) schedule_dto.Filter {
 	f := schedule_dto.Filter{
-		Category: strings.TrimSpace(c.Query("category")),
-		DateFrom: strings.TrimSpace(c.Query("dateFrom")),
-		DateTo:   strings.TrimSpace(c.Query("dateTo")),
+		Category:       strings.TrimSpace(c.Query("category")),
+		DateFrom:       strings.TrimSpace(c.Query("dateFrom")),
+		DateTo:         strings.TrimSpace(c.Query("dateTo")),
+		ActiveStatuses: splitQuery(c.Query("status")),
 	}
 	if v, err := strconv.Atoi(c.Query("month")); err == nil {
 		f.Month = v
@@ -164,4 +180,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Jadwal berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req schedule_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Jadwal terpilih berhasil dihapus", nil)
 }
