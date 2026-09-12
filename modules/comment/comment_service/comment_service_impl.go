@@ -228,8 +228,23 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, filter comme
 	return out, int(total), nil
 }
 
+// CMSGet returns one comment's full thread PLUS two admin-only fields
+// (AuthorEmail, ContentTitle) that getWithThread never sets — that function
+// is shared with Create/Update, reachable by any logged-in user, so email
+// must be attached here instead, after the permission-gated route already
+// authorized the caller (see router.go RegisterCMSRoutes: comment.view).
 func (s *ServiceImpl) CMSGet(ctx context.Context, id, currentUserID int64) (comment_dto.Response, error) {
-	return s.getWithThread(ctx, id, currentUserID)
+	resp, err := s.getWithThread(ctx, id, currentUserID)
+	if err != nil {
+		return comment_dto.Response{}, err
+	}
+	if target, err := s.repo.FindByID(ctx, id); err == nil {
+		resp.AuthorEmail = target.AuthorEmail
+		if title, err := s.repo.ContentTitle(ctx, target.ContentType, target.ContentID); err == nil {
+			resp.ContentTitle = title
+		}
+	}
+	return resp, nil
 }
 
 func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {

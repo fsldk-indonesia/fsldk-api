@@ -16,7 +16,20 @@ import (
 // sama seperti resolvedPhotoURL() di auth_service/user_service, tapi di
 // level SQL karena query ini murni proyeksi read-only lintas baris komentar.
 const selectCols = "cm.commentID, cm.contentType, cm.contentID, cm.parentID, cm.commentText, cm.mediaURL, cm.mediaType, " +
-	"cm.createdDate, cm.createdBy, u.fullName AS authorName, COALESCE(NULLIF(u.customPhotoURL, ''), u.photoURL) AS authorPhoto, cm.updatedDate, cm.updatedBy"
+	"cm.createdDate, cm.createdBy, u.fullName AS authorName, COALESCE(NULLIF(u.customPhotoURL, ''), u.photoURL) AS authorPhoto, " +
+	"u.email AS authorEmail, cm.updatedDate, cm.updatedBy"
+
+// contentTitleTables maps a comment's contentType to where its human-readable
+// title lives — used ONLY by the CMS "View Comment" detail page (ContentTitle
+// below), which is the one place that needs to show what a comment is
+// attached to. No FK exists from ms_comment to these tables (see techspec
+// §3.1a), so this is a best-effort lookup, not a join.
+var contentTitleTables = map[string]struct{ table, pkCol, titleCol string }{
+	"article":     {"ms_article", "articleID", "articleTitle"},
+	"news":        {"ms_news", "newsID", "newsTitle"},
+	"event":       {"ms_event", "eventID", "eventTitle"},
+	"catalogBook": {"ms_catalog_book", "bookID", "bookTitle"},
+}
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
 type RepositoryImpl struct{ db *gorm.DB }
@@ -157,6 +170,26 @@ func (r *RepositoryImpl) CMSList(ctx context.Context, f comment_dto.CMSListFilte
 	var out []comment_model.Comment
 	err := q.Select(selectCols).Order(f.OrderBy).Limit(f.Limit).Offset(f.Offset).Find(&out).Error
 	return out, total, err
+}
+
+// ContentTitle returns the title of the content a comment is attached to
+// (mis. judul artikel/berita/event) — returns "" (no error) when contentType
+// is unrecognized or the content row itself is gone (best-effort, since
+// there's no FK to guarantee it still exists).
+func (r *RepositoryImpl) ContentTitle(ctx context.Context, contentType string, contentID int64) (string, error) {
+	meta, ok := contentTitleTables[contentType]
+	if !ok {
+		return "", nil
+	}
+	var row struct{ Title string }
+	err := r.db.WithContext(ctx).Table(meta.table).
+		Select(meta.titleCol+" AS title").
+		Where(meta.pkCol+" = ?", contentID).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return row.Title, err
 }
 
 func (r *RepositoryImpl) Create(ctx context.Context, c comment_model.Comment) (int64, error) {

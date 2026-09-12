@@ -65,21 +65,26 @@ type CMSListFilter struct {
 }
 
 // Response is the recursive comment shape sent to the frontend — the public
-// thread endpoint and the admin detail endpoint both reuse it.
+// thread endpoint and the admin detail endpoint both reuse it. AuthorEmail
+// and ContentTitle are ONLY ever populated by comment_service.CMSGet (gated
+// behind comment.view) — never by PublicList/Create/Update, since author
+// email must not leak to the public comment thread.
 type Response struct {
-	CommentID   int64        `json:"commentID"`
-	ContentType string       `json:"contentType"`
-	ContentID   int64        `json:"contentID"`
-	CommentText string       `json:"commentText"`
-	MediaURL    string       `json:"mediaURL,omitempty"`
-	MediaType   string       `json:"mediaType,omitempty"`
-	ParentID    *int64       `json:"parentID"`
-	IsOwner     bool         `json:"isOwner"`
-	CreatedDate string       `json:"createdDate"`
-	Author      AuthorDTO    `json:"author"`
-	Reactions   ReactionsDTO `json:"reactions"`
-	Mentions    []AuthorDTO  `json:"mentions"`
-	Replies     []Response   `json:"replies"`
+	CommentID    int64        `json:"commentID"`
+	ContentType  string       `json:"contentType"`
+	ContentID    int64        `json:"contentID"`
+	ContentTitle string       `json:"contentTitle,omitempty"`
+	CommentText  string       `json:"commentText"`
+	MediaURL     string       `json:"mediaURL,omitempty"`
+	MediaType    string       `json:"mediaType,omitempty"`
+	ParentID     *int64       `json:"parentID"`
+	IsOwner      bool         `json:"isOwner"`
+	CreatedDate  string       `json:"createdDate"`
+	Author       AuthorDTO    `json:"author"`
+	AuthorEmail  string       `json:"authorEmail,omitempty"`
+	Reactions    ReactionsDTO `json:"reactions"`
+	Mentions     []AuthorDTO  `json:"mentions"`
+	Replies      []Response   `json:"replies"`
 }
 
 // AuthorDTO is the comment author summary embedded in Response.
