@@ -5,10 +5,20 @@ import (
 	"os"
 	"path/filepath"
 
+	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
 	"fsldk-api/modules/structure/structure_dto"
 	"fsldk-api/modules/structure/structure_model"
 	"fsldk-api/modules/structure/structure_repository"
 )
+
+// sortColumns is the CMS list sort whitelist — see structure_dto.Filter.OrderBy.
+var sortColumns = map[string]string{
+	"batch":         "batch",
+	"period":        "period",
+	"structureName": "structureName",
+	"createdDate":   "createdDate",
+}
 
 type serviceImpl struct {
 	repo structure_repository.Repository
@@ -20,6 +30,16 @@ func NewService(repo structure_repository.Repository) Service {
 }
 
 func (s *serviceImpl) List(ctx context.Context, f structure_dto.Filter) ([]structure_model.Structure, int64, error) {
+	return s.repo.List(ctx, f)
+}
+
+func (s *serviceImpl) CMSList(ctx context.Context, q dto.ListQuery, f structure_dto.Filter) ([]structure_model.Structure, int64, error) {
+	f.Limit = q.Limit
+	f.Offset = q.Offset()
+	f.OrderBy = q.OrderBy(sortColumns, "createdDate DESC")
+	if f.Search == "" {
+		f.Search = q.Search
+	}
 	return s.repo.List(ctx, f)
 }
 
@@ -87,5 +107,18 @@ func (s *serviceImpl) Delete(ctx context.Context, id int64) error {
 		_ = os.Remove(filepath.Join("assets", *existing.StructureImage))
 	}
 
+	return nil
+}
+
+// BulkDelete deletes multiple structures, reusing Delete's validation/file-
+// cleanup per ID. Best-effort like the CMS bulk-delete pattern elsewhere
+// (news, event, comment, schedule): an ID already gone is silently skipped.
+func (s *serviceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada struktur yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
 	return nil
 }

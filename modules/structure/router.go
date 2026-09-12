@@ -1,6 +1,7 @@
 package structure
 
 import (
+	"fsldk-api/constants"
 	"fsldk-api/middlewares"
 	"fsldk-api/modules/structure/structure_handler"
 	"fsldk-api/modules/structure/structure_repository"
@@ -22,9 +23,10 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, mw 
 	// CMS routes
 	strGroup := api.Group("/structures")
 	strGroup.Use(mw.Auth(), mw.RequireVerified())
-	strGroup.GET("", mw.RequirePermission("structure.view"), handler.ListCMS)
-	strGroup.POST("", mw.RequirePermission("structure.create"), handler.Create)
-	strGroup.GET("/:id", mw.RequirePermission("structure.view"), handler.ShowCMS)
-	strGroup.PUT("/:id", mw.RequirePermission("structure.update"), handler.Update)
-	strGroup.DELETE("/:id", mw.RequirePermission("structure.delete"), handler.Delete)
+	strGroup.GET("", mw.RequirePermission(constants.PermStructureView), handler.ListCMS)
+	strGroup.POST("", mw.RequirePermission(constants.PermStructureCreate), handler.Create)
+	strGroup.GET("/:id", mw.RequirePermission(constants.PermStructureView), handler.ShowCMS)
+	strGroup.PUT("/:id", mw.RequirePermission(constants.PermStructureUpdate), handler.Update)
+	strGroup.DELETE("/:id", mw.RequirePermission(constants.PermStructureDelete), handler.Delete)
+	strGroup.POST("/bulk-delete", mw.RequirePermission(constants.PermStructureDelete), handler.BulkDelete)
 }

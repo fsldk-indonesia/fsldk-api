@@ -139,6 +139,11 @@ const (
 	PermCommentUpdate = "comment.update"
 	PermCommentDelete = "comment.delete"
 
+	PermStructureView   = "structure.view"
+	PermStructureCreate = "structure.create"
+	PermStructureUpdate = "structure.update"
+	PermStructureDelete = "structure.delete"
+
 	PermCampaignCreate   = "kantong_amal.campaign.create"
 	PermCampaignView     = "kantong_amal.campaign.view"
 	PermCampaignUpdate   = "kantong_amal.campaign.update"
