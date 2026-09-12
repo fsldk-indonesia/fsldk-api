@@ -10,6 +10,7 @@ type Handler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 	// Resolve adalah handler publik (tanpa auth) yang mengembalikan URL tujuan
 	// dari sebuah kunci shortlink sebagai JSON (bukan redirect langsung) —
 	// dipanggil frontend fsldk-web untuk melakukan redirect di sisi browser

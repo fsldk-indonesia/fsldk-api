@@ -92,8 +92,8 @@ func (h *HandlerImpl) PublicPIC(c *gin.Context) {
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	status := c.Query("status")
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, status)
+	status := dto.ParseCSV(c.Query("status"))
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, status, c.Query("dateFrom"), c.Query("dateTo"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

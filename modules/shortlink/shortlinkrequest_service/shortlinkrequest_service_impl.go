@@ -248,13 +248,15 @@ func (s *ServiceImpl) PublicPIC(ctx context.Context) (shortlinkrequest_dto.PICRe
 	return shortlinkrequest_dto.PICResponse{PICName: picName, PICWhatsapp: picWhatsapp}, nil
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string) ([]shortlinkrequest_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status []string, dateFrom, dateTo string) ([]shortlinkrequest_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, shortlinkrequest_dto.ListFilter{
-		Status:  status,
-		Search:  q.Search,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "sr.createdDate DESC"),
+		Status:   status,
+		Search:   q.Search,
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "sr.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")

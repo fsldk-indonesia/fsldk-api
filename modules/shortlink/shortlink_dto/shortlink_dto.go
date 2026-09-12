@@ -36,8 +36,15 @@ type ResolveResponse struct {
 
 // ListFilter menampung parameter penyaringan daftar shortlink.
 type ListFilter struct {
-	Search  string
-	Limit   int
-	Offset  int
-	OrderBy string
+	Search   string
+	DateFrom string // "YYYY-MM-DD", inklusif — filter kolom createdDate
+	DateTo   string // "YYYY-MM-DD", inklusif
+	Limit    int
+	Offset   int
+	OrderBy  string
+}
+
+// BulkDeleteRequest adalah body untuk menghapus banyak shortlink sekaligus.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }

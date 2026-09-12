@@ -69,12 +69,18 @@ func (r *RepositoryImpl) FindPendingByIDs(ctx context.Context, ids []int64) ([]s
 
 func (r *RepositoryImpl) List(ctx context.Context, f shortlinkrequest_dto.ListFilter) ([]shortlinkrequest_model.ShortLinkRequest, int64, error) {
 	base := r.db.WithContext(ctx).Table("ms_shortlink_request sr").Joins(joins)
-	if f.Status != "" {
-		base = base.Where("sr.status = ?", f.Status)
+	if len(f.Status) > 0 {
+		base = base.Where("sr.status IN ?", f.Status)
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
 		base = base.Where("(sr.requesterName LIKE ? OR sr.requesterEmail LIKE ? OR sr.destinationURL LIKE ?)", like, like, like)
+	}
+	if f.DateFrom != "" {
+		base = base.Where("DATE(sr.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("DATE(sr.createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64

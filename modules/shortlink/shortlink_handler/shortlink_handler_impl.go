@@ -31,7 +31,7 @@ func idParam(c *gin.Context) (int64, bool) {
 
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.List(c.Request.Context(), q)
+	data, total, err := h.svc.List(c.Request.Context(), q, c.Query("dateFrom"), c.Query("dateTo"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -102,6 +102,23 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Shortlink berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req shortlink_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Shortlink terpilih berhasil dihapus", nil)
 }
 
 func (h *HandlerImpl) Resolve(c *gin.Context) {

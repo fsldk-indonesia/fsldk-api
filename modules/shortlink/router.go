@@ -22,6 +22,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h shortlink_handler.Handler, mw *mid
 		g.POST("", mw.RequirePermission(constants.PermShortlinkCreate), h.Create)
 		g.PUT("/:id", mw.RequirePermission(constants.PermShortlinkUpdate), h.Update)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermShortlinkDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermShortlinkDelete), h.BulkDelete)
 	}
 }
 

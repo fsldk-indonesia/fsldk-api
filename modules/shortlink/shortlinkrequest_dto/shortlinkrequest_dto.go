@@ -55,9 +55,11 @@ type PICResponse struct {
 
 // ListFilter menampung parameter penyaringan daftar permintaan shortlink.
 type ListFilter struct {
-	Status  string // pending|approved|rejected|"" (semua)
-	Search  string
-	Limit   int
-	Offset  int
-	OrderBy string
+	Status   []string // pending|approved|rejected — multi-select (IN), kosong = semua status
+	Search   string
+	DateFrom string // "YYYY-MM-DD", inklusif — filter kolom createdDate
+	DateTo   string // "YYYY-MM-DD", inklusif
+	Limit    int
+	Offset   int
+	OrderBy  string
 }
