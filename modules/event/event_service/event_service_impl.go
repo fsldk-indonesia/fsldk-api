@@ -1,4 +1,4 @@
-﻿package event_service
+package event_service
 
 import (
 	"context"
@@ -17,10 +17,13 @@ import (
 
 // allowedSortCols maps public sort values to the Filter.SortBy strings.
 var allowedSortCols = map[string]string{
-	"title":       "title",
-	"newest":      "newest",
-	"startDate":   "startDate",
-	"createdDate": "createdDate",
+	"title":         "title",
+	"newest":        "newest",
+	"startDate":     "startDate",
+	"createdDate":   "createdDate",
+	"eventTitle":    "eventTitle",
+	"eventDivision": "eventDivision",
+	"isPublished":   "isPublished",
 }
 
 // ServiceImpl is the concrete implementation of Service.
@@ -71,20 +74,20 @@ func (s *ServiceImpl) PublicDetail(ctx context.Context, slug string) (event_dto.
 
 // --- CMS API ---
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, division string) ([]event_model.Event, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, f event_dto.CMSFilter) ([]event_model.Event, int, error) {
 	// Parse sort direction from the Sort field (e.g. "-createdDate" → DESC)
 	sortBy, sortOrder := parseSortQuery(q.Sort)
-	divisions := []string{}
-	if division != "" {
-		divisions = []string{division}
-	}
 	events, total, err := s.repo.List(ctx, event_dto.Filter{
-		Search:    q.Search,
-		Divisions: divisions,
-		SortBy:    sortBy,
-		SortOrder: sortOrder,
-		Limit:     q.Limit,
-		Offset:    q.Offset(),
+		Search:        q.Search,
+		Divisions:     f.Divisions,
+		Statuses:      f.TimingStatuses,
+		PublishStatus: f.PublishStatus,
+		DateFrom:      f.DateFrom,
+		DateTo:        f.DateTo,
+		SortBy:        sortBy,
+		SortOrder:     sortOrder,
+		Limit:         q.Limit,
+		Offset:        q.Offset(),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
@@ -155,6 +158,20 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	// §3.1a), so comments aren't cascaded by the database — clean them up
 	// explicitly. A failure here does not roll back the event delete.
 	_ = s.comment.DeleteByContent(ctx, "event", id)
+	return nil
+}
+
+// BulkDelete deletes multiple events, reusing Delete's validation/cleanup per
+// ID. Best-effort like the CMS bulk-delete pattern elsewhere (news, comment):
+// an ID already gone (deleted by another admin in the meantime) is silently
+// skipped rather than failing the whole batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada event yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
 	return nil
 }
 

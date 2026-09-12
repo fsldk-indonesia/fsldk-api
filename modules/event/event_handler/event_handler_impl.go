@@ -1,4 +1,4 @@
-﻿package event_handler
+package event_handler
 
 import (
 	"strconv"
@@ -94,7 +94,14 @@ func (h *HandlerImpl) ShowPublic(c *gin.Context) {
 
 func (h *HandlerImpl) ListCMS(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("division"))
+	f := event_dto.CMSFilter{
+		Divisions:      splitQuery(c.Query("division")),
+		TimingStatuses: splitQuery(c.Query("timing")),
+		PublishStatus:  splitQuery(c.Query("status")),
+		DateFrom:       c.Query("dateFrom"),
+		DateTo:         c.Query("dateTo"),
+	}
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -155,4 +162,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Event berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req event_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Event terpilih berhasil dihapus", nil)
 }

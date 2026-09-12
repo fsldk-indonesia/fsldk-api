@@ -1,4 +1,4 @@
-﻿// Package event_handler is the HTTP presentation layer for the event module.
+// Package event_handler is the HTTP presentation layer for the event module.
 package event_handler
 
 import "github.com/gin-gonic/gin"
@@ -12,4 +12,5 @@ type Handler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 }
