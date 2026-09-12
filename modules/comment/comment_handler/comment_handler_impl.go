@@ -156,7 +156,13 @@ func (h *HandlerImpl) GifCategories(c *gin.Context) {
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("contentType"))
+	f := comment_dto.CMSFilter{
+		ContentTypes: dto.ParseCSV(c.Query("contentType")),
+		Author:       c.Query("author"),
+		DateFrom:     c.Query("dateFrom"),
+		DateTo:       c.Query("dateTo"),
+	}
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return

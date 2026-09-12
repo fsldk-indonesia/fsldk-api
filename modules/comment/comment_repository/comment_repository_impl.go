@@ -133,12 +133,20 @@ func (r *RepositoryImpl) MediaPathsByIDs(ctx context.Context, ids []int64) ([]st
 
 func (r *RepositoryImpl) CMSList(ctx context.Context, f comment_dto.CMSListFilter) ([]comment_model.Comment, int64, error) {
 	q := r.baseQuery(ctx).Where("cm.parentID IS NULL")
-	if f.ContentType != "" {
-		q = q.Where("cm.contentType = ?", f.ContentType)
+	if len(f.ContentTypes) > 0 {
+		q = q.Where("cm.contentType IN ?", f.ContentTypes)
 	}
 	if f.Search != "" {
-		like := "%" + f.Search + "%"
-		q = q.Where("(cm.commentText LIKE ? OR u.fullName LIKE ?)", like, like)
+		q = q.Where("cm.commentText LIKE ?", "%"+f.Search+"%")
+	}
+	if f.Author != "" {
+		q = q.Where("u.fullName LIKE ?", "%"+f.Author+"%")
+	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(cm.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(cm.createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64

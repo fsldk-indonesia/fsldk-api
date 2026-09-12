@@ -195,13 +195,16 @@ func (s *ServiceImpl) React(ctx context.Context, commentID, userID int64, reacti
 	return comment_dto.ReactionsDTO{Counts: c, UserTypes: userTypes[commentID]}, nil
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, contentType string) ([]comment_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, filter comment_dto.CMSFilter) ([]comment_dto.Response, int, error) {
 	f := comment_dto.CMSListFilter{
-		ContentType: contentType,
-		Search:      q.Search,
-		Limit:       q.Limit,
-		Offset:      q.Offset(),
-		OrderBy:     q.OrderBy(sortColumns, "cm.createdDate DESC"),
+		ContentTypes: filter.ContentTypes,
+		Search:       q.Search,
+		Author:       filter.Author,
+		DateFrom:     filter.DateFrom,
+		DateTo:       filter.DateTo,
+		Limit:        q.Limit,
+		Offset:       q.Offset(),
+		OrderBy:      q.OrderBy(sortColumns, "cm.createdDate DESC"),
 	}
 	flat, total, err := s.repo.CMSList(ctx, f)
 	if err != nil {

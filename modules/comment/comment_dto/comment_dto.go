@@ -34,14 +34,34 @@ type BulkDeleteRequest struct {
 	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
+// CMSFilter menampung parameter filter khusus endpoint CMS list (di luar
+// dto.ListQuery yang sudah menampung search/page/limit/sort) — dipisah dari
+// CMSListFilter (dipakai repository) supaya signature service.CMSList tidak
+// terus bertambah parameter positional setiap kali kolom filter baru
+// ditambahkan. ContentTypes multi-select (checkbox) dikirim frontend sebagai
+// query param comma-separated, di-parse handler lewat dto.ParseCSV. Author
+// dipisah dari dto.ListQuery.Search (yang cuma menyaring commentText) —
+// keduanya kolom pencarian TERPISAH di CMS (Komentar vs Penulis), bukan
+// gabungan OR seperti sebelumnya.
+type CMSFilter struct {
+	ContentTypes []string
+	Author       string
+	DateFrom     string
+	DateTo       string
+}
+
 // CMSListFilter narrows the admin comment list (top-level comments across
-// all content types, optionally filtered to one contentType).
+// all content types, optionally filtered to one or more contentTypes, an
+// author name, and/or a createdDate range).
 type CMSListFilter struct {
-	ContentType string
-	Search      string
-	Limit       int
-	Offset      int
-	OrderBy     string
+	ContentTypes []string
+	Search       string // LIKE terhadap commentText — filter kolom "Komentar" CMS
+	Author       string // LIKE terhadap nama penulis — filter kolom "Penulis" CMS
+	DateFrom     string // "YYYY-MM-DD", inklusif
+	DateTo       string // "YYYY-MM-DD", inklusif
+	Limit        int
+	Offset       int
+	OrderBy      string
 }
 
 // Response is the recursive comment shape sent to the frontend — the public
