@@ -20,6 +20,7 @@ var sortColumns = map[string]string{
 	"publisherName": "b.publisherName",
 	"favoriteCount": "b.favoriteCount",
 	"createdDate":   "b.createdDate",
+	"isActive":      "b.isActive",
 }
 
 // publicSortColumns are the 3 fixed sort options for the public listing
@@ -219,6 +220,19 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	// cascaded by the database — clean them up explicitly, same as
 	// article/news/event. A failure here does not roll back the book delete.
 	_ = s.comment.DeleteByContent(ctx, "catalogBook", id)
+	return nil
+}
+
+// BulkDelete deletes multiple books, reusing Delete's validation/file-cleanup
+// per ID. Best-effort like the CMS bulk-delete pattern elsewhere (news,
+// event, comment): an ID already gone is silently skipped.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada buku yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
 	return nil
 }
 
