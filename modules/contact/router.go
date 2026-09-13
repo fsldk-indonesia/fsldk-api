@@ -29,6 +29,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, mai
 	cms.PATCH("/:id/read", mw.RequirePermission(constants.PermContactView), handler.MarkRead)
 	cms.POST("/:id/reply", mw.RequirePermission(constants.PermContactView), handler.Reply)
 	cms.DELETE("/:id", mw.RequirePermission(constants.PermContactDelete), handler.Delete)
+	cms.POST("/bulk-delete", mw.RequirePermission(constants.PermContactDelete), handler.BulkDelete)
 
 	return svc
 }

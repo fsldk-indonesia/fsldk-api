@@ -10,5 +10,6 @@ type Handler interface {
 	Show(c *gin.Context)
 	MarkRead(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 	Reply(c *gin.Context)
 }

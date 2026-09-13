@@ -50,6 +50,12 @@ func (r *repositoryImpl) FindAll(ctx context.Context, q contact_dto.ContactListQ
 	if q.IsRead != nil {
 		db = db.Where("isRead = ?", *q.IsRead)
 	}
+	if q.DateFrom != "" {
+		db = db.Where("DATE(createdDate) >= ?", q.DateFrom)
+	}
+	if q.DateTo != "" {
+		db = db.Where("DATE(createdDate) <= ?", q.DateTo)
+	}
 
 	if err := db.Count(&total).Error; err != nil {
 		return nil, 0, err

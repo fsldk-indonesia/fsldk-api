@@ -39,16 +39,15 @@ type ContactListQuery struct {
 	Limit     int    `form:"limit"`
 	Search    string `form:"search"`
 	IsRead    *bool  `form:"isRead"`
+	DateFrom  string `form:"dateFrom"` // "YYYY-MM-DD", inklusif — filter kolom createdDate
+	DateTo    string `form:"dateTo"`   // "YYYY-MM-DD", inklusif
 	SortBy    string `form:"sort_by"`
 	SortOrder string `form:"sort_order"`
 }
 
-// ContactListResponse defines the paginated list envelope.
-type ContactListResponse struct {
-	Data  []ContactListItem `json:"data"`
-	Page  int               `json:"page"`
-	Limit int               `json:"limit"`
-	Total int64             `json:"total"`
+// BulkDeleteRequest is the body for deleting multiple contact messages at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // ReplyContactRequest defines the payload sent by CMS admin to reply to a contact inquiry via email.
