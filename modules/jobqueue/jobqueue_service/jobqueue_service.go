@@ -34,11 +34,12 @@ type Service interface {
 	// (yang selalu wamid asli) bisa dicocokkan.
 	HandleMessageSent(ctx context.Context, kirimdevMessageID, wamid string) error
 
-	CMSList(ctx context.Context, q dto.ListQuery, status, queue string) ([]jobqueue_dto.Response, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, statuses, queues []string, dateFrom, dateTo string) ([]jobqueue_dto.Response, int, error)
 	CMSGet(ctx context.Context, id int64) (jobqueue_dto.Response, error)
 	CMSStats(ctx context.Context) (jobqueue_dto.StatsResponse, error)
 	Retry(ctx context.Context, id int64) error
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) error
 
 	// RunWorker adalah blocking poll loop — dipanggil `go svc.RunWorker(i)`
 	// sebanyak JOBQUEUE_WORKER_COUNT dari root router.go.

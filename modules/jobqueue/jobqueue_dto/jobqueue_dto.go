@@ -41,14 +41,24 @@ type StatsResponse struct {
 	Completed  int64 `json:"completed"`
 }
 
-// ListFilter menampung parameter penyaringan daftar job.
+// ListFilter menampung parameter penyaringan daftar job. Status & Queue
+// berupa slice (bukan satu nilai) — keduanya genuinely multi-select
+// bermakna di dashboard CMS (mis. lihat failed+processing sekaligus untuk
+// triase), diterapkan lewat klausa IN.
 type ListFilter struct {
-	Status  string
-	Queue   string
-	Search  string
-	Limit   int
-	Offset  int
-	OrderBy string
+	Statuses []string
+	Queues   []string
+	Search   string
+	DateFrom string // "2006-01-02", opsional — dicocokkan ke DATE(createdDate)
+	DateTo   string
+	Limit    int
+	Offset   int
+	OrderBy  string
+}
+
+// BulkDeleteRequest adalah body untuk menghapus banyak job sekaligus.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // ShortlinkApprovedEmailPayload adalah payload jobType=email_shortlink_approved.

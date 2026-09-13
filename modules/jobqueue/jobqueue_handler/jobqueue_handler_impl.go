@@ -6,6 +6,8 @@ import (
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/base/httphelper"
+	"fsldk-api/base/validation"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
 	"fsldk-api/modules/jobqueue/jobqueue_service"
 
 	"github.com/gin-gonic/gin"
@@ -28,9 +30,11 @@ func idParam(c *gin.Context) (int64, bool) {
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	status := c.Query("status")
-	queue := c.Query("queue")
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, status, queue)
+	statuses := dto.ParseCSV(c.Query("status"))
+	queues := dto.ParseCSV(c.Query("queue"))
+	dateFrom := c.Query("dateFrom")
+	dateTo := c.Query("dateTo")
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, statuses, queues, dateFrom, dateTo)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -82,4 +86,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Job dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req jobqueue_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Job terpilih berhasil dihapus", nil)
 }

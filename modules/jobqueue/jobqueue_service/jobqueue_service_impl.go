@@ -190,9 +190,10 @@ func toResponse(j jobqueue_model.Job) jobqueue_dto.Response {
 	}
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status, queue string) ([]jobqueue_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, statuses, queues []string, dateFrom, dateTo string) ([]jobqueue_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, jobqueue_dto.ListFilter{
-		Status: status, Queue: queue, Search: q.Search, Limit: q.Limit, Offset: q.Offset(),
+		Statuses: statuses, Queues: queues, Search: q.Search, DateFrom: dateFrom, DateTo: dateTo,
+		Limit: q.Limit, Offset: q.Offset(),
 		OrderBy: q.OrderBy(sortColumns, "createdDate DESC"),
 	})
 	if err != nil {
@@ -257,6 +258,19 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	}
 	if err != nil {
 		return apperror.Internal("")
+	}
+	return nil
+}
+
+// BulkDelete menghapus banyak job sekaligus, best-effort seperti pola
+// bulk-delete CMS lainnya: job yang bukan failed/completed (ErrInvalidState
+// dari repo.Delete) dilewati diam-diam, bukan menggagalkan seluruh batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada job yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.repo.Delete(ctx, id)
 	}
 	return nil
 }
