@@ -199,6 +199,19 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// BulkDelete menghapus banyak format keuangan, memakai ulang validasi &
+// pembersihan berkas dari Delete per ID. Best-effort seperti pola
+// bulk-delete CMS lainnya (gallery, comment, event, qrcode, contact).
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada format keuangan yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
+	return nil
+}
+
 // validate enforces the module-specific rules: the uploaded file must be an
 // Excel workbook no larger than maxFileSize, and the chosen category must be
 // one of the 9 seeded types.

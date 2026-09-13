@@ -33,5 +33,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h financeformat_handler.Handler, mw 
 		g.PUT("/:id", mw.RequirePermission(constants.PermFinanceFormatUpdate), h.Update)
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermFinanceFormatPublish), h.Publish)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermFinanceFormatDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermFinanceFormatDelete), h.BulkDelete)
 	}
 }

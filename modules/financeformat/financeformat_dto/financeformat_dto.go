@@ -17,14 +17,20 @@ type PublishRequest struct {
 
 // Filter holds finance format list filter parameters (repository & service).
 type Filter struct {
-	Search       string // LIKE against fileName
-	FormatTypeID int64  // 0 = all categories
-	DateFrom     string // "2006-01-02", optional — matched against DATE(createdDate)
-	DateTo       string
-	ActiveOnly   bool // true for the public endpoint, false for CMS
-	Limit        int
-	Offset       int
-	OrderBy      string
+	Search        string  // LIKE against fileName
+	FormatTypeIDs []int64 // empty = all categories
+	DateFrom      string  // "2006-01-02", optional — matched against DATE(createdDate)
+	DateTo        string
+	ActiveOnly    bool  // true for the public endpoint, false for CMS
+	IsActive      *bool // CMS-only optional status filter (Aktif/Nonaktif); nil = semua status
+	Limit         int
+	Offset        int
+	OrderBy       string
+}
+
+// BulkDeleteRequest is the body for deleting multiple finance formats at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // PublicListResponse is the combined payload of GET /public/finance-formats:

@@ -29,12 +29,14 @@ func (r *RepositoryImpl) List(ctx context.Context, f financeformat_dto.Filter) (
 	q := r.baseQuery(ctx)
 	if f.ActiveOnly {
 		q = q.Where("f.isActive = 1")
+	} else if f.IsActive != nil {
+		q = q.Where("f.isActive = ?", *f.IsActive)
 	}
 	if f.Search != "" {
 		q = q.Where("f.fileName LIKE ?", "%"+f.Search+"%")
 	}
-	if f.FormatTypeID > 0 {
-		q = q.Where("f.formatTypeID = ?", f.FormatTypeID)
+	if len(f.FormatTypeIDs) > 0 {
+		q = q.Where("f.formatTypeID IN ?", f.FormatTypeIDs)
 	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(f.createdDate) >= ?", f.DateFrom)

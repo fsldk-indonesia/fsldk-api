@@ -71,9 +71,13 @@ func (h *HandlerImpl) Download(c *gin.Context) {
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	f := financeformat_dto.Filter{
-		FormatTypeID: parseInt64Query(c, "formatTypeID"),
-		DateFrom:     strings.TrimSpace(c.Query("dateFrom")),
-		DateTo:       strings.TrimSpace(c.Query("dateTo")),
+		FormatTypeIDs: dto.ParseInt64CSV(c.Query("formatTypeID")),
+		DateFrom:      strings.TrimSpace(c.Query("dateFrom")),
+		DateTo:        strings.TrimSpace(c.Query("dateTo")),
+	}
+	if v := c.Query("isActive"); v != "" {
+		b := v == "true" || v == "1"
+		f.IsActive = &b
 	}
 	data, total, err := h.svc.CMSList(c.Request.Context(), q, f)
 	if err != nil {
@@ -161,11 +165,19 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 	httphelper.Success(c, "Format keuangan berhasil dihapus", nil)
 }
 
-// parseInt64Query reads a single optional int64 query param (0 when absent/invalid).
-func parseInt64Query(c *gin.Context, key string) int64 {
-	v, err := strconv.ParseInt(strings.TrimSpace(c.Query(key)), 10, 64)
-	if err != nil {
-		return 0
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req financeformat_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
 	}
-	return v
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Format keuangan terpilih berhasil dihapus", nil)
 }
