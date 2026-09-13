@@ -47,6 +47,8 @@ type Filter struct {
 	Availability  string
 	FeaturedOnly  bool
 	PublishedOnly bool
+	DateFrom      string // "2006-01-02", opsional — dicocokkan ke DATE(createdDate)
+	DateTo        string
 	Limit         int
 	Offset        int
 	OrderBy       string
@@ -57,4 +59,10 @@ type CategoryRequest struct {
 	CategoryName string `json:"categoryName" validate:"required,min=2,max=100"`
 	IsActive     bool   `json:"isActive"`
 	SortOrder    int    `json:"sortOrder"`
+}
+
+// BulkDeleteRequest adalah body untuk menghapus banyak baris sekaligus —
+// dipakai bersama oleh produk & kategori goods.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }

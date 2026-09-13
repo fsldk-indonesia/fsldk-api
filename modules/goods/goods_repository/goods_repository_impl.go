@@ -7,10 +7,19 @@ import (
 
 	"gorm.io/gorm"
 
+	"fsldk-api/base/dto"
 	"fsldk-api/constants"
-	"fsldk-api/modules/goods/goods_dto"
+	goodsdto "fsldk-api/modules/goods/goods_dto"
 	"fsldk-api/modules/goods/goods_model"
 )
+
+// categorySortColumns is the whitelist of sortable columns for the CMS
+// category listing (dto.ListQuery.OrderBy).
+var categorySortColumns = map[string]string{
+	"categoryname": "categoryName",
+	"sortorder":    "sortOrder",
+	"createddate":  "createdDate",
+}
 
 const selectCols = "g.goodsID, g.goodsName, g.goodsSlug, g.skuCode, g.goodsCategoryID, c.categoryName, " +
 	"g.shortDescription, g.fullDescription, g.price, g.mainImageUrl, g.availabilityStatus, " +
@@ -27,7 +36,7 @@ func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
 		Joins("JOIN " + constants.TableGoodsCategory + " c ON c.goodsCategoryID = g.goodsCategoryID")
 }
 
-func (r *RepositoryImpl) List(ctx context.Context, f goods_dto.Filter) ([]goods_model.Goods, int64, error) {
+func (r *RepositoryImpl) List(ctx context.Context, f goodsdto.Filter) ([]goods_model.Goods, int64, error) {
 	q := r.baseQuery(ctx)
 	if f.PublishedOnly {
 		q = q.Where("g.isPublished = 1")
@@ -47,6 +56,12 @@ func (r *RepositoryImpl) List(ctx context.Context, f goods_dto.Filter) ([]goods_
 	}
 	if f.FeaturedOnly {
 		q = q.Where("g.isFeatured = 1")
+	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(g.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(g.createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64
@@ -199,6 +214,30 @@ func (r *RepositoryImpl) CategoryList(ctx context.Context, activeOnly bool) ([]g
 	var out []goods_model.Category
 	err := q.Order("sortOrder, categoryName").Find(&out).Error
 	return out, err
+}
+
+// CategoryListCMS returns a paginated/searchable/sortable category list for
+// the CMS index page — distinct from CategoryList (flat, activeOnly toggle
+// only), which stays untouched for the public catalog's filter chips and the
+// category-picker dropdowns (mis. goods.index.presenter memakai limit besar).
+func (r *RepositoryImpl) CategoryListCMS(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int64, error) {
+	db := r.db.WithContext(ctx).Table(constants.TableGoodsCategory)
+	if q.Search != "" {
+		db = db.Where("categoryName LIKE ?", "%"+q.Search+"%")
+	}
+	if isActive != nil {
+		db = db.Where("isActive = ?", *isActive)
+	}
+
+	var total int64
+	if err := db.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var out []goods_model.Category
+	err := db.Order(q.OrderBy(categorySortColumns, "sortOrder ASC, categoryName ASC")).
+		Limit(q.Limit).Offset(q.Offset()).Find(&out).Error
+	return out, total, err
 }
 
 func (r *RepositoryImpl) CategoryFindByID(ctx context.Context, id int64) (goods_model.Category, error) {

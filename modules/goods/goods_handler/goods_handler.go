@@ -16,9 +16,12 @@ type Handler interface {
 	Publish(c *gin.Context)
 	SetFeatured(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 
 	CategoryList(c *gin.Context)
+	CategoryGet(c *gin.Context)
 	CategoryCreate(c *gin.Context)
 	CategoryUpdate(c *gin.Context)
 	CategoryDelete(c *gin.Context)
+	CategoryBulkDelete(c *gin.Context)
 }

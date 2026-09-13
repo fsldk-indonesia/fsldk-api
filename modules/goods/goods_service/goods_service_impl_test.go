@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
 	"fsldk-api/constants"
 	"fsldk-api/modules/goods/goods_dto"
 	"fsldk-api/modules/goods/goods_model"
@@ -120,6 +121,10 @@ func (f *fakeGoodsRepository) ListImages(ctx context.Context, goodsID int64) ([]
 
 func (f *fakeGoodsRepository) CategoryList(ctx context.Context, activeOnly bool) ([]goods_model.Category, error) {
 	return nil, nil
+}
+
+func (f *fakeGoodsRepository) CategoryListCMS(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int64, error) {
+	return nil, 0, nil
 }
 
 func (f *fakeGoodsRepository) CategoryFindByID(ctx context.Context, id int64) (goods_model.Category, error) {

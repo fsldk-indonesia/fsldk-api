@@ -33,14 +33,17 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h goods_handler.Handler, mw *middlew
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermGoodsPublish), h.Publish)
 		g.PATCH("/:id/featured", mw.RequirePermission(constants.PermGoodsUpdate), h.SetFeatured)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermGoodsDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermGoodsDelete), h.BulkDelete)
 	}
 
 	gc := rg.Group("/goods-categories")
 	gc.Use(mw.Auth(), mw.RequireVerified())
 	{
 		gc.GET("", mw.RequirePermission(constants.PermGoodsCategoryView), h.CategoryList)
+		gc.GET("/:id", mw.RequirePermission(constants.PermGoodsCategoryView), h.CategoryGet)
 		gc.POST("", mw.RequirePermission(constants.PermGoodsCategoryCreate), h.CategoryCreate)
 		gc.PUT("/:id", mw.RequirePermission(constants.PermGoodsCategoryUpdate), h.CategoryUpdate)
 		gc.DELETE("/:id", mw.RequirePermission(constants.PermGoodsCategoryDelete), h.CategoryDelete)
+		gc.POST("/bulk-delete", mw.RequirePermission(constants.PermGoodsCategoryDelete), h.CategoryBulkDelete)
 	}
 }

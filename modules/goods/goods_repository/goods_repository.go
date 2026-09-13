@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 
+	"fsldk-api/base/dto"
 	"fsldk-api/modules/goods/goods_dto"
 	"fsldk-api/modules/goods/goods_model"
 )
@@ -31,6 +32,7 @@ type Repository interface {
 	ListImages(ctx context.Context, goodsID int64) ([]goods_model.Image, error)
 
 	CategoryList(ctx context.Context, activeOnly bool) ([]goods_model.Category, error)
+	CategoryListCMS(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int64, error)
 	CategoryFindByID(ctx context.Context, id int64) (goods_model.Category, error)
 	CategorySlugExists(ctx context.Context, slug string, exceptID int64) (bool, error)
 	CategoryCreate(ctx context.Context, cat goods_model.Category, createdBy int64) (int64, error)

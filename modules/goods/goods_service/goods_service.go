@@ -20,10 +20,13 @@ type Service interface {
 	SetPublished(ctx context.Context, id int64, published bool, actorID int64) error
 	SetFeatured(ctx context.Context, id int64, featured bool, actorID int64) error
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) error
 
 	PublicCategories(ctx context.Context) ([]goods_model.Category, error)
-	CMSCategories(ctx context.Context) ([]goods_model.Category, error)
+	CMSCategories(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int, error)
+	CategoryGet(ctx context.Context, id int64) (goods_model.Category, error)
 	CategoryCreate(ctx context.Context, req goods_dto.CategoryRequest, actorID int64) (goods_model.Category, error)
 	CategoryUpdate(ctx context.Context, id int64, req goods_dto.CategoryRequest, actorID int64) (goods_model.Category, error)
 	CategoryDelete(ctx context.Context, id int64) error
+	CategoryBulkDelete(ctx context.Context, ids []int64) error
 }

@@ -35,9 +35,10 @@ type Image struct {
 
 // Category merepresentasikan satu baris lk_goods_category.
 type Category struct {
-	GoodsCategoryID int64  `gorm:"column:goodsCategoryID;primaryKey" json:"goodsCategoryID"`
-	CategoryName    string `gorm:"column:categoryName" json:"categoryName"`
-	CategorySlug    string `gorm:"column:categorySlug" json:"categorySlug"`
-	IsActive        bool   `gorm:"column:isActive" json:"isActive"`
-	SortOrder       int    `gorm:"column:sortOrder" json:"sortOrder"`
+	GoodsCategoryID int64     `gorm:"column:goodsCategoryID;primaryKey" json:"goodsCategoryID"`
+	CategoryName    string    `gorm:"column:categoryName" json:"categoryName"`
+	CategorySlug    string    `gorm:"column:categorySlug" json:"categorySlug"`
+	IsActive        bool      `gorm:"column:isActive" json:"isActive"`
+	SortOrder       int       `gorm:"column:sortOrder" json:"sortOrder"`
+	CreatedDate     time.Time `gorm:"column:createdDate" json:"createdDate"`
 }

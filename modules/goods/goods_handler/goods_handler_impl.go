@@ -59,6 +59,8 @@ func (h *HandlerImpl) parseFilter(c *gin.Context) goods_dto.Filter {
 		CategoryID:   categoryID,
 		Availability: strings.TrimSpace(c.Query("availability")),
 		FeaturedOnly: c.Query("featured") == "1" || c.Query("featured") == "true",
+		DateFrom:     strings.TrimSpace(c.Query("dateFrom")),
+		DateTo:       strings.TrimSpace(c.Query("dateTo")),
 	}
 }
 
@@ -220,8 +222,44 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 	httphelper.Success(c, "Produk berhasil dihapus", nil)
 }
 
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req goods_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Produk terpilih berhasil dihapus", nil)
+}
+
 func (h *HandlerImpl) CategoryList(c *gin.Context) {
-	data, err := h.svc.CMSCategories(c.Request.Context())
+	q := dto.ParseListQuery(c)
+	var isActive *bool
+	if v := c.Query("isActive"); v != "" {
+		b := v == "true" || v == "1"
+		isActive = &b
+	}
+	data, total, err := h.svc.CMSCategories(c.Request.Context(), q, isActive)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) CategoryGet(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	data, err := h.svc.CategoryGet(c.Request.Context(), id)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -269,4 +307,21 @@ func (h *HandlerImpl) CategoryDelete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Kategori berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) CategoryBulkDelete(c *gin.Context) {
+	var req goods_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.CategoryBulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kategori terpilih berhasil dihapus", nil)
 }
