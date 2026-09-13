@@ -10,7 +10,7 @@ import (
 
 // Service adalah kontrak logika bisnis QR Code.
 type Service interface {
-	List(ctx context.Context, q dto.ListQuery) ([]qrcode_dto.Response, int, error)
+	List(ctx context.Context, q dto.ListQuery, dateFrom, dateTo string) ([]qrcode_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (qrcode_dto.Response, error)
 	// PublicGet mengembalikan subset QR Code tanpa auth untuk halaman
 	// detail/unduh publik.
@@ -18,6 +18,8 @@ type Service interface {
 	Create(ctx context.Context, req qrcode_dto.CreateRequest, actorID int64) (qrcode_dto.Response, error)
 	Update(ctx context.Context, id int64, req qrcode_dto.UpdateRequest, actorID int64) (qrcode_dto.Response, error)
 	Delete(ctx context.Context, id int64) error
+	// BulkDelete menghapus banyak QR Code sekaligus, best-effort per ID.
+	BulkDelete(ctx context.Context, ids []int64) error
 	// Image mengembalikan byte PNG QR untuk sebuah baris — meng-encode
 	// destinationURL langsung dan menerapkan warna/ikon-tengah/caption yang
 	// tersimpan. size dibatasi pemanggil (handler).

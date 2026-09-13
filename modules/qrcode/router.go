@@ -24,6 +24,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h qrcode_handler.Handler, mw *middle
 		g.POST("", mw.RequirePermission(constants.PermQRCodeCreate), h.Create)
 		g.PUT("/:id", mw.RequirePermission(constants.PermQRCodeUpdate), h.Update)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermQRCodeDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermQRCodeDelete), h.BulkDelete)
 	}
 }
 

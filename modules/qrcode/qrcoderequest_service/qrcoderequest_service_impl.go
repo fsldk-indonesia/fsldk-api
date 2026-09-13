@@ -251,13 +251,15 @@ func (s *ServiceImpl) PublicPIC(ctx context.Context) (qrcoderequest_dto.PICRespo
 	return qrcoderequest_dto.PICResponse{PICName: picName, PICWhatsapp: picWhatsapp}, nil
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string) ([]qrcoderequest_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status []string, dateFrom, dateTo string) ([]qrcoderequest_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, qrcoderequest_dto.ListFilter{
-		Status:  status,
-		Search:  q.Search,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "qr.createdDate DESC"),
+		Status:   status,
+		Search:   q.Search,
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "qr.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")

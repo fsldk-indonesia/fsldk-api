@@ -61,12 +61,18 @@ func (r *RepositoryImpl) FindPendingByIDs(ctx context.Context, ids []int64) ([]q
 
 func (r *RepositoryImpl) List(ctx context.Context, f qrcoderequest_dto.ListFilter) ([]qrcoderequest_model.QRCodeRequest, int64, error) {
 	base := r.db.WithContext(ctx).Table("ms_qrcode_request qr").Joins(joins)
-	if f.Status != "" {
-		base = base.Where("qr.status = ?", f.Status)
+	if len(f.Status) > 0 {
+		base = base.Where("qr.status IN ?", f.Status)
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
 		base = base.Where("(qr.requesterName LIKE ? OR qr.requesterEmail LIKE ? OR qr.destinationURL LIKE ?)", like, like, like)
+	}
+	if f.DateFrom != "" {
+		base = base.Where("DATE(qr.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("DATE(qr.createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64

@@ -31,7 +31,7 @@ type Service interface {
 	// PublicPIC mengembalikan info kontak PIC untuk kartu "Konfirmasi via
 	// WhatsApp" di halaman publik pengajuan.
 	PublicPIC(ctx context.Context) (qrcoderequest_dto.PICResponse, error)
-	CMSList(ctx context.Context, q dto.ListQuery, status string) ([]qrcoderequest_dto.Response, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, status []string, dateFrom, dateTo string) ([]qrcoderequest_dto.Response, int, error)
 	CMSGet(ctx context.Context, id int64) (qrcoderequest_dto.Response, error)
 	// Approve (jalur CMS) membuat QR Code baru (transaksi atomik kondisional)
 	// dan mengantre notifikasi ke requester.

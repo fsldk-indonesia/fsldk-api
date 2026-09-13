@@ -10,6 +10,7 @@ type Handler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 	// PublicDetail adalah handler publik (tanpa auth) yang mengembalikan
 	// metadata ringkas satu QR Code untuk halaman detail/unduh publik.
 	PublicDetail(c *gin.Context)

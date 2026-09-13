@@ -50,6 +50,12 @@ func (r *RepositoryImpl) List(ctx context.Context, f qrcode_dto.ListFilter) ([]q
 		like := "%" + f.Search + "%"
 		base = base.Where("(q.label LIKE ? OR q.destinationURL LIKE ? OR q.captionText LIKE ?)", like, like, like)
 	}
+	if f.DateFrom != "" {
+		base = base.Where("DATE(q.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("DATE(q.createdDate) <= ?", f.DateTo)
+	}
 
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
