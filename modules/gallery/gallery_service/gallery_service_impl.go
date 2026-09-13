@@ -313,6 +313,19 @@ func (s *serviceImpl) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// BulkDelete menghapus banyak galeri, memakai ulang validasi & pembersihan
+// file dari Delete per ID. Best-effort seperti pola bulk-delete CMS lainnya
+// (shortlink, news, event, qrcode): ID yang sudah hilang dilewati diam-diam.
+func (s *serviceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada galeri yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
+	return nil
+}
+
 func (s *serviceImpl) ListPhotosCMS(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error) {
 	return s.ListPhotosPublic(ctx, galleryID, page, limit)
 }

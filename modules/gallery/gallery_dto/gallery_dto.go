@@ -55,10 +55,17 @@ type Filter struct {
 	Search     string
 	EventName  string
 	EventTheme string
+	DateFrom   string // "YYYY-MM-DD", inklusif — filter kolom createdDate
+	DateTo     string // "YYYY-MM-DD", inklusif
 	SortBy     string
 	SortOrder  string
 	Limit      int
 	Offset     int
+}
+
+// BulkDeleteRequest is the body for deleting multiple galleries at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // GalleryListItem represents a compact gallery entry for list endpoints.

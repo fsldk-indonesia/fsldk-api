@@ -37,6 +37,12 @@ func (r *repositoryImpl) List(ctx context.Context, f gallery_dto.Filter) ([]gall
 	if f.EventTheme != "" {
 		q = q.Where("LOWER(eventTheme) LIKE ?", "%"+strings.ToLower(f.EventTheme)+"%")
 	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(createdDate) <= ?", f.DateTo)
+	}
 
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
