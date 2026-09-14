@@ -218,7 +218,7 @@ func (h *HandlerImpl) RemoveDraftFile(c *gin.Context) {
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	f := dynamicform_dto.FormFilter{
-		Status:   strings.TrimSpace(c.Query("status")),
+		Statuses: dto.ParseCSV(c.Query("status")),
 		DateFrom: strings.TrimSpace(c.Query("dateFrom")),
 		DateTo:   strings.TrimSpace(c.Query("dateTo")),
 	}
@@ -484,6 +484,28 @@ func (h *HandlerImpl) DeleteSubmission(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Tanggapan dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDeleteSubmissions(c *gin.Context) {
+	id, ok := idParam(c, "id")
+	if !ok {
+		return
+	}
+	var req dynamicform_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	res, err := h.svc.BulkDeleteSubmissions(c.Request.Context(), id, req.IDs, appctx.UserID(c), permsOf(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Tanggapan terpilih diproses", res)
 }
 
 func (h *HandlerImpl) ExportCSV(c *gin.Context) {

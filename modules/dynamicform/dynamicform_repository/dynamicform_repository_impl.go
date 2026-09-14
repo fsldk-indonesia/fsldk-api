@@ -120,8 +120,8 @@ func (r *RepositoryImpl) ListForms(ctx context.Context, f dynamicform_dto.FormFi
 	if f.Search != "" {
 		q = q.Where("f.title LIKE ?", "%"+f.Search+"%")
 	}
-	if f.Status != "" {
-		q = q.Where("f.status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		q = q.Where("f.status IN ?", f.Statuses)
 	}
 	if f.DateFrom != "" {
 		q = q.Where("f.createdDate >= ?", f.DateFrom)

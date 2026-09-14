@@ -56,6 +56,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h dynamicform_handler.Handler, mw *m
 		g.GET("/:id/submissions/:subID", mw.RequirePermission(constants.PermDynamicFormView), h.GetSubmission)
 		g.PUT("/:id/submissions/:subID", mw.RequirePermission(constants.PermDynamicFormUpdate), h.UpdateSubmission)
 		g.DELETE("/:id/submissions/:subID", mw.RequirePermission(constants.PermDynamicFormDelete), h.DeleteSubmission)
+		g.POST("/:id/submissions/bulk-delete", mw.RequirePermission(constants.PermDynamicFormDelete), h.BulkDeleteSubmissions)
 		g.GET("/:id/responses.csv", mw.RequirePermission(constants.PermDynamicFormView), h.ExportCSV)
 		g.DELETE("/:id/submissions", mw.RequirePermission(constants.PermDynamicFormDelete), h.DeleteResponses)
 		g.GET("/:id/analytics", mw.RequirePermission(constants.PermDynamicFormView), h.Analytics)

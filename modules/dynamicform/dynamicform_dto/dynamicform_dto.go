@@ -93,10 +93,13 @@ type EditSubmissionRequest struct {
 // Filters
 // ---------------------------------------------------------------------------
 
-// FormFilter holds the CMS list filter (repository + service).
+// FormFilter holds the CMS list filter (repository + service). Statuses is a
+// slice (bukan satu nilai) — genuinely multi-select bermakna di dashboard CMS
+// (mis. lihat draft+closed sekaligus), diterapkan lewat klausa IN, sama pola
+// dengan Status/Queue di modul Job Queue.
 type FormFilter struct {
 	Search   string
-	Status   string
+	Statuses []string
 	DateFrom string
 	DateTo   string
 	MineOnly bool

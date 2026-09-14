@@ -281,6 +281,18 @@ func (s *ServiceImpl) DeleteSubmission(ctx context.Context, formID, submissionID
 	return nil
 }
 
+func (s *ServiceImpl) BulkDeleteSubmissions(ctx context.Context, formID int64, submissionIDs []int64, actorID int64, perms []string) (dynamicform_dto.BulkDeleteResult, error) {
+	res := dynamicform_dto.BulkDeleteResult{Deleted: []int64{}, Skipped: []int64{}}
+	for _, id := range submissionIDs {
+		if err := s.DeleteSubmission(ctx, formID, id, actorID, perms); err != nil {
+			res.Skipped = append(res.Skipped, id)
+			continue
+		}
+		res.Deleted = append(res.Deleted, id)
+	}
+	return res, nil
+}
+
 func (s *ServiceImpl) DeleteResponses(ctx context.Context, formID int64, actorID int64, perms []string) error {
 	form, err := s.getOwnedForm(ctx, formID, actorID, perms)
 	if err != nil {
