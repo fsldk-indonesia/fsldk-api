@@ -49,5 +49,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *midd
 		g.POST("", mw.RequirePermission(constants.PermDonationCreate), h.AdminCreate)
 		g.PUT("/:id", mw.RequirePermission(constants.PermDonationUpdate), h.AdminUpdate)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermDonationDelete), h.AdminDelete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermDonationDelete), h.BulkDelete)
 	}
 }

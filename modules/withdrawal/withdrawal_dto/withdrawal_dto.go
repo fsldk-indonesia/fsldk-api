@@ -40,6 +40,7 @@ type Response struct {
 	ApprovedDate             *time.Time `json:"approvedDate,omitempty"`
 	ExecutedDate             *time.Time `json:"executedDate,omitempty"`
 	CompletedDate            *time.Time `json:"completedDate,omitempty"`
+	ReceiptURL               string     `json:"receiptUrl,omitempty"`
 	CreatedDate              time.Time  `json:"createdDate"`
 }
 
@@ -63,11 +64,16 @@ type BankListItem struct {
 	Status   string  `json:"status"`
 }
 
-// ListFilter menampung parameter penyaringan daftar withdrawal.
+// ListFilter menampung parameter penyaringan daftar withdrawal. Statuses
+// genuinely multi-select bermakna di CMS, diterapkan lewat klausa IN — sama
+// pola dengan modul lain yang sudah dimigrasikan ke CmsIndexComponent.
 type ListFilter struct {
 	CampaignID        int64
 	RequestedByUserID *int64
-	Status            string
+	Statuses          []string
+	Search            string
+	DateFrom          string
+	DateTo            string
 	Limit             int
 	Offset            int
 	OrderBy           string

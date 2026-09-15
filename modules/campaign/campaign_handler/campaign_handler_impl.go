@@ -139,10 +139,31 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 	httphelper.Success(c, "Campaign berhasil dihapus", nil)
 }
 
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req campaign_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	res, err := h.svc.BulkDelete(c.Request.Context(), req.IDs)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Campaign terpilih diproses", res)
+}
+
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	categoryID, _ := strconv.ParseInt(c.Query("categoryID"), 10, 64)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("status"), categoryID)
+	statuses := dto.ParseCSV(c.Query("status"))
+	dateFrom := c.Query("dateFrom")
+	dateTo := c.Query("dateTo")
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, statuses, categoryID, dateFrom, dateTo)
 	if err != nil {
 		httphelper.Error(c, err)
 		return

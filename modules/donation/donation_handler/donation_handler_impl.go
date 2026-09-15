@@ -127,12 +127,33 @@ func (h *HandlerImpl) MyList(c *gin.Context) {
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	campaignID, _ := strconv.ParseInt(c.Query("campaignID"), 10, 64)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, campaignID, c.Query("status"))
+	statuses := dto.ParseCSV(c.Query("status"))
+	paymentMethods := dto.ParseCSV(c.Query("paymentMethod"))
+	amount, _ := strconv.ParseFloat(c.Query("amount"), 64)
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, campaignID, statuses, paymentMethods, amount, c.Query("dateFrom"), c.Query("dateTo"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req donation_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	res, err := h.svc.BulkDelete(c.Request.Context(), req.IDs)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Donasi terpilih diproses", res)
 }
 
 func donationIDParam(c *gin.Context) (int64, bool) {

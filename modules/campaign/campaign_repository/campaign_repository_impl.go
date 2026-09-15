@@ -35,14 +35,20 @@ func (r *RepositoryImpl) baseQuery(ctx context.Context) *gorm.DB {
 
 func (r *RepositoryImpl) List(ctx context.Context, f campaign_dto.ListFilter) ([]campaign_model.Campaign, int64, error) {
 	q := r.baseQuery(ctx)
-	if f.Status != "" {
-		q = q.Where("c.status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		q = q.Where("c.status IN ?", f.Statuses)
 	}
 	if f.CategoryID > 0 {
 		q = q.Where("c.categoryID = ?", f.CategoryID)
 	}
 	if f.Search != "" {
 		q = q.Where("c.title LIKE ?", "%"+f.Search+"%")
+	}
+	if f.DateFrom != "" {
+		q = q.Where("c.createdDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("c.createdDate <= ?", f.DateTo)
 	}
 
 	var total int64

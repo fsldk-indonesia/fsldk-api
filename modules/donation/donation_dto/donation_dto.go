@@ -111,14 +111,38 @@ type CallbackRequest struct {
 	StatusID         int    `json:"status_id"`
 }
 
-// ListFilter menampung parameter penyaringan daftar donasi.
+// ListFilter menampung parameter penyaringan daftar donasi. Statuses
+// genuinely multi-select bermakna di CMS (mis. lihat PENDING+FAILED
+// sekaligus), diterapkan lewat klausa IN — sama pola dengan modul lain
+// yang sudah dimigrasikan ke CmsIndexComponent.
 type ListFilter struct {
 	CampaignID  int64
 	DonorUserID *int64
-	Status      string
-	Limit       int
-	Offset      int
-	OrderBy     string
+	Statuses    []string
+	Search      string
+	// PaymentMethods genuinely multi-select bermakna (combobox search target
+	// "Metode" di CMS, sama pola dengan Kategori Berita) — klausa IN.
+	PaymentMethods []string
+	// Amount, bila > 0, mencocokkan nominal donasi persis (exact match) —
+	// dipakai search target "Nominal" di CMS, bukan rentang.
+	Amount   float64
+	DateFrom string
+	DateTo   string
+	Limit    int
+	Offset   int
+	OrderBy  string
+}
+
+// BulkDeleteRequest adalah body POST /donations/bulk-delete.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1,dive,required"`
+}
+
+// BulkDeleteResult meringkas hasil hapus massal — donasi gateway=bisatopup
+// otomatis masuk Skipped (AdminDelete menolaknya, lihat donation_service_impl.go).
+type BulkDeleteResult struct {
+	Deleted []int64 `json:"deleted"`
+	Skipped []int64 `json:"skipped"`
 }
 
 // PublicDonationItem adalah satu baris "donatur terbaru" pada halaman

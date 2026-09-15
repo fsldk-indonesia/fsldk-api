@@ -30,6 +30,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *midd
 		g.POST("", mw.RequirePermission(constants.PermCampaignCreate), h.Create)
 		g.PUT("/:id", mw.RequirePermission(constants.PermCampaignUpdate), h.Update)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermCampaignDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermCampaignDelete), h.BulkDelete)
 		g.POST("/:id/publish", mw.RequirePermission(constants.PermCampaignPublish), h.Publish)
 		g.POST("/:id/pause", mw.RequirePermission(constants.PermCampaignModerate), h.Pause)
 		g.POST("/:id/resume", mw.RequirePermission(constants.PermCampaignModerate), h.Resume)

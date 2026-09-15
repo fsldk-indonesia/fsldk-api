@@ -16,6 +16,7 @@ type Handler interface {
 	ExportDonationReport(c *gin.Context)
 	WithdrawalReport(c *gin.Context)
 	ExportWithdrawalReport(c *gin.Context)
+	WithdrawalFunnel(c *gin.Context)
 	Reconciliation(c *gin.Context)
 	FinanceAuditLog(c *gin.Context)
 	GlobalLedger(c *gin.Context)

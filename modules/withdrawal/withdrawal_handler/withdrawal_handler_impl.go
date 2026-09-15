@@ -102,7 +102,8 @@ func (h *HandlerImpl) VerifySecurity(c *gin.Context) {
 
 func (h *HandlerImpl) CMSList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.CMSList(c.Request.Context(), q, c.Query("status"))
+	statuses := dto.ParseCSV(c.Query("status"))
+	data, total, err := h.svc.CMSList(c.Request.Context(), q, statuses, c.Query("dateFrom"), c.Query("dateTo"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

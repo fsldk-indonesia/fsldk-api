@@ -552,11 +552,11 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req withdrawal_dto.Di
 	}
 
 	return dbretry.Do(func() error {
-		return s.processCallbackTx(ctx, req.ReffID, req.StatusID, newStatus)
+		return s.processCallbackTx(ctx, req.ReffID, req.StatusID, newStatus, req.Receipt)
 	})
 }
 
-func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, statusID int, newStatus string) error {
+func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, statusID int, newStatus string, receipt string) error {
 	var notifyWithdrawal withdrawal_model.Withdrawal
 	shouldNotify := false
 
@@ -580,6 +580,9 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, stat
 
 		sID := statusID
 		params := withdrawal_model.StatusUpdateParams{GatewayStatusID: &sID, SetCompletedNow: newStatus == constants.WithdrawalStatusSuccess}
+		if receipt != "" {
+			params.ReceiptURL = &receipt
+		}
 		if err := s.repo.UpdateStatus(tx, w.WithdrawalID, newStatus, params); err != nil {
 			return err
 		}
@@ -687,12 +690,15 @@ func (s *ServiceImpl) RunReconcileScheduler() {
 	}
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string) ([]withdrawal_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, statuses []string, dateFrom, dateTo string) ([]withdrawal_dto.Response, int, error) {
 	return s.list(ctx, withdrawal_dto.ListFilter{
-		Status:  status,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "w.createdDate DESC"),
+		Statuses: statuses,
+		Search:   q.Search,
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "w.createdDate DESC"),
 	})
 }
 
@@ -749,6 +755,9 @@ func toResponse(w withdrawal_model.Withdrawal) withdrawal_dto.Response {
 	if w.CompletedDate.Valid {
 		t := w.CompletedDate.Time
 		resp.CompletedDate = &t
+	}
+	if w.ReceiptURL.Valid {
+		resp.ReceiptURL = w.ReceiptURL.String
 	}
 	return resp
 }
