@@ -34,9 +34,10 @@ const (
 )
 
 var sortColumns = map[string]string{
-	"createdDate":   "createdDate",
-	"submittedDate": "submittedDate",
-	"status":        "status",
+	"createdDate":      "s.createdDate",
+	"submittedDate":    "s.submittedDate",
+	"status":           "s.status",
+	"organizationName": "o.organizationName",
 }
 
 // ServiceImpl adalah implementasi Service.
@@ -311,11 +312,12 @@ func (s *ServiceImpl) toResponse(sub submission_model.Submission, formCode strin
 		FormID:         sub.FormID,
 		FormCode:       formCode,
 		FormVersionID:  sub.FormVersionID,
-		OrganizationID: sub.OrganizationID,
-		SubjectType:    sub.SubjectType,
-		Status:         sub.Status,
-		Version:        sub.Version,
-		CreatedDate:    sub.CreatedDate,
+		OrganizationID:   sub.OrganizationID,
+		OrganizationName: sub.OrganizationName,
+		SubjectType:      sub.SubjectType,
+		Status:           sub.Status,
+		Version:          sub.Version,
+		CreatedDate:      sub.CreatedDate,
 	}
 	if sub.SubmittedDate.Valid {
 		out.SubmittedDate = &sub.SubmittedDate.Time
@@ -792,12 +794,13 @@ func (s *ServiceImpl) resolveScopedOrganizationIDs(ctx context.Context, caller C
 	return ids, nil
 }
 
-func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, status, formCode string) ([]submission_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, statuses []string, formCode string) ([]submission_dto.Response, int, error) {
 	filter := submission_dto.ListFilter{
-		Status:  status,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "createdDate DESC"),
+		Statuses: statuses,
+		Search:   q.Search,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "s.createdDate DESC"),
 	}
 	if formCode != "" {
 		form, err := s.formRepo.FindFormByCode(ctx, formCode)

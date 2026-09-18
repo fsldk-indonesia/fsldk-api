@@ -53,6 +53,33 @@ func requestedOrganizationID(c *gin.Context) *int64 {
 	return &id
 }
 
+// parseIsActive membaca query `status` (comma-separated "active"/"inactive",
+// dikirim frontend dari filter Status multi-select app-cms-index) menjadi
+// *bool: hanya "active" -> true, hanya "inactive" -> false, keduanya atau
+// kosong -> nil (tanpa filter, sama seperti sebelum status filter ada).
+func parseIsActive(c *gin.Context) *bool {
+	statuses := dto.ParseCSV(c.Query("status"))
+	hasActive, hasInactive := false, false
+	for _, s := range statuses {
+		switch s {
+		case "active":
+			hasActive = true
+		case "inactive":
+			hasInactive = true
+		}
+	}
+	switch {
+	case hasActive && !hasInactive:
+		v := true
+		return &v
+	case hasInactive && !hasActive:
+		v := false
+		return &v
+	default:
+		return nil
+	}
+}
+
 func (h *HandlerImpl) Me(c *gin.Context) {
 	var siblingOf *int64
 	if raw := c.Query("siblingOf"); raw != "" {
@@ -82,9 +109,26 @@ func (h *HandlerImpl) Directory(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+// parseParentOrganizationID membaca query `parentOrganizationID` opsional
+// (filter LDK per Puskomda di daftar LDK nasional Portal Puskomnas) — tidak
+// divalidasi cakupan akses di sini (berbeda dari RequestedOrganizationID/
+// org-switcher), murni penyaring tambahan di dalam hasil yang sudah
+// dibatasi cakupan akses caller oleh resolveAccessible/ListSelfAndChildren.
+func parseParentOrganizationID(c *gin.Context) *int64 {
+	raw := c.Query("parentOrganizationID")
+	if raw == "" {
+		return nil
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		return nil
+	}
+	return &id
+}
+
 func (h *HandlerImpl) List(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.List(c.Request.Context(), callerScope(c), q, c.Query("organizationTypeCode"))
+	data, total, err := h.svc.List(c.Request.Context(), callerScope(c), q, c.Query("organizationTypeCode"), parseIsActive(c), parseParentOrganizationID(c))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

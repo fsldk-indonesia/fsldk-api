@@ -70,21 +70,30 @@ func (r *RepositoryImpl) FindByUserAndForm(ctx context.Context, userID, formID i
 	return s, err
 }
 
+// List memakai alias tabel `s` + LEFT JOIN ms_organization `o` (bukan hanya
+// saat search terisi) supaya kolom organizationName SELALU ikut ter-select —
+// dipakai kolom "LDK" halaman Laporan (lihat submission_dto.Response). Filter
+// lain (organizationIDs/status/formID) tetap merujuk tabel `s`.
 func (r *RepositoryImpl) List(ctx context.Context, f submission_dto.ListFilter) ([]submission_model.Submission, int64, error) {
-	base := r.db.WithContext(ctx).Table("tr_submission")
+	base := r.db.WithContext(ctx).Table("tr_submission s").
+		Joins("LEFT JOIN ms_organization o ON o.organizationID = s.organizationID")
 	if f.SubmittedByUserID != nil {
-		base = base.Where("submittedByUserID = ?", *f.SubmittedByUserID)
+		base = base.Where("s.submittedByUserID = ?", *f.SubmittedByUserID)
 	} else {
 		if len(f.OrganizationIDs) == 0 {
 			return []submission_model.Submission{}, 0, nil
 		}
-		base = base.Where("organizationID IN ?", f.OrganizationIDs)
+		base = base.Where("s.organizationID IN ?", f.OrganizationIDs)
 	}
-	if f.Status != "" {
-		base = base.Where("status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		base = base.Where("s.status IN ?", f.Statuses)
 	}
 	if f.FormID > 0 {
-		base = base.Where("formID = ?", f.FormID)
+		base = base.Where("s.formID = ?", f.FormID)
+	}
+	if f.Search != "" {
+		like := "%" + f.Search + "%"
+		base = base.Where("(o.organizationName LIKE ? OR o.organizationCode LIKE ?)", like, like)
 	}
 
 	var total int64
@@ -94,10 +103,10 @@ func (r *RepositoryImpl) List(ctx context.Context, f submission_dto.ListFilter) 
 
 	orderBy := f.OrderBy
 	if orderBy == "" {
-		orderBy = "createdDate DESC"
+		orderBy = "s.createdDate DESC"
 	}
 	var out []submission_model.Submission
-	q := base.Order(orderBy)
+	q := base.Select("s.*, o.organizationName AS organizationName").Order(orderBy)
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit).Offset(f.Offset)
 	}
