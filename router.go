@@ -123,6 +123,11 @@ import (
 	"fsldk-api/modules/setting/setting_repository"
 	"fsldk-api/modules/setting/setting_service"
 
+	"fsldk-api/modules/welcomepopup"
+	"fsldk-api/modules/welcomepopup/welcomepopup_handler"
+	"fsldk-api/modules/welcomepopup/welcomepopup_repository"
+	"fsldk-api/modules/welcomepopup/welcomepopup_service"
+
 	"fsldk-api/modules/jobqueue"
 	"fsldk-api/modules/jobqueue/jobqueue_handler"
 	"fsldk-api/modules/jobqueue/jobqueue_repository"
@@ -213,6 +218,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	qrcodeRepo := qrcode_repository.NewRepository(db)
 	qrcodeReqRepo := qrcoderequest_repository.NewRepository(db)
 	settingRepo := setting_repository.NewRepository(db)
+	welcomePopupRepo := welcomepopup_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 	campaignRepo := campaign_repository.NewRepository(db)
@@ -238,6 +244,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// qrcode_service membacanya untuk menempelkan ikon tengah pada gambar QR.
 	qrcodeSvc := qrcode_service.NewService(qrcodeRepo, apiBaseURL, "assets/uploads")
 	settingSvc := setting_service.NewService(settingRepo)
+	welcomePopupSvc := welcomepopup_service.NewService(welcomePopupRepo)
 	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,
 		cfg.KirimdevTemplateLanguage, cfg.KirimdevWebhookSecrets(),
 		time.Duration(cfg.KirimdevReplyWindowMinutes)*time.Minute)
@@ -351,6 +358,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// milik shortlink.
 	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc, qrcodeReqSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
+	welcomePopupH := welcomepopup_handler.NewHandler(welcomePopupSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	zakatH := zakat_handler.NewHandler(zakatSvc)
 	reportH := report_handler.NewHandler(reportSvc)
@@ -431,6 +439,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	qrcode.RegisterRequestCMSRoutes(api, qrcodeReqH, mw)
 
 	setting.RegisterCMSRoutes(api, settingH, mw)
+	welcomepopup.RegisterCMSRoutes(api, welcomePopupH, mw)
+	welcomepopup.RegisterPublicRoutes(pub, welcomePopupH)
 	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)
 
 	upload.RegisterCMSRoutes(api, uploadH, mw)
