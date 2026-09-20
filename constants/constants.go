@@ -173,6 +173,9 @@ const (
 	PermSettingView   = "setting.view"
 	PermSettingUpdate = "setting.update"
 
+	PermWelcomePopupView   = "welcomepopup.view"
+	PermWelcomePopupUpdate = "welcomepopup.update"
+
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
