@@ -16,4 +16,5 @@ type Handler interface {
 	Publish(c *gin.Context)
 	Featured(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 }

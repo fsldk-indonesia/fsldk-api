@@ -25,6 +25,9 @@ type Repository interface {
 
 	// Admin
 	CMSList(ctx context.Context, f comment_dto.CMSListFilter) ([]comment_model.Comment, int64, error)
+	// ContentTitle returns the title of the content a comment is attached to
+	// (article/news/event/catalogBook) — used by the CMS "View Comment" page.
+	ContentTitle(ctx context.Context, contentType string, contentID int64) (string, error)
 
 	// Write
 	Create(ctx context.Context, c comment_model.Comment) (int64, error)

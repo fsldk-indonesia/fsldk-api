@@ -27,5 +27,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h article_handler.Handler, mw *middl
 		g.PUT("/:id", mw.RequirePermission(constants.PermArticleUpdate), h.Update)
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermArticlePublish), h.Publish)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermArticleDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermArticleDelete), h.BulkDelete)
 	}
 }

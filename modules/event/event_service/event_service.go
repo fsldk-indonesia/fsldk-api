@@ -1,4 +1,4 @@
-﻿// Package event_service contains the business logic for the event module.
+// Package event_service contains the business logic for the event module.
 package event_service
 
 import (
@@ -25,7 +25,7 @@ type Service interface {
 	// PublicDetail returns a published event by slug and increments its view count.
 	PublicDetail(ctx context.Context, slug string) (event_dto.EventResponse, error)
 	// CMSList returns all events (published or not) for the CMS dashboard.
-	CMSList(ctx context.Context, q dto.ListQuery, division string) ([]event_model.Event, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, f event_dto.CMSFilter) ([]event_model.Event, int, error)
 	// CMSGet returns any event by ID for CMS editing.
 	CMSGet(ctx context.Context, id int64) (event_model.Event, error)
 	// Create validates, slugifies, and persists a new event.
@@ -34,4 +34,6 @@ type Service interface {
 	Update(ctx context.Context, id int64, req event_dto.UpdateRequest, updatedBy int64) (event_model.Event, error)
 	// Delete removes an event by ID.
 	Delete(ctx context.Context, id int64) error
+	// BulkDelete removes multiple events by ID, best-effort per ID.
+	BulkDelete(ctx context.Context, ids []int64) error
 }

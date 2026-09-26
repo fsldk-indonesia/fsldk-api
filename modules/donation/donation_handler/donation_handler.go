@@ -19,4 +19,5 @@ type Handler interface {
 	AdminCreate(c *gin.Context)
 	AdminUpdate(c *gin.Context)
 	AdminDelete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 }

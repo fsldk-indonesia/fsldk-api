@@ -34,6 +34,8 @@ type Service interface {
 	Update(ctx context.Context, id int64, req catalogbook_dto.Request, actorID int64) (catalogbook_model.CatalogBook, error)
 	SetActive(ctx context.Context, id int64, isActive bool, actorID int64) error
 	Delete(ctx context.Context, id int64) error
+	// BulkDelete removes multiple books by ID, best-effort per ID.
+	BulkDelete(ctx context.Context, ids []int64) error
 
 	Like(ctx context.Context, id int64) (int, error)
 }

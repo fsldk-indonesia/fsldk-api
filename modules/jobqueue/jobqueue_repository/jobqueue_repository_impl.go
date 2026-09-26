@@ -56,15 +56,21 @@ func (r *RepositoryImpl) FindByID(ctx context.Context, id int64) (jobqueue_model
 
 func (r *RepositoryImpl) List(ctx context.Context, f jobqueue_dto.ListFilter) ([]jobqueue_model.Job, int64, error) {
 	base := r.db.WithContext(ctx).Table("tr_job_queue")
-	if f.Status != "" {
-		base = base.Where("status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		base = base.Where("status IN ?", f.Statuses)
 	}
-	if f.Queue != "" {
-		base = base.Where("queue = ?", f.Queue)
+	if len(f.Queues) > 0 {
+		base = base.Where("queue IN ?", f.Queues)
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
 		base = base.Where("(jobType LIKE ? OR lastError LIKE ?)", like, like)
+	}
+	if f.DateFrom != "" {
+		base = base.Where("DATE(createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("DATE(createdDate) <= ?", f.DateTo)
 	}
 
 	var total int64

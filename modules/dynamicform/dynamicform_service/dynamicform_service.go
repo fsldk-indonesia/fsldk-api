@@ -53,6 +53,7 @@ type Service interface {
 	GetSubmission(ctx context.Context, formID, submissionID int64, actorID int64, perms []string) (dynamicform_dto.SubmissionDetail, error)
 	UpdateSubmission(ctx context.Context, formID, submissionID int64, actorID int64, perms []string, req dynamicform_dto.EditSubmissionRequest, files map[int64]*multipart.FileHeader) error
 	DeleteSubmission(ctx context.Context, formID, submissionID int64, actorID int64, perms []string) error
+	BulkDeleteSubmissions(ctx context.Context, formID int64, submissionIDs []int64, actorID int64, perms []string) (dynamicform_dto.BulkDeleteResult, error)
 	ExportCSV(ctx context.Context, formID int64, actorID int64, perms []string, w io.Writer) (string, error)
 	DeleteResponses(ctx context.Context, formID int64, actorID int64, perms []string) error
 	GetAnalytics(ctx context.Context, formID int64, actorID int64, perms []string) (dynamicform_dto.Analytics, error)

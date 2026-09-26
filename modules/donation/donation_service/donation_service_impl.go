@@ -508,7 +508,7 @@ func (s *ServiceImpl) PublicRecentDonations(ctx context.Context, slug string, li
 		limit = 10
 	}
 	rows, _, err := s.repo.List(ctx, donation_dto.ListFilter{
-		CampaignID: camp.CampaignID, Status: constants.DonationStatusPaid,
+		CampaignID: camp.CampaignID, Statuses: []string{constants.DonationStatusPaid},
 		Limit: limit, OrderBy: "d.createdDate DESC",
 	})
 	if err != nil {
@@ -537,14 +537,33 @@ func (s *ServiceImpl) MyList(ctx context.Context, donorUserID int64, q dto.ListQ
 	})
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, campaignID int64, status string) ([]donation_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, campaignID int64, statuses, paymentMethods []string, amount float64, dateFrom, dateTo string) ([]donation_dto.Response, int, error) {
 	return s.list(ctx, donation_dto.ListFilter{
-		CampaignID: campaignID,
-		Status:     status,
-		Limit:      q.Limit,
-		Offset:     q.Offset(),
-		OrderBy:    q.OrderBy(sortColumns, "d.createdDate DESC"),
+		CampaignID:     campaignID,
+		Statuses:       statuses,
+		Search:         q.Search,
+		PaymentMethods: paymentMethods,
+		Amount:         amount,
+		DateFrom:       dateFrom,
+		DateTo:         dateTo,
+		Limit:          q.Limit,
+		Offset:         q.Offset(),
+		OrderBy:        q.OrderBy(sortColumns, "d.createdDate DESC"),
 	})
+}
+
+// BulkDelete menghapus banyak donasi manual sekaligus — best-effort, donasi
+// gateway=bisatopup otomatis dilewati (AdminDelete menolaknya).
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) (donation_dto.BulkDeleteResult, error) {
+	res := donation_dto.BulkDeleteResult{Deleted: []int64{}, Skipped: []int64{}}
+	for _, id := range ids {
+		if err := s.AdminDelete(ctx, id); err != nil {
+			res.Skipped = append(res.Skipped, id)
+			continue
+		}
+		res.Deleted = append(res.Deleted, id)
+	}
+	return res, nil
 }
 
 func (s *ServiceImpl) CMSGet(ctx context.Context, id int64) (donation_dto.AdminDetailResponse, error) {

@@ -45,12 +45,14 @@ func (s *ServiceImpl) toResponse(sl shortlink_model.ShortLink) shortlink_dto.Res
 	}
 }
 
-func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery) ([]shortlink_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, dateFrom, dateTo string) ([]shortlink_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, shortlink_dto.ListFilter{
-		Search:  q.Search,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "s.createdDate DESC"),
+		Search:   q.Search,
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "s.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
@@ -119,6 +121,20 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return apperror.Internal("")
+	}
+	return nil
+}
+
+// BulkDelete deletes multiple shortlink rows, reusing Delete's validation per
+// ID. Best-effort like the CMS bulk-delete pattern elsewhere (news, article,
+// user): an ID already gone is silently skipped rather than failing the
+// whole batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada shortlink yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
 	}
 	return nil
 }

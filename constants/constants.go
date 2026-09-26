@@ -139,6 +139,11 @@ const (
 	PermCommentUpdate = "comment.update"
 	PermCommentDelete = "comment.delete"
 
+	PermStructureView   = "structure.view"
+	PermStructureCreate = "structure.create"
+	PermStructureUpdate = "structure.update"
+	PermStructureDelete = "structure.delete"
+
 	PermCampaignCreate   = "kantong_amal.campaign.create"
 	PermCampaignView     = "kantong_amal.campaign.view"
 	PermCampaignUpdate   = "kantong_amal.campaign.update"
@@ -167,6 +172,9 @@ const (
 
 	PermSettingView   = "setting.view"
 	PermSettingUpdate = "setting.update"
+
+	PermWelcomePopupView   = "welcomepopup.view"
+	PermWelcomePopupUpdate = "welcomepopup.update"
 
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"

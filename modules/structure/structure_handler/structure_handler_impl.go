@@ -7,6 +7,7 @@ import (
 
 	"fsldk-api/base/appctx"
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
 
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/validation"
@@ -27,8 +28,7 @@ func NewHandler(svc structure_service.Service) Handler {
 func (h *HandlerImpl) ListPublic(c *gin.Context) {
 	// Public endpoint doesn't need pagination according to techspec
 	filter := structure_dto.Filter{
-		SortBy:    "createdDate",
-		SortOrder: "desc",
+		OrderBy: "createdDate DESC",
 	}
 
 	structures, _, err := h.svc.List(c.Request.Context(), filter)
@@ -41,32 +41,37 @@ func (h *HandlerImpl) ListPublic(c *gin.Context) {
 }
 
 func (h *HandlerImpl) ListCMS(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	if page < 1 {
-		page = 1
-	}
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "15"))
-	if limit < 1 {
-		limit = 15
-	}
-	offset := (page - 1) * limit
-
+	q := dto.ParseListQuery(c)
 	filter := structure_dto.Filter{
-		Search:    strings.TrimSpace(c.Query("search")),
-		SortBy:    c.DefaultQuery("sort_by", "createdDate"),
-		SortOrder: c.DefaultQuery("sort_order", "desc"),
-		Limit:     limit,
-		Offset:    offset,
+		DateFrom: strings.TrimSpace(c.Query("dateFrom")),
+		DateTo:   strings.TrimSpace(c.Query("dateTo")),
 	}
 
-	structures, total, err := h.svc.List(c.Request.Context(), filter)
+	structures, total, err := h.svc.CMSList(c.Request.Context(), q, filter)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
 
-	res := httphelper.BuildPagination(c, structures, int(total), page, limit)
+	res := httphelper.BuildPagination(c, structures, int(total), q.Page, q.Limit)
 	httphelper.Success(c, "Berhasil mengambil daftar struktur", res)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req structure_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Struktur terpilih berhasil dihapus", nil)
 }
 
 func (h *HandlerImpl) ShowCMS(c *gin.Context) {

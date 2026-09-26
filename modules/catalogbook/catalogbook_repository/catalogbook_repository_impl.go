@@ -37,6 +37,27 @@ func (r *RepositoryImpl) List(ctx context.Context, f catalogbook_dto.Filter) ([]
 	q := r.baseQuery(ctx)
 	if f.ActiveOnly {
 		q = q.Where("b.isActive = 1")
+	} else if len(f.ActiveStatuses) > 0 {
+		// Multi-select (checkbox) — "active"/"inactive" mapped to isActive
+		// 1/0, same convention as news_repository.List.
+		vals := make([]bool, 0, len(f.ActiveStatuses))
+		for _, s := range f.ActiveStatuses {
+			switch s {
+			case "active":
+				vals = append(vals, true)
+			case "inactive":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			q = q.Where("b.isActive IN ?", vals)
+		}
+	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(b.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(b.createdDate) <= ?", f.DateTo)
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"

@@ -195,13 +195,16 @@ func (s *ServiceImpl) React(ctx context.Context, commentID, userID int64, reacti
 	return comment_dto.ReactionsDTO{Counts: c, UserTypes: userTypes[commentID]}, nil
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, contentType string) ([]comment_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, filter comment_dto.CMSFilter) ([]comment_dto.Response, int, error) {
 	f := comment_dto.CMSListFilter{
-		ContentType: contentType,
-		Search:      q.Search,
-		Limit:       q.Limit,
-		Offset:      q.Offset(),
-		OrderBy:     q.OrderBy(sortColumns, "cm.createdDate DESC"),
+		ContentTypes: filter.ContentTypes,
+		Search:       q.Search,
+		Author:       filter.Author,
+		DateFrom:     filter.DateFrom,
+		DateTo:       filter.DateTo,
+		Limit:        q.Limit,
+		Offset:       q.Offset(),
+		OrderBy:      q.OrderBy(sortColumns, "cm.createdDate DESC"),
 	}
 	flat, total, err := s.repo.CMSList(ctx, f)
 	if err != nil {
@@ -225,8 +228,23 @@ func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, contentType 
 	return out, int(total), nil
 }
 
+// CMSGet returns one comment's full thread PLUS two admin-only fields
+// (AuthorEmail, ContentTitle) that getWithThread never sets — that function
+// is shared with Create/Update, reachable by any logged-in user, so email
+// must be attached here instead, after the permission-gated route already
+// authorized the caller (see router.go RegisterCMSRoutes: comment.view).
 func (s *ServiceImpl) CMSGet(ctx context.Context, id, currentUserID int64) (comment_dto.Response, error) {
-	return s.getWithThread(ctx, id, currentUserID)
+	resp, err := s.getWithThread(ctx, id, currentUserID)
+	if err != nil {
+		return comment_dto.Response{}, err
+	}
+	if target, err := s.repo.FindByID(ctx, id); err == nil {
+		resp.AuthorEmail = target.AuthorEmail
+		if title, err := s.repo.ContentTitle(ctx, target.ContentType, target.ContentID); err == nil {
+			resp.ContentTitle = title
+		}
+	}
+	return resp, nil
 }
 
 func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {

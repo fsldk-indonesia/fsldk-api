@@ -96,6 +96,8 @@ func (h *handlerImpl) ListCMS(c *gin.Context) {
 		Search:     strings.TrimSpace(c.Query("search")),
 		EventName:  strings.TrimSpace(c.Query("eventName")),
 		EventTheme: strings.TrimSpace(c.Query("eventTheme")),
+		DateFrom:   strings.TrimSpace(c.Query("dateFrom")),
+		DateTo:     strings.TrimSpace(c.Query("dateTo")),
 		SortBy:     c.DefaultQuery("sort_by", "createdDate"),
 		SortOrder:  c.DefaultQuery("sort_order", "desc"),
 		Limit:      limit,
@@ -188,6 +190,25 @@ func (h *handlerImpl) Delete(c *gin.Context) {
 	}
 
 	httphelper.Success(c, "Galeri berhasil dihapus", nil)
+}
+
+func (h *handlerImpl) BulkDelete(c *gin.Context) {
+	var req gallery_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Request tidak valid: "+err.Error()))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	httphelper.Success(c, "Galeri terpilih berhasil dihapus", nil)
 }
 
 func (h *handlerImpl) ListPhotosCMS(c *gin.Context) {

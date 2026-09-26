@@ -18,6 +18,7 @@ type Comment struct {
 	CreatedBy   int64      `gorm:"column:createdBy" json:"createdBy"`
 	AuthorName  string     `gorm:"column:authorName;->" json:"authorName"`
 	AuthorPhoto *string    `gorm:"column:authorPhoto;->" json:"authorPhoto"`
+	AuthorEmail string     `gorm:"column:authorEmail;->" json:"authorEmail"`
 	UpdatedDate *time.Time `gorm:"column:updatedDate" json:"updatedDate"`
 	UpdatedBy   *int64     `gorm:"column:updatedBy" json:"updatedBy"`
 }

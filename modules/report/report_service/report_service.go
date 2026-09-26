@@ -47,6 +47,10 @@ type Service interface {
 	// ListWithdrawalReport juga mengembalikan funnel breakdown per status §15.4.
 	ListWithdrawalReport(ctx context.Context, f report_dto.KantongAmalReportFilter) ([]report_dto.WithdrawalReportRow, int, []report_dto.WithdrawalStatusFunnel, error)
 	ExportWithdrawalReport(ctx context.Context, actorUserID int64, f report_dto.KantongAmalReportFilter) (report_dto.ExportResult, error)
+	// GetWithdrawalStatusFunnel dipanggil terpisah dari ListWithdrawalReport —
+	// CmsIndexComponent frontend hanya menerima kontrak dataSource yang
+	// mengembalikan Pagination murni, jadi funnel di-load lewat endpoint sendiri.
+	GetWithdrawalStatusFunnel(ctx context.Context, campaignID int64) ([]report_dto.WithdrawalStatusFunnel, error)
 
 	// GetReconciliation menghitung perbandingan lima sumber §15.5 LIVE saat
 	// dipanggil (real-time, tidak disimpan — Balance Report tidak lagi

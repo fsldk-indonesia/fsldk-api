@@ -57,14 +57,30 @@ type UpdateRequest struct {
 	IsAnonymousAllowed       *bool    `json:"isAnonymousAllowed"`
 }
 
-// ListFilter menampung parameter penyaringan daftar campaign.
+// ListFilter menampung parameter penyaringan daftar campaign. Statuses
+// genuinely multi-select bermakna di CMS (mis. lihat PUBLISHED+PAUSED
+// sekaligus), diterapkan lewat klausa IN — sama pola dengan modul lain
+// yang sudah dimigrasikan ke CmsIndexComponent (Job Queue, Formulir Dinamis).
 type ListFilter struct {
-	Status     string
+	Statuses   []string
 	CategoryID int64
 	Search     string
+	DateFrom   string
+	DateTo     string
 	Limit      int
 	Offset     int
 	OrderBy    string
+}
+
+// BulkDeleteRequest adalah body POST /campaigns/bulk-delete.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1,dive,required"`
+}
+
+// BulkDeleteResult meringkas hasil hapus massal.
+type BulkDeleteResult struct {
+	Deleted []int64 `json:"deleted"`
+	Skipped []int64 `json:"skipped"`
 }
 
 // Response adalah representasi ringkas campaign untuk listing & mutasi.

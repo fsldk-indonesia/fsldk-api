@@ -21,5 +21,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h jobqueue_handler.Handler, mw *midd
 		g.GET("/:id", mw.RequirePermission(constants.PermJobQueueView), h.CMSGet)
 		g.POST("/:id/retry", mw.RequirePermission(constants.PermJobQueueRetry), h.Retry)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermJobQueueDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermJobQueueDelete), h.BulkDelete)
 	}
 }

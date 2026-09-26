@@ -10,4 +10,5 @@ type Handler interface {
 	CMSStats(c *gin.Context)
 	Retry(c *gin.Context)
 	Delete(c *gin.Context)
+	BulkDelete(c *gin.Context)
 }

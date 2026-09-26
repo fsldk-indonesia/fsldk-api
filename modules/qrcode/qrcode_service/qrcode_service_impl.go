@@ -84,12 +84,14 @@ func (s *ServiceImpl) toResponse(q qrcode_model.QRCode) qrcode_dto.Response {
 	}
 }
 
-func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery) ([]qrcode_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, q dto.ListQuery, dateFrom, dateTo string) ([]qrcode_dto.Response, int, error) {
 	rows, total, err := s.repo.List(ctx, qrcode_dto.ListFilter{
-		Search:  q.Search,
-		Limit:   q.Limit,
-		Offset:  q.Offset(),
-		OrderBy: q.OrderBy(sortColumns, "q.createdDate DESC"),
+		Search:   q.Search,
+		DateFrom: dateFrom,
+		DateTo:   dateTo,
+		Limit:    q.Limit,
+		Offset:   q.Offset(),
+		OrderBy:  q.OrderBy(sortColumns, "q.createdDate DESC"),
 	})
 	if err != nil {
 		return nil, 0, apperror.Internal("")
@@ -179,6 +181,19 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return apperror.Internal("")
+	}
+	return nil
+}
+
+// BulkDelete menghapus banyak QR Code, memakai ulang validasi Delete per ID.
+// Best-effort seperti pola bulk-delete CMS lainnya (shortlink, news, event):
+// ID yang sudah hilang dilewati diam-diam, tidak menggagalkan seluruh batch.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada QR Code yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
 	}
 	return nil
 }

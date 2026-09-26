@@ -43,8 +43,9 @@ type Service interface {
 	// dengan saldo belum ditarik, withdrawal yang masih berjalan, atau
 	// donasi PENDING aktif (lihat campaign_service_impl.go Delete()).
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) (campaign_dto.BulkDeleteResult, error)
 
-	CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, statuses []string, categoryID int64, dateFrom, dateTo string) ([]campaign_dto.Response, int, error)
 	// ListLite mengembalikan seluruh campaign (id + judul) untuk dropdown
 	// filter campaign di Laporan Kantong Amal (item 6).
 	ListLite(ctx context.Context) ([]campaign_dto.LiteResponse, error)

@@ -1,4 +1,4 @@
-﻿// Package event wires routing for the event module.
+// Package event wires routing for the event module.
 package event
 
 import (
@@ -25,5 +25,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h event_handler.Handler, mw *middlew
 		g.POST("", mw.RequirePermission(constants.PermEventCreate), h.Create)
 		g.PUT("/:id", mw.RequirePermission(constants.PermEventUpdate), h.Update)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermEventDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermEventDelete), h.BulkDelete)
 	}
 }

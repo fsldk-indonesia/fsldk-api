@@ -71,6 +71,7 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 		return dashboard_dto.Summary{}, apperror.Internal("")
 	}
 	unreadMessages, _ := s.repo.CountUnreadContactMessages(ctx)
+	totalQrcodes, _ := s.repo.CountQrcodes(ctx)
 
 	totalRoles, _ := s.repo.CountRoles(ctx)
 	totalEvents, _ := s.repo.CountEvents(ctx)
@@ -108,6 +109,7 @@ func (s *ServiceImpl) utamaSummary(ctx context.Context) (dashboard_dto.Summary, 
 			TotalGoodsProducts: totalGoodsProducts, TotalFinanceFormats: totalFinanceFormats,
 			TotalCampaigns: totalCampaigns, TotalDonationCollected: totalDonationCollected,
 			TotalComments: totalComments, TotalShortlinks: totalShortlinks,
+			TotalQrcodes: totalQrcodes,
 			TotalSubscribers: totalSubscribers, UnreadContactMessages: unreadMessages,
 			PendingJobs: pendingJobs,
 			StatusCounts: networkStatusCounts,

@@ -19,6 +19,7 @@ type Service interface {
 	Create(ctx context.Context, req gallery_dto.CreateRequest, authorID int64) (int64, error)
 	Update(ctx context.Context, id int64, req gallery_dto.UpdateRequest, updatedBy int64) error
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) error
 
 	// CMS photo management operations
 	ListPhotosCMS(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error)

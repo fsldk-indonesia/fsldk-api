@@ -31,6 +31,7 @@ type Withdrawal struct {
 	GatewayResponseJSON      sql.NullString `gorm:"column:gatewayResponseJSON"`
 	ExecutedDate             sql.NullTime   `gorm:"column:executedDate"`
 	CompletedDate            sql.NullTime   `gorm:"column:completedDate"`
+	ReceiptURL               sql.NullString `gorm:"column:receiptUrl"`
 	CreatedDate              time.Time      `gorm:"column:createdDate"`
 	UpdatedDate              sql.NullTime   `gorm:"column:updatedDate"`
 }
@@ -61,6 +62,10 @@ type StatusUpdateParams struct {
 	GatewayStatusID        *int
 	GatewayResponseJSON    *string
 	SecurityVerifiedMethod *string
+	// ReceiptURL diisi dari field "receipt" callback disbursement Bisabiller
+	// (lihat DisbursementCallbackRequest) — URL bukti transfer, ditampilkan
+	// sebagai tombol "Lihat Bukti" di Detail Penarikan setelah SUCCESS.
+	ReceiptURL             *string
 	SetExecutedNow         bool
 	SetCompletedNow        bool
 	SetSecurityVerifiedNow bool

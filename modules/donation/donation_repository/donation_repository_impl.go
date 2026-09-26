@@ -101,8 +101,24 @@ func (r *RepositoryImpl) List(ctx context.Context, f donation_dto.ListFilter) ([
 	if f.DonorUserID != nil {
 		q = q.Where("d.donorUserID = ?", *f.DonorUserID)
 	}
-	if f.Status != "" {
-		q = q.Where("d.paymentStatus = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		q = q.Where("d.paymentStatus IN ?", f.Statuses)
+	}
+	if f.Search != "" {
+		like := "%" + f.Search + "%"
+		q = q.Where("(d.donorName LIKE ? OR d.donorEmail LIKE ? OR c.title LIKE ?)", like, like, like)
+	}
+	if len(f.PaymentMethods) > 0 {
+		q = q.Where("d.paymentMethod IN ?", f.PaymentMethods)
+	}
+	if f.Amount > 0 {
+		q = q.Where("d.amount = ?", f.Amount)
+	}
+	if f.DateFrom != "" {
+		q = q.Where("d.createdDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("d.createdDate <= ?", f.DateTo)
 	}
 
 	var total int64

@@ -33,5 +33,6 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h catalogbook_handler.Handler, mw *m
 		g.PUT("/:id", mw.RequirePermission(constants.PermCatalogBookUpdate), h.Update)
 		g.PATCH("/:id/publish", mw.RequirePermission(constants.PermCatalogBookPublish), h.Publish)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermCatalogBookDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermCatalogBookDelete), h.BulkDelete)
 	}
 }

@@ -34,6 +34,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewar
 			ka.GET("/donations/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportDonationReport)
 			ka.GET("/withdrawals", mw.RequirePermission(constants.PermFinanceReportView), h.WithdrawalReport)
 			ka.GET("/withdrawals/export", mw.RequirePermission(constants.PermFinanceReportExport), h.ExportWithdrawalReport)
+			ka.GET("/withdrawals/funnel", mw.RequirePermission(constants.PermFinanceReportView), h.WithdrawalFunnel)
 			ka.GET("/reconciliation", mw.RequirePermission(constants.PermFinanceReportView), h.Reconciliation)
 			ka.GET("/audit-log", mw.RequirePermission(constants.PermFinanceAuditView), h.FinanceAuditLog)
 			// Item 6/7 revision-prompt-2.md — debit/kredit global & Analitik.

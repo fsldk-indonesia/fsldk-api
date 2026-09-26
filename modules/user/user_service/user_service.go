@@ -25,7 +25,7 @@ type OrgScopeChecker interface {
 
 // Service adalah kontrak logika bisnis pengguna.
 type Service interface {
-	List(ctx context.Context, q dto.ListQuery, roleID int64) ([]user_dto.Response, int, error)
+	List(ctx context.Context, q dto.ListQuery, f user_dto.CMSFilter) ([]user_dto.Response, int, error)
 	// SearchMentionable returns a minimal active-user summary for the
 	// @mention autocomplete — any verified user can call this, unlike List
 	// which requires user.view.
@@ -35,4 +35,5 @@ type Service interface {
 	Update(ctx context.Context, id int64, req user_dto.UpdateRequest, caller CallerScope) (user_dto.Response, error)
 	SetStatus(ctx context.Context, id int64, active bool, actorID int64) error
 	Delete(ctx context.Context, id, actorID int64) error
+	BulkDelete(ctx context.Context, ids []int64, actorID int64) error
 }

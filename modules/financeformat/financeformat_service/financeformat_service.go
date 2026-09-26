@@ -21,4 +21,5 @@ type Service interface {
 	Update(ctx context.Context, id int64, req financeformat_dto.Request, actorID int64) (financeformat_model.FinanceFormat, error)
 	SetActive(ctx context.Context, id int64, isActive bool, actorID int64) error
 	Delete(ctx context.Context, id int64) error
+	BulkDelete(ctx context.Context, ids []int64) error
 }

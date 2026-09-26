@@ -103,8 +103,25 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 		like := "%" + f.Search + "%"
 		base = base.Where("(u.fullName LIKE ? OR u.email LIKE ?)", like, like)
 	}
-	if f.RoleID > 0 {
-		base = base.Where("u.roleID = ?", f.RoleID)
+	if f.Email != "" {
+		base = base.Where("u.email LIKE ?", "%"+f.Email+"%")
+	}
+	if len(f.RoleIDs) > 0 {
+		base = base.Where("u.roleID IN ?", f.RoleIDs)
+	}
+	if len(f.Status) > 0 {
+		vals := make([]bool, 0, len(f.Status))
+		for _, s := range f.Status {
+			switch s {
+			case "active":
+				vals = append(vals, true)
+			case "inactive":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			base = base.Where("u.isActive IN ?", vals)
+		}
 	}
 
 	var total int64
@@ -123,7 +140,7 @@ func (r *RepositoryImpl) List(ctx context.Context, f user_dto.ListFilter) ([]use
 // since any verified user may mention any other active user (including
 // themselves).
 func (r *RepositoryImpl) SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error) {
-	q := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Where("u.isActive = ?", true)
+	q := r.db.WithContext(ctx).Table("ms_user u").Joins(joinRole).Joins(joinOrg).Where("u.isActive = ?", true)
 	if search != "" {
 		q = q.Where("u.fullName LIKE ?", "%"+search+"%")
 	}

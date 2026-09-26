@@ -20,7 +20,7 @@ type Service interface {
 	GifCategories(ctx context.Context) ([]comment_dto.GifCategory, error)
 
 	// Admin moderation (comment.view / comment.delete).
-	CMSList(ctx context.Context, q dto.ListQuery, contentType string) ([]comment_dto.Response, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, f comment_dto.CMSFilter) ([]comment_dto.Response, int, error)
 	CMSGet(ctx context.Context, id, currentUserID int64) (comment_dto.Response, error)
 	BulkDelete(ctx context.Context, ids []int64) error
 

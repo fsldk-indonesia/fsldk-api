@@ -43,7 +43,9 @@ type Service interface {
 	SaveAnswers(ctx context.Context, id int64, caller CallerScope, req submission_dto.SaveAnswersRequest) (submission_dto.DetailResponse, error)
 	Submit(ctx context.Context, id int64, caller CallerScope) (submission_dto.Response, error)
 	Cancel(ctx context.Context, id int64, caller CallerScope) error
-	List(ctx context.Context, caller CallerScope, q dto.ListQuery, status, formCode string) ([]submission_dto.Response, int, error)
+	// statuses kosong (nil/[]) = tanpa filter status; >1 elemen = IN-list
+	// (mis. filter multi-select Status di halaman Laporan lewat app-cms-index).
+	List(ctx context.Context, caller CallerScope, q dto.ListQuery, statuses []string, formCode string) ([]submission_dto.Response, int, error)
 	Get(ctx context.Context, id int64, caller CallerScope) (submission_dto.DetailResponse, error)
 
 	Review(ctx context.Context, id int64, caller CallerScope, req submission_dto.ReviewRequest) (submission_dto.Response, error)

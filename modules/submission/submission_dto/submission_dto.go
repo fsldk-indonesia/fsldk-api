@@ -112,10 +112,16 @@ type ListFilter struct {
 	OrganizationIDs   []int64
 	SubmittedByUserID *int64
 	FormID            int64
-	Status            string
-	Limit             int
-	Offset            int
-	OrderBy           string
+	// Statuses kosong = tanpa filter status (semua status). Diisi >1 elemen
+	// untuk filter multi-select IN-list (mis. halaman Laporan lewat app-cms-index),
+	// diisi 1 elemen untuk pemanggil lama (antrean reviewer per status).
+	Statuses []string
+	// Search dicocokkan ke nama/kode LDK (organizationName/organizationCode)
+	// lewat LEFT JOIN ms_organization — dipakai search-combo halaman Laporan.
+	Search  string
+	Limit   int
+	Offset  int
+	OrderBy string
 }
 
 // ---------- Response ----------
@@ -142,18 +148,22 @@ type StatusHistoryResponse struct {
 	CreatedDate time.Time `json:"createdDate"`
 }
 
-// Response adalah representasi ringkas submission untuk API.
+// Response adalah representasi ringkas submission untuk API. OrganizationName
+// diisi lewat LEFT JOIN ms_organization di submission_repository.List (kosong
+// pada jalur lain yang tidak melakukan join, mis. Create/Get) — dipakai kolom
+// "LDK" halaman Laporan (app-cms-index) supaya FE tidak perlu lookup terpisah.
 type Response struct {
-	SubmissionID   int64      `json:"submissionID"`
-	FormID         int64      `json:"formID"`
-	FormCode       string     `json:"formCode"`
-	FormVersionID  int64      `json:"formVersionID"`
-	OrganizationID int64      `json:"organizationID"`
-	SubjectType    string     `json:"subjectType"`
-	Status         string     `json:"status"`
-	Version        int        `json:"version"`
-	SubmittedDate  *time.Time `json:"submittedDate,omitempty"`
-	CreatedDate    time.Time  `json:"createdDate"`
+	SubmissionID     int64      `json:"submissionID"`
+	FormID           int64      `json:"formID"`
+	FormCode         string     `json:"formCode"`
+	FormVersionID    int64      `json:"formVersionID"`
+	OrganizationID   int64      `json:"organizationID"`
+	OrganizationName string     `json:"organizationName,omitempty"`
+	SubjectType      string     `json:"subjectType"`
+	Status           string     `json:"status"`
+	Version          int        `json:"version"`
+	SubmittedDate    *time.Time `json:"submittedDate,omitempty"`
+	CreatedDate      time.Time  `json:"createdDate"`
 }
 
 // FieldScoreResponse adalah breakdown skor satu field UseScoring — dipakai

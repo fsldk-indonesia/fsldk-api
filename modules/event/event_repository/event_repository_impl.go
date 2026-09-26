@@ -1,4 +1,4 @@
-﻿package event_repository
+package event_repository
 
 import (
 	"context"
@@ -34,6 +34,27 @@ func (r *RepositoryImpl) List(ctx context.Context, f event_dto.Filter) ([]event_
 	q := r.base(ctx)
 	if f.PublishedOnly {
 		q = q.Where("e.isPublished = 1")
+	} else if len(f.PublishStatus) > 0 {
+		// Multi-select (checkbox) — "published"/"draft" mapped to isPublished
+		// 1/0, same convention as news_repository.List.
+		vals := make([]bool, 0, len(f.PublishStatus))
+		for _, s := range f.PublishStatus {
+			switch s {
+			case "published":
+				vals = append(vals, true)
+			case "draft":
+				vals = append(vals, false)
+			}
+		}
+		if len(vals) > 0 {
+			q = q.Where("e.isPublished IN ?", vals)
+		}
+	}
+	if f.DateFrom != "" {
+		q = q.Where("DATE(e.startDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("DATE(e.startDate) <= ?", f.DateTo)
 	}
 	if f.Search != "" {
 		like := "%" + f.Search + "%"
@@ -87,6 +108,11 @@ func buildOrder(sortBy, sortOrder string) string {
 		"createdDate": "e.createdDate",
 		"startDate":   "e.startDate",
 		"newest":      "COALESCE(e.startDate, e.createdDate)",
+		// Full-name identifiers used by the CMS index columns (Divisi/Status) —
+		// "title" above stays as-is since the public sort dropdown already uses it.
+		"eventTitle":    "e.eventTitle",
+		"eventDivision": "e.eventDivision",
+		"isPublished":   "e.isPublished",
 	}
 	col, ok := allowed[sortBy]
 	if !ok {

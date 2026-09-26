@@ -20,4 +20,6 @@ type Service interface {
 	Update(ctx context.Context, id int64, req schedule_dto.Request, actorID int64) (schedule_dto.Response, error)
 	SetActive(ctx context.Context, id int64, isActive bool, actorID int64) error
 	Delete(ctx context.Context, id int64) error
+	// BulkDelete removes multiple schedules by ID, best-effort per ID.
+	BulkDelete(ctx context.Context, ids []int64) error
 }

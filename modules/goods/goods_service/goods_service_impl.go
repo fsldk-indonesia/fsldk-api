@@ -214,12 +214,21 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *ServiceImpl) PublicCategories(ctx context.Context) ([]goods_model.Category, error) {
-	return s.categories(ctx, true)
+// BulkDelete menghapus banyak produk, memakai ulang validasi & pembersihan
+// gambar dari Delete per ID. Best-effort seperti pola bulk-delete CMS
+// lainnya (gallery, comment, event, qrcode, contact, financeformat).
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada produk yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
+	}
+	return nil
 }
 
-func (s *ServiceImpl) CMSCategories(ctx context.Context) ([]goods_model.Category, error) {
-	return s.categories(ctx, false)
+func (s *ServiceImpl) PublicCategories(ctx context.Context) ([]goods_model.Category, error) {
+	return s.categories(ctx, true)
 }
 
 func (s *ServiceImpl) categories(ctx context.Context, activeOnly bool) ([]goods_model.Category, error) {
@@ -231,6 +240,38 @@ func (s *ServiceImpl) categories(ctx context.Context, activeOnly bool) ([]goods_
 		data = []goods_model.Category{}
 	}
 	return data, nil
+}
+
+func (s *ServiceImpl) CMSCategories(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int, error) {
+	data, total, err := s.repo.CategoryListCMS(ctx, q, isActive)
+	if err != nil {
+		return nil, 0, apperror.Internal("")
+	}
+	if data == nil {
+		data = []goods_model.Category{}
+	}
+	return data, int(total), nil
+}
+
+func (s *ServiceImpl) CategoryGet(ctx context.Context, id int64) (goods_model.Category, error) {
+	cat, err := s.repo.CategoryFindByID(ctx, id)
+	if err != nil {
+		return goods_model.Category{}, apperror.NotFound("Kategori tidak ditemukan")
+	}
+	return cat, nil
+}
+
+// CategoryBulkDelete menghapus banyak kategori sekaligus, best-effort:
+// kategori yang masih dipakai produk (CategoryDelete -> Conflict) atau sudah
+// hilang dilewati diam-diam, sama seperti pola bulk-delete lainnya.
+func (s *ServiceImpl) CategoryBulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada kategori yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.CategoryDelete(ctx, id)
+	}
+	return nil
 }
 
 func (s *ServiceImpl) CategoryCreate(ctx context.Context, req goods_dto.CategoryRequest, actorID int64) (goods_model.Category, error) {

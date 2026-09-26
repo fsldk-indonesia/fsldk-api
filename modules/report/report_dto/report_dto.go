@@ -35,12 +35,15 @@ type ExportResult struct {
 
 // KantongAmalReportFilter menampung parameter penyaringan bersama untuk
 // laporan campaign/donation/withdrawal — dari/sampai opsional (kosong berarti
-// tanpa batas), campaignID 0 berarti seluruh campaign.
+// tanpa batas), campaignID 0 berarti seluruh campaign. Statuses genuinely
+// multi-select bermakna (klausa IN), sama pola dengan modul lain yang sudah
+// dimigrasikan ke CmsIndexComponent.
 type KantongAmalReportFilter struct {
 	From       time.Time
 	To         time.Time
 	CampaignID int64
-	Status     string
+	Statuses   []string
+	Search     string
 	Page       int
 	Limit      int
 }
@@ -162,7 +165,8 @@ type ReconciliationResponse struct {
 // Bisatopup" tanpa perlu filter gateway terpisah.
 type GlobalLedgerFilter struct {
 	CampaignID int64
-	Direction  string // "" = semua, CREDIT, atau DEBIT
+	Directions []string // kosong = semua, isi CREDIT dan/atau DEBIT (klausa IN)
+	Search     string
 	Page       int
 	Limit      int
 }
@@ -205,22 +209,29 @@ type AnalyticsResponse struct {
 
 // FinanceAuditLogFilter menampung parameter penyaringan histori audit log finance §16.1.
 type FinanceAuditLogFilter struct {
-	Entity string
-	Action string
-	Page   int
-	Limit  int
+	Entity   string
+	Action   string
+	DateFrom string
+	DateTo   string
+	Page     int
+	Limit    int
 }
 
 // FinanceAuditLogItem adalah satu baris tr_finance_audit_log untuk CMS.
+// ActorName/BeforeJSON/AfterJSON/Metadata pakai *string (bukan sql.NullString)
+// — sql.NullString tidak punya MarshalJSON, jadi ter-serialize sebagai objek
+// {"String":...,"Valid":...} alih-alih string/null polos (tampil "[object
+// Object]" di CMS). *string dipetakan GORM langsung dari kolom nullable
+// (nil bila NULL), JSON-nya bersih.
 type FinanceAuditLogItem struct {
-	LogID       int64          `gorm:"column:logID" json:"logID"`
-	ActorUserID int64          `gorm:"column:actorUserID" json:"actorUserID"`
-	ActorName   sql.NullString `gorm:"column:actorName" json:"actorName,omitempty"`
-	Action      string         `gorm:"column:action" json:"action"`
-	Entity      string         `gorm:"column:entity" json:"entity"`
-	EntityID    int64          `gorm:"column:entityID" json:"entityID"`
-	BeforeJSON  sql.NullString `gorm:"column:beforeJSON" json:"beforeJSON,omitempty"`
-	AfterJSON   sql.NullString `gorm:"column:afterJSON" json:"afterJSON,omitempty"`
-	Metadata    sql.NullString `gorm:"column:metadata" json:"metadata,omitempty"`
-	CreatedDate time.Time      `gorm:"column:createdDate" json:"createdDate"`
+	LogID       int64     `gorm:"column:logID" json:"logID"`
+	ActorUserID int64     `gorm:"column:actorUserID" json:"actorUserID"`
+	ActorName   *string   `gorm:"column:actorName" json:"actorName,omitempty"`
+	Action      string    `gorm:"column:action" json:"action"`
+	Entity      string    `gorm:"column:entity" json:"entity"`
+	EntityID    int64     `gorm:"column:entityID" json:"entityID"`
+	BeforeJSON  *string   `gorm:"column:beforeJSON" json:"beforeJSON,omitempty"`
+	AfterJSON   *string   `gorm:"column:afterJSON" json:"afterJSON,omitempty"`
+	Metadata    *string   `gorm:"column:metadata" json:"metadata,omitempty"`
+	CreatedDate time.Time `gorm:"column:createdDate" json:"createdDate"`
 }

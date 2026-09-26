@@ -343,6 +343,14 @@ func (s *ServiceImpl) ListWithdrawalReport(ctx context.Context, f report_dto.Kan
 	return rows, int(total), funnel, nil
 }
 
+func (s *ServiceImpl) GetWithdrawalStatusFunnel(ctx context.Context, campaignID int64) ([]report_dto.WithdrawalStatusFunnel, error) {
+	funnel, err := s.repo.WithdrawalStatusFunnel(ctx, campaignID)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	return funnel, nil
+}
+
 func withdrawalReportColumns() []string {
 	return []string{"Ref", "Campaign", "Nominal", "Fee", "Net", "Status", "Bank", "No. Rekening", "Diajukan", "Disetujui", "Diproses", "Selesai"}
 }

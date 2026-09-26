@@ -69,6 +69,15 @@ type UpdateRequest struct {
 type ListFilter struct {
 	OrganizationTypeCode string
 	Search               string
+	// IsActive nil berarti tanpa filter status (semua); non-nil menyaring
+	// hanya organisasi aktif (true) atau nonaktif (false) — dipetakan dari
+	// query `status` (active/inactive, comma-separated) di handler.
+	IsActive *bool
+	// ParentOrganizationID nil berarti tanpa filter parent; non-nil menyaring
+	// hanya organisasi anak langsung dari parent tersebut — dipetakan dari
+	// query `parentOrganizationID` (mis. filter LDK per Puskomda di daftar
+	// LDK nasional Portal Puskomnas).
+	ParentOrganizationID *int64
 	Limit                int
 	Offset               int
 	OrderBy              string

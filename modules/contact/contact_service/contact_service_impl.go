@@ -67,10 +67,10 @@ func (s *serviceImpl) GetByID(ctx context.Context, id int64) (*contact_dto.Conta
 	}, nil
 }
 
-func (s *serviceImpl) List(ctx context.Context, q contact_dto.ContactListQuery) (*contact_dto.ContactListResponse, error) {
+func (s *serviceImpl) List(ctx context.Context, q contact_dto.ContactListQuery) ([]contact_dto.ContactListItem, int64, error) {
 	messages, total, err := s.repo.FindAll(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	items := make([]contact_dto.ContactListItem, 0, len(messages))
@@ -85,21 +85,7 @@ func (s *serviceImpl) List(ctx context.Context, q contact_dto.ContactListQuery) 
 		})
 	}
 
-	page := q.Page
-	if page < 1 {
-		page = 1
-	}
-	limit := q.Limit
-	if limit < 1 || limit > 100 {
-		limit = 15
-	}
-
-	return &contact_dto.ContactListResponse{
-		Data:  items,
-		Page:  page,
-		Limit: limit,
-		Total: total,
-	}, nil
+	return items, total, nil
 }
 
 func (s *serviceImpl) MarkRead(ctx context.Context, id int64) error {
@@ -120,6 +106,19 @@ func (s *serviceImpl) Delete(ctx context.Context, id int64) error {
 			return apperror.NotFound("Pesan kontak tidak ditemukan")
 		}
 		return err
+	}
+	return nil
+}
+
+// BulkDelete menghapus banyak pesan kontak, memakai ulang validasi Delete per
+// ID. Best-effort seperti pola bulk-delete CMS lainnya (gallery, comment,
+// event, qrcode): ID yang sudah hilang dilewati diam-diam.
+func (s *serviceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada pesan yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
 	}
 	return nil
 }

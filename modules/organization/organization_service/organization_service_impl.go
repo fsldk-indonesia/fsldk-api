@@ -257,10 +257,12 @@ func (s *ServiceImpl) Directory(ctx context.Context, typeCode string) ([]organiz
 	return out, nil
 }
 
-func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string) ([]organization_dto.Response, int, error) {
+func (s *ServiceImpl) List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string, isActive *bool, parentOrganizationID *int64) ([]organization_dto.Response, int, error) {
 	f := organization_dto.ListFilter{
 		OrganizationTypeCode: typeFilter,
 		Search:               q.Search,
+		IsActive:             isActive,
+		ParentOrganizationID: parentOrganizationID,
 		Limit:                q.Limit,
 		Offset:               q.Offset(),
 		OrderBy:              q.OrderBy(sortColumns, "o.organizationName ASC"),

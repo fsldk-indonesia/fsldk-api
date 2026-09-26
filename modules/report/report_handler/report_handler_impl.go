@@ -91,7 +91,8 @@ func kantongAmalFilter(c *gin.Context) report_dto.KantongAmalReportFilter {
 		to = to.Add(24*time.Hour - time.Second)
 	}
 	return report_dto.KantongAmalReportFilter{
-		From: from, To: to, CampaignID: queryInt64(c, "campaignID"), Status: c.Query("status"),
+		From: from, To: to, CampaignID: queryInt64(c, "campaignID"),
+		Statuses: dto.ParseCSV(c.Query("status")), Search: q.Search,
 		Page: q.Page, Limit: q.Limit,
 	}
 }
@@ -192,6 +193,15 @@ func (h *HandlerImpl) ExportWithdrawalReport(c *gin.Context) {
 
 // Reconciliation menghitung perbandingan ledger vs wallet gateway secara
 // LIVE (real-time, bukan histori snapshot — lihat report_service.GetReconciliation).
+func (h *HandlerImpl) WithdrawalFunnel(c *gin.Context) {
+	data, err := h.svc.GetWithdrawalStatusFunnel(c.Request.Context(), queryInt64(c, "campaignID"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) Reconciliation(c *gin.Context) {
 	result, err := h.svc.GetReconciliation(c.Request.Context())
 	if err != nil {
@@ -204,7 +214,8 @@ func (h *HandlerImpl) Reconciliation(c *gin.Context) {
 func (h *HandlerImpl) GlobalLedger(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	data, total, err := h.svc.ListGlobalLedger(c.Request.Context(), report_dto.GlobalLedgerFilter{
-		CampaignID: queryInt64(c, "campaignID"), Direction: c.Query("direction"), Page: q.Page, Limit: q.Limit,
+		CampaignID: queryInt64(c, "campaignID"), Directions: dto.ParseCSV(c.Query("direction")),
+		Search: q.Search, Page: q.Page, Limit: q.Limit,
 	})
 	if err != nil {
 		httphelper.Error(c, err)
@@ -225,7 +236,9 @@ func (h *HandlerImpl) Analytics(c *gin.Context) {
 func (h *HandlerImpl) FinanceAuditLog(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	data, total, err := h.svc.ListFinanceAuditLog(c.Request.Context(), report_dto.FinanceAuditLogFilter{
-		Entity: c.Query("entity"), Action: c.Query("action"), Page: q.Page, Limit: q.Limit,
+		Entity: c.Query("entity"), Action: c.Query("action"),
+		DateFrom: c.Query("dateFrom"), DateTo: c.Query("dateTo"),
+		Page: q.Page, Limit: q.Limit,
 	})
 	if err != nil {
 		httphelper.Error(c, err)

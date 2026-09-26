@@ -72,6 +72,9 @@ func (h *HandlerImpl) parseFilter(c *gin.Context) catalogbook_dto.Filter {
 		Years:               parseStringList(c, "year"),
 		Author:              strings.TrimSpace(c.Query("author")),
 		Publisher:           strings.TrimSpace(c.Query("publisher")),
+		ActiveStatuses:      parseStringList(c, "status"),
+		DateFrom:            c.Query("dateFrom"),
+		DateTo:              c.Query("dateTo"),
 	}
 }
 
@@ -234,4 +237,21 @@ func (h *HandlerImpl) Delete(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Buku berhasil dihapus", nil)
+}
+
+func (h *HandlerImpl) BulkDelete(c *gin.Context) {
+	var req catalogbook_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Buku terpilih berhasil dihapus", nil)
 }

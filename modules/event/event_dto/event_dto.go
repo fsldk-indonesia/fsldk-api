@@ -1,29 +1,29 @@
-﻿// Package event_dto holds request/response DTOs for the event module.
+// Package event_dto holds request/response DTOs for the event module.
 package event_dto
 
 import "time"
 
 // CreateRequest is the body for creating or updating an event.
 type CreateRequest struct {
-	EventTitle       string  `json:"eventTitle" validate:"required,max=255"`
-	EventDivision    string  `json:"eventDivision" validate:"required,max=150"`
-	EventContent     string  `json:"eventContent" validate:"required"`
-	EventImage       string  `json:"eventImage" validate:"max=255"`
-	StartDate        string  `json:"startDate"`
-	EndDate          string  `json:"endDate"`
-	CloseRegistDate  string  `json:"closeRegistDate"`
-	Location         string  `json:"location" validate:"max=255"`
-	Place            string  `json:"place" validate:"max=255"`
-	LocationLink     string  `json:"locationLink" validate:"max=500"`
-	RegistrationLink string  `json:"registrationLink" validate:"max=500"`
-	DocumentLink     string  `json:"documentLink" validate:"max=500"`
-	PresentationLink string  `json:"presentationLink" validate:"max=500"`
-	ContactPerson1   string  `json:"contactPerson1" validate:"max=30"`
-	NameCp1          string  `json:"nameCp1" validate:"max=100"`
-	ContactPerson2   string  `json:"contactPerson2" validate:"max=30"`
-	NameCp2          string  `json:"nameCp2" validate:"max=100"`
-	Tag              string  `json:"tag" validate:"max=255"`
-	IsPublished      bool    `json:"isPublished"`
+	EventTitle       string `json:"eventTitle" validate:"required,max=255"`
+	EventDivision    string `json:"eventDivision" validate:"required,max=150"`
+	EventContent     string `json:"eventContent" validate:"required"`
+	EventImage       string `json:"eventImage" validate:"max=255"`
+	StartDate        string `json:"startDate"`
+	EndDate          string `json:"endDate"`
+	CloseRegistDate  string `json:"closeRegistDate"`
+	Location         string `json:"location" validate:"max=255"`
+	Place            string `json:"place" validate:"max=255"`
+	LocationLink     string `json:"locationLink" validate:"max=500"`
+	RegistrationLink string `json:"registrationLink" validate:"max=500"`
+	DocumentLink     string `json:"documentLink" validate:"max=500"`
+	PresentationLink string `json:"presentationLink" validate:"max=500"`
+	ContactPerson1   string `json:"contactPerson1" validate:"max=30"`
+	NameCp1          string `json:"nameCp1" validate:"max=100"`
+	ContactPerson2   string `json:"contactPerson2" validate:"max=30"`
+	NameCp2          string `json:"nameCp2" validate:"max=100"`
+	Tag              string `json:"tag" validate:"max=255"`
+	IsPublished      bool   `json:"isPublished"`
 }
 
 // UpdateRequest is an alias — same fields as CreateRequest.
@@ -31,15 +31,39 @@ type UpdateRequest = CreateRequest
 
 // Filter holds query parameters for listing events (used by repository & service).
 type Filter struct {
-	Search        string
-	Divisions     []string
-	Years         []string
-	Statuses      []string
+	Search    string
+	Divisions []string
+	Years     []string
+	Statuses  []string // timing: "upcoming"|"ongoing"|"past" — used by the public listing
+	// PublishStatus is the CMS-only "published"/"draft" multi-select (checkbox),
+	// distinct from Statuses (timing) above — mirrors news_dto.Filter.Status.
+	PublishStatus []string
 	PublishedOnly bool
+	DateFrom      string // "YYYY-MM-DD", inclusive — filters on startDate
+	DateTo        string // "YYYY-MM-DD", inclusive
 	SortBy        string
 	SortOrder     string
 	Limit         int
 	Offset        int
+}
+
+// CMSFilter holds CMS-only list filters (outside dto.ListQuery's
+// search/page/limit/sort) — kept separate from Filter (used by the
+// repository) so service.CMSList's signature doesn't keep growing
+// positional params as filters are added, mirroring news_dto.CMSFilter.
+// Divisions/TimingStatuses/PublishStatus are multi-select (checkbox/combobox),
+// sent by the frontend as comma-separated query params.
+type CMSFilter struct {
+	Divisions      []string
+	TimingStatuses []string // "upcoming"|"ongoing"|"past"
+	PublishStatus  []string // "published"|"draft"
+	DateFrom       string
+	DateTo         string
+}
+
+// BulkDeleteRequest is the body for deleting multiple events at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // EventResponse is the enriched payload returned by the public detail endpoint.

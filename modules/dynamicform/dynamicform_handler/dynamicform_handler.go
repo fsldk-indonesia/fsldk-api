@@ -32,6 +32,7 @@ type Handler interface {
 	GetSubmission(c *gin.Context)
 	UpdateSubmission(c *gin.Context)
 	DeleteSubmission(c *gin.Context)
+	BulkDeleteSubmissions(c *gin.Context)
 	ExportCSV(c *gin.Context)
 	DeleteResponses(c *gin.Context)
 	Analytics(c *gin.Context)

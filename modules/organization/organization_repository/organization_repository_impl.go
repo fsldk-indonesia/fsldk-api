@@ -62,6 +62,12 @@ func (r *RepositoryImpl) applyFilter(q *gorm.DB, f organization_dto.ListFilter) 
 		like := "%" + f.Search + "%"
 		q = q.Where("(o.organizationName LIKE ? OR o.organizationCode LIKE ?)", like, like)
 	}
+	if f.IsActive != nil {
+		q = q.Where("o.isActive = ?", *f.IsActive)
+	}
+	if f.ParentOrganizationID != nil {
+		q = q.Where("o.parentOrganizationID = ?", *f.ParentOrganizationID)
+	}
 	return q
 }
 

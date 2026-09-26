@@ -29,7 +29,7 @@ const withdrawalSelectCols = "w.withdrawalID, w.withdrawalRef, w.campaignID, c.t
 	"w.requestedByUserID, w.amount, w.fee, w.netAmount, w.beneficiaryBankCode, w.beneficiaryAccountNumber, " +
 	"w.beneficiaryAccountHolder, w.status, w.securityVerifiedDate, w.securityVerifiedMethod, " +
 	"w.approvedByUserID, w.approvedDate, w.rejectionReason, " +
-	"w.idempotencyKey, w.gatewayStatusID, w.gatewayResponseJSON, w.executedDate, w.completedDate, " +
+	"w.idempotencyKey, w.gatewayStatusID, w.gatewayResponseJSON, w.executedDate, w.completedDate, w.receiptUrl, " +
 	"w.createdDate, w.updatedDate"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
@@ -118,8 +118,18 @@ func (r *RepositoryImpl) List(ctx context.Context, f withdrawal_dto.ListFilter) 
 	if f.RequestedByUserID != nil {
 		q = q.Where("w.requestedByUserID = ?", *f.RequestedByUserID)
 	}
-	if f.Status != "" {
-		q = q.Where("w.status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		q = q.Where("w.status IN ?", f.Statuses)
+	}
+	if f.Search != "" {
+		like := "%" + f.Search + "%"
+		q = q.Where("(w.withdrawalRef LIKE ? OR c.title LIKE ?)", like, like)
+	}
+	if f.DateFrom != "" {
+		q = q.Where("w.createdDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("w.createdDate <= ?", f.DateTo)
 	}
 
 	var total int64
@@ -152,6 +162,9 @@ func (r *RepositoryImpl) UpdateStatus(tx *gorm.DB, id int64, status string, p wi
 	}
 	if p.SecurityVerifiedMethod != nil {
 		values["securityVerifiedMethod"] = *p.SecurityVerifiedMethod
+	}
+	if p.ReceiptURL != nil {
+		values["receiptUrl"] = *p.ReceiptURL
 	}
 	if p.SetExecutedNow {
 		values["executedDate"] = time.Now()

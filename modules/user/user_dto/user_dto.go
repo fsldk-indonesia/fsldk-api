@@ -53,10 +53,30 @@ type StatusRequest struct {
 // ListFilter menampung parameter penyaringan daftar pengguna.
 type ListFilter struct {
 	Search  string
-	RoleID  int64
+	Email   string   // LIKE terhadap email — filter kolom "Email" CMS
+	RoleIDs []int64  // exact match (IN) — filter kolom "Role" CMS, multi-select by ID
+	Status  []string // "active" | "inactive" — multi-select (IN), kosong = semua status
 	Limit   int
 	Offset  int
 	OrderBy string
+}
+
+// CMSFilter menampung parameter filter khusus endpoint CMS list (di luar
+// dto.ListQuery yang sudah menampung search/page/limit/sort) — dipisah dari
+// ListFilter (dipakai repository) supaya signature service.List tidak terus
+// bertambah parameter positional setiap kali kolom filter baru ditambahkan.
+// Status/RoleIDs multi-select (checkbox) — dikirim frontend sebagai query
+// param comma-separated, di-parse handler lewat dto.ParseCSV/ParseInt64CSV.
+type CMSFilter struct {
+	Status  []string
+	RoleIDs []int64
+	Email   string
+}
+
+// BulkDeleteRequest adalah body untuk menonaktifkan (soft-delete) banyak
+// pengguna sekaligus.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }
 
 // MentionSearchResult adalah ringkasan pengguna minimal untuk autocomplete

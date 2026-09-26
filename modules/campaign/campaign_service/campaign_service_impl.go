@@ -66,7 +66,7 @@ func NewService(repo campaign_repository.Repository, orgAccess OrgAccessChecker,
 
 func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categoryID int64) ([]campaign_dto.Response, int, error) {
 	return s.list(ctx, campaign_dto.ListFilter{
-		Status:     constants.CampaignStatusPublished,
+		Statuses:   []string{constants.CampaignStatusPublished},
 		CategoryID: categoryID,
 		Search:     q.Search,
 		Limit:      q.Limit,
@@ -273,15 +273,32 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, status string, categoryID int64) ([]campaign_dto.Response, int, error) {
+func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, statuses []string, categoryID int64, dateFrom, dateTo string) ([]campaign_dto.Response, int, error) {
 	return s.list(ctx, campaign_dto.ListFilter{
-		Status:     status,
+		Statuses:   statuses,
 		CategoryID: categoryID,
 		Search:     q.Search,
+		DateFrom:   dateFrom,
+		DateTo:     dateTo,
 		Limit:      q.Limit,
 		Offset:     q.Offset(),
 		OrderBy:    q.OrderBy(sortColumns, "c.createdDate DESC"),
 	})
+}
+
+// BulkDelete menghapus banyak campaign sekaligus — best-effort, campaign
+// yang gagal (mis. masih punya donasi aktif, lihat Delete()) dilewati alih-
+// alih membatalkan seluruh permintaan, sama pola dengan modul lain.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) (campaign_dto.BulkDeleteResult, error) {
+	res := campaign_dto.BulkDeleteResult{Deleted: []int64{}, Skipped: []int64{}}
+	for _, id := range ids {
+		if err := s.Delete(ctx, id); err != nil {
+			res.Skipped = append(res.Skipped, id)
+			continue
+		}
+		res.Deleted = append(res.Deleted, id)
+	}
+	return res, nil
 }
 
 func (s *ServiceImpl) ListLite(ctx context.Context) ([]campaign_dto.LiteResponse, error) {

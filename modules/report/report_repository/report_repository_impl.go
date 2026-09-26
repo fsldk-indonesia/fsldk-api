@@ -144,8 +144,11 @@ func (r *RepositoryImpl) CampaignReportRows(ctx context.Context, f report_dto.Ka
 	if f.CampaignID > 0 {
 		base = base.Where("c.campaignID = ?", f.CampaignID)
 	}
-	if f.Status != "" {
-		base = base.Where("c.status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		base = base.Where("c.status IN ?", f.Statuses)
+	}
+	if f.Search != "" {
+		base = base.Where("c.title LIKE ?", "%"+f.Search+"%")
 	}
 	base = base.Session(&gorm.Session{})
 
@@ -176,8 +179,12 @@ func (r *RepositoryImpl) DonationReportRows(ctx context.Context, f report_dto.Ka
 	if f.CampaignID > 0 {
 		base = base.Where("d.campaignID = ?", f.CampaignID)
 	}
-	if f.Status != "" {
-		base = base.Where("d.paymentStatus = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		base = base.Where("d.paymentStatus IN ?", f.Statuses)
+	}
+	if f.Search != "" {
+		like := "%" + f.Search + "%"
+		base = base.Where("(d.donorName LIKE ? OR c.title LIKE ?)", like, like)
 	}
 	if !f.From.IsZero() && !f.To.IsZero() {
 		base = base.Where("d.createdDate BETWEEN ? AND ?", f.From, f.To)
@@ -210,8 +217,12 @@ func (r *RepositoryImpl) WithdrawalReportRows(ctx context.Context, f report_dto.
 	if f.CampaignID > 0 {
 		base = base.Where("w.campaignID = ?", f.CampaignID)
 	}
-	if f.Status != "" {
-		base = base.Where("w.status = ?", f.Status)
+	if len(f.Statuses) > 0 {
+		base = base.Where("w.status IN ?", f.Statuses)
+	}
+	if f.Search != "" {
+		like := "%" + f.Search + "%"
+		base = base.Where("(w.withdrawalRef LIKE ? OR c.title LIKE ?)", like, like)
 	}
 	if !f.From.IsZero() && !f.To.IsZero() {
 		base = base.Where("w.createdDate BETWEEN ? AND ?", f.From, f.To)
@@ -287,8 +298,11 @@ func (r *RepositoryImpl) GlobalLedgerRows(ctx context.Context, f report_dto.Glob
 	if f.CampaignID > 0 {
 		base = base.Where("l.campaignID = ?", f.CampaignID)
 	}
-	if f.Direction != "" {
-		base = base.Where("l.direction = ?", f.Direction)
+	if len(f.Directions) > 0 {
+		base = base.Where("l.direction IN ?", f.Directions)
+	}
+	if f.Search != "" {
+		base = base.Where("c.title LIKE ?", "%"+f.Search+"%")
 	}
 	base = base.Session(&gorm.Session{})
 
@@ -364,6 +378,12 @@ func (r *RepositoryImpl) ListFinanceAuditLog(ctx context.Context, f report_dto.F
 	}
 	if f.Action != "" {
 		base = base.Where("l.action = ?", f.Action)
+	}
+	if f.DateFrom != "" {
+		base = base.Where("l.createdDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("l.createdDate <= ?", f.DateTo)
 	}
 	base = base.Session(&gorm.Session{})
 

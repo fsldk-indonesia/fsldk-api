@@ -60,6 +60,12 @@ func (r *RepositoryImpl) List(ctx context.Context, f shortlink_dto.ListFilter) (
 		like := "%" + f.Search + "%"
 		base = base.Where("(s.shortKey LIKE ? OR s.destinationURL LIKE ?)", like, like)
 	}
+	if f.DateFrom != "" {
+		base = base.Where("DATE(s.createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		base = base.Where("DATE(s.createdDate) <= ?", f.DateTo)
+	}
 
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {

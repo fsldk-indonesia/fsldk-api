@@ -30,6 +30,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, upl
 	galGroup.GET("/:id", mw.RequirePermission("gallery.view"), handler.ShowCMS)
 	galGroup.PUT("/:id", mw.RequirePermission("gallery.update"), handler.Update)
 	galGroup.DELETE("/:id", mw.RequirePermission("gallery.delete"), handler.Delete)
+	galGroup.POST("/bulk-delete", mw.RequirePermission("gallery.delete"), handler.BulkDelete)
 
 	// Photo sub-endpoints (CMS)
 	galGroup.GET("/:id/photos", mw.RequirePermission("gallery.view"), handler.ListPhotosCMS)

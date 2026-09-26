@@ -46,7 +46,17 @@ type Filter struct {
 	Author              string
 	Publisher           string
 	ActiveOnly          bool // true for the public endpoint, false for CMS
-	Limit               int
-	Offset              int
-	OrderBy             string
+	// ActiveStatuses is the CMS-only "active"/"inactive" multi-select
+	// (checkbox), distinct from ActiveOnly above — mirrors news_dto.Filter.Status.
+	ActiveStatuses []string
+	DateFrom       string // "YYYY-MM-DD", inclusive — filters createdDate
+	DateTo         string // "YYYY-MM-DD", inclusive
+	Limit          int
+	Offset         int
+	OrderBy        string
+}
+
+// BulkDeleteRequest is the body for deleting multiple books at once.
+type BulkDeleteRequest struct {
+	IDs []int64 `json:"ids" validate:"required,min=1"`
 }

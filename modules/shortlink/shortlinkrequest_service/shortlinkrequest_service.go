@@ -32,7 +32,7 @@ type Service interface {
 	// PublicPIC mengembalikan info kontak PIC untuk kartu "Konfirmasi via
 	// WhatsApp" di halaman publik pengajuan.
 	PublicPIC(ctx context.Context) (shortlinkrequest_dto.PICResponse, error)
-	CMSList(ctx context.Context, q dto.ListQuery, status string) ([]shortlinkrequest_dto.Response, int, error)
+	CMSList(ctx context.Context, q dto.ListQuery, status []string, dateFrom, dateTo string) ([]shortlinkrequest_dto.Response, int, error)
 	CMSGet(ctx context.Context, id int64) (shortlinkrequest_dto.Response, error)
 	// Approve (jalur CMS) membuat shortlink baru (transaksi atomik kondisional,
 	// §6) dan mengantre notifikasi ke requester.

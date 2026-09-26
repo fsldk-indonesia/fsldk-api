@@ -24,5 +24,6 @@ func RegisterRoutes(rg *gin.RouterGroup, h user_handler.Handler, mw *middlewares
 		g.PUT("/:id", mw.RequirePermission(constants.PermUserUpdate), h.Update)
 		g.PATCH("/:id/status", mw.RequirePermission(constants.PermUserUpdate), h.SetStatus)
 		g.DELETE("/:id", mw.RequirePermission(constants.PermUserDelete), h.Delete)
+		g.POST("/bulk-delete", mw.RequirePermission(constants.PermUserDelete), h.BulkDelete)
 	}
 }

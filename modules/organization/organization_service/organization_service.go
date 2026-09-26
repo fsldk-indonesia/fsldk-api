@@ -57,7 +57,7 @@ type Service interface {
 	// organisasi lain lewat switcher (mis. `?organizationID=`). Pemanggil
 	// WAJIB memvalidasi targetOrganizationID via IsAccessible lebih dulu.
 	AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error)
-	List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string) ([]organization_dto.Response, int, error)
+	List(ctx context.Context, caller CallerScope, q dto.ListQuery, typeFilter string, isActive *bool, parentOrganizationID *int64) ([]organization_dto.Response, int, error)
 	Get(ctx context.Context, id int64) (organization_dto.Response, error)
 	Children(ctx context.Context, id int64) ([]organization_dto.Response, error)
 	Create(ctx context.Context, caller CallerScope, req organization_dto.CreateRequest) (organization_dto.Response, error)

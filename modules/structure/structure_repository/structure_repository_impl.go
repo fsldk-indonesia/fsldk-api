@@ -27,21 +27,23 @@ func (r *repositoryImpl) List(ctx context.Context, f structure_dto.Filter) ([]st
 		search := "%" + f.Search + "%"
 		query = query.Where("batch LIKE ? OR period LIKE ? OR structureName LIKE ?", search, search, search)
 	}
+	if f.DateFrom != "" {
+		query = query.Where("DATE(createdDate) >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		query = query.Where("DATE(createdDate) <= ?", f.DateTo)
+	}
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count structures: %w", err)
 	}
 
-	if f.SortBy != "" {
-		order := "DESC"
-		if f.SortOrder == "asc" {
-			order = "ASC"
-		}
-		query = query.Order(f.SortBy + " " + order)
-	} else {
-		query = query.Order("createdDate DESC")
+	order := f.OrderBy
+	if order == "" {
+		order = "createdDate DESC"
 	}
+	query = query.Order(order)
 
 	if f.Limit > 0 {
 		query = query.Limit(f.Limit).Offset(f.Offset)

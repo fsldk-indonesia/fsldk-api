@@ -26,6 +26,7 @@ var sortColumns = map[string]string{
 	"startDate":   "s.startDate",
 	"category":    "s.category",
 	"createdDate": "s.createdDate",
+	"isActive":    "s.isActive",
 }
 
 // ServiceImpl is the Service implementation.
@@ -132,6 +133,19 @@ func (s *ServiceImpl) Delete(ctx context.Context, id int64) error {
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return apperror.Internal("")
+	}
+	return nil
+}
+
+// BulkDelete deletes multiple schedules, reusing Delete's validation per ID.
+// Best-effort like the CMS bulk-delete pattern elsewhere (news, event,
+// comment): an ID already gone is silently skipped.
+func (s *ServiceImpl) BulkDelete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return apperror.BadRequest("Tidak ada jadwal yang dipilih")
+	}
+	for _, id := range ids {
+		_ = s.Delete(ctx, id)
 	}
 	return nil
 }

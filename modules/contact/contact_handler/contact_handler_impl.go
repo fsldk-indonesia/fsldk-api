@@ -49,12 +49,22 @@ func (h *handlerImpl) List(c *gin.Context) {
 		return
 	}
 
-	res, err := h.svc.List(c.Request.Context(), q)
+	page := q.Page
+	if page < 1 {
+		page = 1
+	}
+	limit := q.Limit
+	if limit < 1 || limit > 100 {
+		limit = 15
+	}
+
+	items, total, err := h.svc.List(c.Request.Context(), q)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
 
+	res := httphelper.BuildPagination(c, items, int(total), page, limit)
 	httphelper.Success(c, "Berhasil mengambil daftar pesan", res)
 }
 
@@ -102,6 +112,25 @@ func (h *handlerImpl) Delete(c *gin.Context) {
 	}
 
 	httphelper.Success(c, "Pesan berhasil dihapus", nil)
+}
+
+func (h *handlerImpl) BulkDelete(c *gin.Context) {
+	var req contact_dto.BulkDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	if err := h.svc.BulkDelete(c.Request.Context(), req.IDs); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	httphelper.Success(c, "Pesan terpilih berhasil dihapus", nil)
 }
 
 func (h *handlerImpl) Reply(c *gin.Context) {

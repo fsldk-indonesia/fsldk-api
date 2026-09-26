@@ -6,13 +6,18 @@ import (
 	"time"
 )
 
-// Submission merepresentasikan satu baris tr_submission.
+// Submission merepresentasikan satu baris tr_submission. OrganizationName
+// adalah kolom hasil join (bukan kolom tr_submission sendiri) — hanya terisi
+// pada query yang secara eksplisit men-join & men-select-nya (lihat
+// submission_repository.List); `;->` menandainya read-only sesuai konvensi
+// "model tidak pernah ditulis lewat field turunan join".
 type Submission struct {
 	SubmissionID       int64         `gorm:"column:submissionID;primaryKey"`
 	FormID             int64         `gorm:"column:formID"`
 	FormVersionID      int64         `gorm:"column:formVersionID"`
 	PeriodID           sql.NullInt64 `gorm:"column:periodID"`
 	OrganizationID     int64         `gorm:"column:organizationID"`
+	OrganizationName   string        `gorm:"column:organizationName;->"`
 	SubjectType        string        `gorm:"column:subjectType"`
 	SubjectReferenceID sql.NullInt64 `gorm:"column:subjectReferenceID"`
 	SubmittedByUserID  int64         `gorm:"column:submittedByUserID"`
