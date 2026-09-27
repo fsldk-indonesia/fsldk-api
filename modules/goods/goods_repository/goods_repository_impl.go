@@ -206,6 +206,27 @@ func (r *RepositoryImpl) ListImages(ctx context.Context, goodsID int64) ([]goods
 	return out, err
 }
 
+// ListPreviewImages mengambil sampai `limit` URL gambar per goodsID (urutan
+// sortOrder), untuk sekumpulan goodsID sekaligus — satu query batch, bukan
+// query per baris (N+1), supaya aman dipanggil dari endpoint list.
+func (r *RepositoryImpl) ListPreviewImages(ctx context.Context, goodsIDs []int64, limit int) (map[int64][]string, error) {
+	out := map[int64][]string{}
+	if len(goodsIDs) == 0 {
+		return out, nil
+	}
+	var rows []goods_model.Image
+	if err := r.db.WithContext(ctx).Table(constants.TableGoodsImage).
+		Where("goodsID IN ?", goodsIDs).Order("goodsID, sortOrder").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if len(out[row.GoodsID]) < limit {
+			out[row.GoodsID] = append(out[row.GoodsID], row.ImageUrl)
+		}
+	}
+	return out, nil
+}
+
 func (r *RepositoryImpl) CategoryList(ctx context.Context, activeOnly bool) ([]goods_model.Category, error) {
 	q := r.db.WithContext(ctx).Table(constants.TableGoodsCategory)
 	if activeOnly {

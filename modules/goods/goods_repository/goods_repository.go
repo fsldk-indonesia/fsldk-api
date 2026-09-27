@@ -30,6 +30,7 @@ type Repository interface {
 	Delete(ctx context.Context, id int64) error
 	ReplaceImages(ctx context.Context, goodsID int64, urls []string) error
 	ListImages(ctx context.Context, goodsID int64) ([]goods_model.Image, error)
+	ListPreviewImages(ctx context.Context, goodsIDs []int64, limit int) (map[int64][]string, error)
 
 	CategoryList(ctx context.Context, activeOnly bool) ([]goods_model.Category, error)
 	CategoryListCMS(ctx context.Context, q dto.ListQuery, isActive *bool) ([]goods_model.Category, int64, error)

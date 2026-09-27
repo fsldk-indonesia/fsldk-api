@@ -56,7 +56,7 @@ func NewService(repo goods_repository.Repository, upload FileDeleter) Service {
 	return &ServiceImpl{repo: repo, upload: upload}
 }
 
-func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter, sort string) ([]goods_model.Goods, int, error) {
+func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter, sort string) ([]goods_dto.ListItem, int, error) {
 	f.PublishedOnly = true
 	f.Limit = q.Limit
 	f.Offset = q.Offset()
@@ -68,7 +68,29 @@ func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, f goods_d
 	if f.Search == "" {
 		f.Search = q.Search
 	}
-	return s.list(ctx, f)
+	data, total, err := s.list(ctx, f)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ids := make([]int64, len(data))
+	for i, g := range data {
+		ids[i] = g.GoodsID
+	}
+	previews, err := s.repo.ListPreviewImages(ctx, ids, goods_dto.PreviewImageLimit)
+	if err != nil {
+		return nil, 0, apperror.Internal("")
+	}
+
+	out := make([]goods_dto.ListItem, len(data))
+	for i, g := range data {
+		imgs := previews[g.GoodsID]
+		if imgs == nil {
+			imgs = []string{}
+		}
+		out[i] = goods_dto.ListItem{Goods: g, PreviewImages: imgs}
+	}
+	return out, total, nil
 }
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter) ([]goods_model.Goods, int, error) {

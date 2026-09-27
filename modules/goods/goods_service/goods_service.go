@@ -11,7 +11,7 @@ import (
 
 // Service adalah kontrak logika bisnis produk & kategori goods.
 type Service interface {
-	PublicList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter, sort string) ([]goods_model.Goods, int, error)
+	PublicList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter, sort string) ([]goods_dto.ListItem, int, error)
 	CMSList(ctx context.Context, q dto.ListQuery, f goods_dto.Filter) ([]goods_model.Goods, int, error)
 	PublicDetail(ctx context.Context, slug string) (goods_dto.DetailResponse, error)
 	Get(ctx context.Context, id int64) (goods_dto.DetailResponse, error)
