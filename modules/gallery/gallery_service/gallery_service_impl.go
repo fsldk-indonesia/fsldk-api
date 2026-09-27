@@ -13,10 +13,18 @@ import (
 	"fsldk-api/modules/gallery/gallery_repository"
 )
 
-// FileDeleter provides a contract for removing physical files from disk.
-type FileDeleter interface {
+// FileStore is the narrow slice of pkg/upload.Uploader this service depends
+// on: removing physical files from disk, and reading back an already-saved
+// file's size for module-specific limits (see maxImageSize below).
+type FileStore interface {
 	DeleteFile(publicURL string) error
+	FileSize(publicURL string) (int64, error)
 }
+
+// maxImageSize caps an uploaded gallery image (foto sampul maupun foto
+// dokumentasi) at 3 MB — lebih ketat dari batas 5 MB milik endpoint upload
+// gambar bersama (pkg/upload.MaxImageSize), dan spesifik untuk modul ini.
+const maxImageSize = 3 << 20
 
 var youtubeIDRegex = regexp.MustCompile(`(?i)(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})`)
 
@@ -71,15 +79,30 @@ func parseEventDate(input *string) *time.Time {
 
 type serviceImpl struct {
 	repo   gallery_repository.Repository
-	upload FileDeleter
+	upload FileStore
 }
 
 // NewService creates a new gallery service instance.
-func NewService(repo gallery_repository.Repository, upload FileDeleter) Service {
+func NewService(repo gallery_repository.Repository, upload FileStore) Service {
 	return &serviceImpl{
 		repo:   repo,
 		upload: upload,
 	}
+}
+
+// validateImageSize is a best-effort check: if the file can be resolved on
+// disk, reject it when it exceeds this module's 3 MB cap (the shared upload
+// endpoint only enforces its own looser 5 MB image limit). Silently allows
+// when the uploader is unset or the file isn't resolvable — mirrors the
+// pattern in financeformat_service_impl.go's validate().
+func (s *serviceImpl) validateImageSize(imagePath string) error {
+	if s.upload == nil || imagePath == "" {
+		return nil
+	}
+	if size, err := s.upload.FileSize(imagePath); err == nil && size > maxImageSize {
+		return apperror.BadRequest("Ukuran gambar melebihi 3MB")
+	}
+	return nil
 }
 
 func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort string) ([]gallery_dto.GalleryListItem, int64, int, error) {
@@ -229,6 +252,15 @@ func (s *serviceImpl) GetCMS(ctx context.Context, id int64) (gallery_dto.Gallery
 }
 
 func (s *serviceImpl) Create(ctx context.Context, req gallery_dto.CreateRequest, authorID int64) (int64, error) {
+	if err := s.validateImageSize(req.CoverImage); err != nil {
+		return 0, err
+	}
+	for _, p := range req.Photos {
+		if err := s.validateImageSize(p.ImagePath); err != nil {
+			return 0, err
+		}
+	}
+
 	videoID := extractYouTubeID(req.YoutubeVideoID)
 	eventDate := parseEventDate(req.EventDate)
 
@@ -264,6 +296,10 @@ func (s *serviceImpl) Update(ctx context.Context, id int64, req gallery_dto.Upda
 		if err == gallery_repository.ErrNotFound {
 			return apperror.NotFound("Galeri tidak ditemukan")
 		}
+		return err
+	}
+
+	if err := s.validateImageSize(req.CoverImage); err != nil {
 		return err
 	}
 
@@ -335,6 +371,10 @@ func (s *serviceImpl) AddPhoto(ctx context.Context, galleryID int64, req gallery
 		if err == gallery_repository.ErrNotFound {
 			return gallery_dto.PhotoResponse{}, apperror.NotFound("Galeri tidak ditemukan")
 		}
+		return gallery_dto.PhotoResponse{}, err
+	}
+
+	if err := s.validateImageSize(req.ImagePath); err != nil {
 		return gallery_dto.PhotoResponse{}, err
 	}
 
