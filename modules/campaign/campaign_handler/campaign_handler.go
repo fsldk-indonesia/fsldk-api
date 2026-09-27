@@ -8,6 +8,7 @@ type Handler interface {
 	PublicList(c *gin.Context)
 	PublicDetail(c *gin.Context)
 	Categories(c *gin.Context)
+	PublicStats(c *gin.Context)
 
 	Create(c *gin.Context)
 	Update(c *gin.Context)

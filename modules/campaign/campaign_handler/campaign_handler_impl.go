@@ -60,6 +60,15 @@ func (h *HandlerImpl) PublicDetail(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+func (h *HandlerImpl) PublicStats(c *gin.Context) {
+	data, err := h.svc.PublicStats(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) Categories(c *gin.Context) {
 	data, err := h.svc.Categories(c.Request.Context())
 	if err != nil {

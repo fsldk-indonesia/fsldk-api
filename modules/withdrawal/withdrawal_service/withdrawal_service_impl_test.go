@@ -82,6 +82,10 @@ func (f *fakeCampaignRepository) ListImages(ctx context.Context, campaignID int6
 	return nil, nil
 }
 
+func (f *fakeCampaignRepository) PublicStats(ctx context.Context) (int64, float64, error) {
+	return 0, 0, nil
+}
+
 // testCampaign mengembalikan campaign uji minimal — withdrawal tidak lagi
 // membaca beneficiary dari campaign (revisi 2026-09-01, rekening tujuan
 // diinput ulang tiap pengajuan), campaign hanya dipakai untuk Title/PicPhone.

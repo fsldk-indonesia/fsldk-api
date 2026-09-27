@@ -136,3 +136,11 @@ type LiteResponse struct {
 	CampaignID int64  `json:"campaignID"`
 	Title      string `json:"title"`
 }
+
+// PublicStatsResponse adalah agregat "dampak" Kantong Amal yang ditampilkan
+// tanpa autentikasi (section Kantong Amal beranda) — lihat
+// campaign_repository.Repository.PublicStats untuk cakupan datanya.
+type PublicStatsResponse struct {
+	TotalDonors    int64   `json:"totalDonors"`
+	TotalCollected float64 `json:"totalCollected"`
+}

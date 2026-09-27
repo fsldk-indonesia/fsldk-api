@@ -212,3 +212,21 @@ func (r *RepositoryImpl) ListImages(ctx context.Context, campaignID int64) ([]ca
 		Where("campaignID = ?", campaignID).Order("sortOrder").Find(&out).Error
 	return out, err
 }
+
+func (r *RepositoryImpl) PublicStats(ctx context.Context) (int64, float64, error) {
+	var donors int64
+	if err := r.db.WithContext(ctx).Table(constants.TableDonation).
+		Where("paymentStatus = ?", constants.DonationStatusPaid).
+		Distinct("donorEmail").Count(&donors).Error; err != nil {
+		return 0, 0, err
+	}
+
+	var collected struct {
+		Total sql.NullFloat64 `gorm:"column:total"`
+	}
+	if err := r.db.WithContext(ctx).Table(constants.TableCampaign).
+		Select("SUM(collectedAmountCache) AS total").Find(&collected).Error; err != nil {
+		return 0, 0, err
+	}
+	return donors, collected.Total.Float64, nil
+}

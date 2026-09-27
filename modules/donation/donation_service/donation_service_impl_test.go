@@ -181,6 +181,10 @@ func (f *fakeCampaignRepository) ReplaceImages(ctx context.Context, campaignID i
 func (f *fakeCampaignRepository) ListImages(ctx context.Context, campaignID int64) ([]campaign_model.Image, error) {
 	return nil, nil
 }
+
+func (f *fakeCampaignRepository) PublicStats(ctx context.Context) (int64, float64, error) {
+	return 0, 0, nil
+}
 // fakeDonationRepository adalah implementasi donation_repository.Repository
 // in-memory — Create mendeteksi idempotencyKey duplikat sendiri (meniru
 // guard UNIQUE di DB) supaya alur idempotent Create() bisa diuji tanpa DB.

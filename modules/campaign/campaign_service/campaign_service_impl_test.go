@@ -90,6 +90,10 @@ func (f *fakeCampaignRepository) ListImages(ctx context.Context, campaignID int6
 	return nil, nil
 }
 
+func (f *fakeCampaignRepository) PublicStats(ctx context.Context) (int64, float64, error) {
+	return 0, 0, nil
+}
+
 type fakeOrgAccess struct{ allow bool }
 
 func (f fakeOrgAccess) IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error) {
