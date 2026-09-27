@@ -1,5 +1,8 @@
 // Package setting merangkai routing modul setting (App Settings — konfigurasi
-// runtime platform generik, Superadmin-only). Tidak ada sisi publik.
+// runtime platform generik, Superadmin-only). Satu pengecualian publik:
+// GET /public/settings/contact-email (lihat setting_model.GroupKontak),
+// dikonsumsi langsung oleh beranda & halaman /tentang/kontak — nilai
+// setting lain TIDAK ikut terekspos lewat endpoint ini.
 package setting
 
 import (
@@ -18,4 +21,9 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h setting_handler.Handler, mw *middl
 		g.GET("", mw.RequirePermission(constants.PermSettingView), h.List)
 		g.PUT("/:id", mw.RequirePermission(constants.PermSettingUpdate), h.Update)
 	}
+}
+
+// RegisterPublicRoutes mendaftarkan endpoint publik email kontak.
+func RegisterPublicRoutes(rg *gin.RouterGroup, h setting_handler.Handler) {
+	rg.GET("/settings/contact-email", h.PublicContactEmail)
 }

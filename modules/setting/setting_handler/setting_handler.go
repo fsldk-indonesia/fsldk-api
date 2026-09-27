@@ -7,4 +7,5 @@ import "github.com/gin-gonic/gin"
 type Handler interface {
 	List(c *gin.Context)
 	Update(c *gin.Context)
+	PublicContactEmail(c *gin.Context)
 }
