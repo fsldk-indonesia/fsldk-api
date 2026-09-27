@@ -1,8 +1,9 @@
 // Package setting merangkai routing modul setting (App Settings — konfigurasi
-// runtime platform generik, Superadmin-only). Satu pengecualian publik:
-// GET /public/settings/contact-email (lihat setting_model.GroupKontak),
-// dikonsumsi langsung oleh beranda & halaman /tentang/kontak — nilai
-// setting lain TIDAK ikut terekspos lewat endpoint ini.
+// runtime platform generik, Superadmin-only). Dua pengecualian publik:
+// GET /public/settings/contact-email dan GET /public/settings/contact-whatsapp
+// (lihat setting_model.GroupKontak), dikonsumsi langsung oleh beranda,
+// floating button WhatsApp, & halaman /tentang/kontak — nilai setting lain
+// TIDAK ikut terekspos lewat endpoint ini.
 package setting
 
 import (
@@ -23,7 +24,8 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h setting_handler.Handler, mw *middl
 	}
 }
 
-// RegisterPublicRoutes mendaftarkan endpoint publik email kontak.
+// RegisterPublicRoutes mendaftarkan endpoint publik kontak (email & WhatsApp).
 func RegisterPublicRoutes(rg *gin.RouterGroup, h setting_handler.Handler) {
 	rg.GET("/settings/contact-email", h.PublicContactEmail)
+	rg.GET("/settings/contact-whatsapp", h.PublicContactWhatsapp)
 }

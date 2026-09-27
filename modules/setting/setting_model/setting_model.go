@@ -49,4 +49,12 @@ const (
 	// dikonsumsi langsung oleh SPA publik, bukan cuma dibaca server-side.
 	GroupKontak     = "kontak"
 	KeyContactEmail = "contact_email"
+
+	// KeyContactWhatsapp — nomor WhatsApp kontak publik (floating button +
+	// section "Hubungi Kami" beranda), disimpan format tampilan biasa
+	// ("+62 851-1133-2861") supaya gampang diedit admin — frontend yang
+	// membuang karakter non-digit untuk membentuk link wa.me. isHide=false,
+	// publik lewat endpoint yang sama dengan KeyContactEmail (lihat
+	// setting_handler.PublicContactWhatsapp).
+	KeyContactWhatsapp = "contact_whatsapp"
 )

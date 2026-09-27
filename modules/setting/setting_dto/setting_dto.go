@@ -22,3 +22,9 @@ type UpdateRequest struct {
 type PublicContactEmailResponse struct {
 	Email string `json:"email"`
 }
+
+// PublicContactWhatsappResponse adalah response endpoint publik nomor
+// WhatsApp kontak (lihat setting_model.GroupKontak/KeyContactWhatsapp).
+type PublicContactWhatsappResponse struct {
+	WhatsappNumber string `json:"whatsappNumber"`
+}

@@ -60,3 +60,12 @@ func (h *HandlerImpl) PublicContactEmail(c *gin.Context) {
 	}
 	httphelper.Success(c, "", setting_dto.PublicContactEmailResponse{Email: email})
 }
+
+func (h *HandlerImpl) PublicContactWhatsapp(c *gin.Context) {
+	number, err := h.svc.GetValue(c.Request.Context(), setting_model.GroupKontak, setting_model.KeyContactWhatsapp)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", setting_dto.PublicContactWhatsappResponse{WhatsappNumber: number})
+}
