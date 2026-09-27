@@ -4,12 +4,26 @@ package goods_dto
 import "fsldk-api/modules/goods/goods_model"
 
 // DetailResponse adalah produk beserta gallery gambarnya — dipakai endpoint
-// detail publik & CMS get. Endpoint list tidak menyertakan gallery (cukup
-// mainImageUrl) supaya tidak query gambar untuk tiap baris listing.
+// detail publik & CMS get. Endpoint list tidak menyertakan gallery penuh
+// (cukup mainImageUrl) supaya tidak query gambar untuk tiap baris listing.
 type DetailResponse struct {
 	goods_model.Goods
 	Images []string `json:"images"`
 }
+
+// ListItem adalah goods_model.Goods ditambah cuplikan gallery singkat (lihat
+// PreviewImageLimit) — dipakai KHUSUS endpoint public list untuk kartu
+// "shop.app style" di Beranda (foto utama + strip thumbnail kecil).
+// Diambil via satu query batch per goodsID (lihat
+// Repository.ListPreviewImages), bukan N+1 seperti endpoint detail.
+type ListItem struct {
+	goods_model.Goods
+	PreviewImages []string `json:"previewImages"`
+}
+
+// PreviewImageLimit adalah jumlah maksimum gambar tambahan yang disertakan
+// di ListItem.PreviewImages.
+const PreviewImageLimit = 3
 
 // Request adalah body membuat/memperbarui produk. Dipakai untuk create
 // maupun update — form CMS selalu mengirim seluruh state gallery saat ini,

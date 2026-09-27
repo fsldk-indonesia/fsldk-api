@@ -39,4 +39,9 @@ type Repository interface {
 	// aman karena gambar pendukung murni display, tidak direferensikan tabel lain.
 	ReplaceImages(ctx context.Context, campaignID int64, urls []string) error
 	ListImages(ctx context.Context, campaignID int64) ([]campaign_model.Image, error)
+	// PublicStats mengembalikan agregat "dampak" Kantong Amal yang aman
+	// ditampilkan tanpa autentikasi (beranda) — totalDonors dihitung dari
+	// SELURUH donasi PAID sepanjang waktu (bukan cuma campaign PUBLISHED
+	// saat ini), totalCollected dari collectedAmountCache seluruh campaign.
+	PublicStats(ctx context.Context) (totalDonors int64, totalCollected float64, err error)
 }

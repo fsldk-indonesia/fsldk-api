@@ -119,6 +119,18 @@ func (f *fakeGoodsRepository) ListImages(ctx context.Context, goodsID int64) ([]
 	return out, nil
 }
 
+func (f *fakeGoodsRepository) ListPreviewImages(ctx context.Context, goodsIDs []int64, limit int) (map[int64][]string, error) {
+	out := map[int64][]string{}
+	for _, id := range goodsIDs {
+		urls := f.images[id]
+		if len(urls) > limit {
+			urls = urls[:limit]
+		}
+		out[id] = urls
+	}
+	return out, nil
+}
+
 func (f *fakeGoodsRepository) CategoryList(ctx context.Context, activeOnly bool) ([]goods_model.Category, error) {
 	return nil, nil
 }

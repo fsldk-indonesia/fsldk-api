@@ -32,6 +32,7 @@ type Service interface {
 	PublicList(ctx context.Context, q dto.ListQuery, categoryID int64) ([]campaign_dto.Response, int, error)
 	PublicDetail(ctx context.Context, slug string) (campaign_dto.DetailResponse, error)
 	Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error)
+	PublicStats(ctx context.Context) (campaign_dto.PublicStatsResponse, error)
 
 	// Create/Update/Delete murni permission-gated (kantong_amal.campaign.
 	// create/.update/.delete) — TIDAK ada lagi pengecekan kepemilikan,

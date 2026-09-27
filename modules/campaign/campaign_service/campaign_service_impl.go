@@ -83,6 +83,14 @@ func (s *ServiceImpl) PublicDetail(ctx context.Context, slugStr string) (campaig
 	return s.toDetail(ctx, c)
 }
 
+func (s *ServiceImpl) PublicStats(ctx context.Context) (campaign_dto.PublicStatsResponse, error) {
+	donors, collected, err := s.repo.PublicStats(ctx)
+	if err != nil {
+		return campaign_dto.PublicStatsResponse{}, apperror.Internal("")
+	}
+	return campaign_dto.PublicStatsResponse{TotalDonors: donors, TotalCollected: collected}, nil
+}
+
 func (s *ServiceImpl) Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error) {
 	cats, err := s.repo.Categories(ctx)
 	if err != nil {

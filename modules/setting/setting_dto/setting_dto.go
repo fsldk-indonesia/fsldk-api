@@ -16,3 +16,15 @@ type Response struct {
 type UpdateRequest struct {
 	SettingValue string `json:"settingValue" validate:"max=1000"`
 }
+
+// PublicContactEmailResponse adalah response endpoint publik email kontak
+// (lihat setting_model.GroupKontak/KeyContactEmail).
+type PublicContactEmailResponse struct {
+	Email string `json:"email"`
+}
+
+// PublicContactWhatsappResponse adalah response endpoint publik nomor
+// WhatsApp kontak (lihat setting_model.GroupKontak/KeyContactWhatsapp).
+type PublicContactWhatsappResponse struct {
+	WhatsappNumber string `json:"whatsappNumber"`
+}

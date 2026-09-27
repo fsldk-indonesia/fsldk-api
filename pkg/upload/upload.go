@@ -40,10 +40,15 @@ func NewUploader(dir, baseURL string) *Uploader {
 	return &Uploader{dir: dir, baseURL: strings.TrimRight(baseURL, "/")}
 }
 
-// SaveImage memvalidasi ekstensi & ukuran berkas gambar lalu menyimpannya,
-// mengembalikan URL publik yang bisa langsung dipakai sebagai articleImage/newsImage.
+// SaveImage memvalidasi ekstensi & ukuran berkas gambar, menyimpannya sebagai
+// dua varian — "main" (di-cap maxMainWidth, dipakai articleImage/newsImage/
+// lightbox) dan "<nama>_thumb.<ext>" (di-cap maxThumbWidth, dipakai
+// thumbnail grid) — lalu mengembalikan URL publik varian main (format URL
+// tidak berubah dari sebelumnya, jadi tidak perlu migrasi data). .webp/.gif
+// tidak diresize (lihat generateVariants) tapi tetap punya kedua berkas
+// supaya pemanggil bisa selalu mengasumsikan varian thumb itu ada.
 func (u *Uploader) SaveImage(fh *multipart.FileHeader) (string, error) {
-	return u.save(fh, allowedImageExt, MaxImageSize, "format berkas tidak didukung (hanya jpg, jpeg, png, webp, gif)", "ukuran berkas melebihi 5MB")
+	return u.saveImage(fh, "format berkas tidak didukung (hanya jpg, jpeg, png, webp, gif)", "ukuran berkas melebihi 5MB")
 }
 
 // SaveDocument memvalidasi ekstensi & ukuran berkas dokumen (PDF/DOCX/XLSX)
@@ -53,27 +58,38 @@ func (u *Uploader) SaveDocument(fh *multipart.FileHeader) (string, error) {
 	return u.save(fh, allowedDocumentExt, MaxDocumentSize, "format berkas tidak didukung (hanya pdf, docx, xlsx)", "ukuran berkas melebihi 20MB")
 }
 
-// save memvalidasi ekstensi & ukuran berkas, menyimpannya dengan nama acak
-// (menghindari tabrakan nama & path traversal dari nama asli), lalu
-// mengembalikan URL publiknya.
-func (u *Uploader) save(fh *multipart.FileHeader, allowedExt map[string]bool, maxSize int64, extErrMsg, sizeErrMsg string) (string, error) {
+// prepareDestination memvalidasi ekstensi & ukuran berkas, memastikan
+// direktori tujuan ada, lalu memilih nama tujuan acak (menghindari tabrakan
+// nama & path traversal dari nama asli). Dipakai bersama oleh save() (dokumen)
+// dan saveImage() (gambar, yang butuh nama tujuan sebelum bisa menulis varian
+// main+thumb-nya).
+func (u *Uploader) prepareDestination(fh *multipart.FileHeader, allowedExt map[string]bool, maxSize int64, extErrMsg, sizeErrMsg string) (name, dst string, err error) {
 	ext := strings.ToLower(filepath.Ext(fh.Filename))
 	if !allowedExt[ext] {
-		return "", fmt.Errorf("%s", extErrMsg)
+		return "", "", fmt.Errorf("%s", extErrMsg)
 	}
 	if fh.Size > maxSize {
-		return "", fmt.Errorf("%s", sizeErrMsg)
+		return "", "", fmt.Errorf("%s", sizeErrMsg)
 	}
 	if err := os.MkdirAll(u.dir, 0755); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	token, err := security.RandomToken(16)
 	if err != nil {
+		return "", "", err
+	}
+	name = token + ext
+	return name, filepath.Join(u.dir, name), nil
+}
+
+// save memvalidasi & menyimpan berkas apa adanya (dipakai dokumen — PDF/DOCX/
+// XLSX tidak punya konsep resize), lalu mengembalikan URL publiknya.
+func (u *Uploader) save(fh *multipart.FileHeader, allowedExt map[string]bool, maxSize int64, extErrMsg, sizeErrMsg string) (string, error) {
+	name, dst, err := u.prepareDestination(fh, allowedExt, maxSize, extErrMsg, sizeErrMsg)
+	if err != nil {
 		return "", err
 	}
-	name := token + ext
-	dst := filepath.Join(u.dir, name)
 
 	src, err := fh.Open()
 	if err != nil {
@@ -88,6 +104,40 @@ func (u *Uploader) save(fh *multipart.FileHeader, allowedExt map[string]bool, ma
 	defer out.Close()
 
 	if _, err := io.Copy(out, src); err != nil {
+		return "", err
+	}
+
+	return u.baseURL + "/uploads/" + name, nil
+}
+
+// saveImage memvalidasi & menyimpan gambar sebagai dua varian — file utama
+// (di-cap maxMainWidth) dan "<nama>_thumb.<ext>" (di-cap maxThumbWidth) —
+// lewat generateVariants, lalu mengembalikan URL publik varian utama.
+func (u *Uploader) saveImage(fh *multipart.FileHeader, extErrMsg, sizeErrMsg string) (string, error) {
+	name, dst, err := u.prepareDestination(fh, allowedImageExt, MaxImageSize, extErrMsg, sizeErrMsg)
+	if err != nil {
+		return "", err
+	}
+	ext := strings.ToLower(filepath.Ext(name))
+
+	src, err := fh.Open()
+	if err != nil {
+		return "", err
+	}
+	defer src.Close()
+
+	original, err := io.ReadAll(src)
+	if err != nil {
+		return "", err
+	}
+
+	main, thumb := generateVariants(original, ext)
+
+	if err := os.WriteFile(dst, main, 0644); err != nil {
+		return "", err
+	}
+	thumbDst := filepath.Join(u.dir, thumbFileName(name))
+	if err := os.WriteFile(thumbDst, thumb, 0644); err != nil {
 		return "", err
 	}
 
@@ -112,6 +162,12 @@ func (u *Uploader) DeleteFile(publicURL string) error {
 	err := os.Remove(filepath.Join(u.dir, name))
 	if err != nil && !os.IsNotExist(err) {
 		return err
+	}
+
+	// Images saved via saveImage also have a "_thumb" sibling; documents
+	// never do, so a missing thumb here is the expected case, not an error.
+	if thumbErr := os.Remove(filepath.Join(u.dir, thumbFileName(name))); thumbErr != nil && !os.IsNotExist(thumbErr) {
+		return thumbErr
 	}
 	return nil
 }

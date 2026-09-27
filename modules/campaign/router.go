@@ -14,6 +14,12 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h campaign_handler.Handler) {
 	pub.GET("/campaigns", h.PublicList)
 	pub.GET("/campaigns/:slug", h.PublicDetail)
 	pub.GET("/campaign-categories", h.Categories)
+	// Sibling top-level path (bukan /campaigns/stats) — pola sama dengan
+	// /campaign-categories di atas, sengaja MENGHINDARI konflik dengan
+	// /campaigns/:slug (gin match /campaigns/stats ke :slug lebih dulu,
+	// bikin PublicStats tidak pernah kepanggil, request malah 404
+	// "Campaign tidak ditemukan" dari PublicDetail).
+	pub.GET("/campaign-stats", h.PublicStats)
 }
 
 // RegisterCMSRoutes mendaftarkan endpoint CMS campaign — CRUD murni

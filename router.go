@@ -439,6 +439,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	qrcode.RegisterRequestCMSRoutes(api, qrcodeReqH, mw)
 
 	setting.RegisterCMSRoutes(api, settingH, mw)
+	setting.RegisterPublicRoutes(pub, settingH)
 	welcomepopup.RegisterCMSRoutes(api, welcomePopupH, mw)
 	welcomepopup.RegisterPublicRoutes(pub, welcomePopupH)
 	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)

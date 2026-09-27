@@ -41,4 +41,20 @@ const (
 	// App Settings CMS, beda dari KeyWithdrawalOtpEmail).
 	GroupNotifikasi    = "notifikasi"
 	KeyWhatsAppEnabled = "whatsapp_enabled"
+
+	// GroupKontak/KeyContactEmail — email kontak publik yang ditampilkan di
+	// section "Hubungi Kami" beranda dan halaman /tentang/kontak (dulu
+	// hardcoded di frontend). isHide=false, dan satu-satunya key yang punya
+	// endpoint publik (lihat setting_handler.PublicContactEmail) karena
+	// dikonsumsi langsung oleh SPA publik, bukan cuma dibaca server-side.
+	GroupKontak     = "kontak"
+	KeyContactEmail = "contact_email"
+
+	// KeyContactWhatsapp — nomor WhatsApp kontak publik (floating button +
+	// section "Hubungi Kami" beranda), disimpan format tampilan biasa
+	// ("+62 851-1133-2861") supaya gampang diedit admin — frontend yang
+	// membuang karakter non-digit untuk membentuk link wa.me. isHide=false,
+	// publik lewat endpoint yang sama dengan KeyContactEmail (lihat
+	// setting_handler.PublicContactWhatsapp).
+	KeyContactWhatsapp = "contact_whatsapp"
 )

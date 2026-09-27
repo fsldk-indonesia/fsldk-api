@@ -8,6 +8,7 @@ import (
 	"fsldk-api/base/httphelper"
 	"fsldk-api/base/validation"
 	"fsldk-api/modules/setting/setting_dto"
+	"fsldk-api/modules/setting/setting_model"
 	"fsldk-api/modules/setting/setting_service"
 
 	"github.com/gin-gonic/gin"
@@ -49,4 +50,22 @@ func (h *HandlerImpl) Update(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Setting berhasil diperbarui", res)
+}
+
+func (h *HandlerImpl) PublicContactEmail(c *gin.Context) {
+	email, err := h.svc.GetValue(c.Request.Context(), setting_model.GroupKontak, setting_model.KeyContactEmail)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", setting_dto.PublicContactEmailResponse{Email: email})
+}
+
+func (h *HandlerImpl) PublicContactWhatsapp(c *gin.Context) {
+	number, err := h.svc.GetValue(c.Request.Context(), setting_model.GroupKontak, setting_model.KeyContactWhatsapp)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", setting_dto.PublicContactWhatsappResponse{WhatsappNumber: number})
 }
