@@ -134,6 +134,81 @@ func TestGenerateVariants_GifIsNotResized(t *testing.T) {
 	}
 }
 
+// buildExifOrientationSegment builds a minimal JPEG APP1 (Exif) segment
+// containing only the Orientation tag (little-endian TIFF), simulating what
+// a phone camera writes for a portrait shot — without pulling in a real
+// EXIF-writing dependency just for tests.
+func buildExifOrientationSegment(orientation uint16) []byte {
+	tiff := []byte{
+		'I', 'I', 0x2A, 0x00, // TIFF header: little-endian byte order + magic 42
+		0x08, 0x00, 0x00, 0x00, // offset to IFD0
+		0x01, 0x00, // IFD0: 1 entry
+		0x12, 0x01, // tag 0x0112 (Orientation)
+		0x03, 0x00, // type 3 (SHORT)
+		0x01, 0x00, 0x00, 0x00, // count 1
+		byte(orientation), byte(orientation >> 8), 0x00, 0x00, // value + padding
+		0x00, 0x00, 0x00, 0x00, // next IFD offset (none)
+	}
+	payload := append([]byte("Exif\x00\x00"), tiff...)
+	length := len(payload) + 2 // length field counts itself
+	segment := []byte{0xFF, 0xE1, byte(length >> 8), byte(length)}
+	return append(segment, payload...)
+}
+
+// encodeTestJPEGWithOrientation encodes a landscape width x height JPEG
+// (bottom half red, top half blue) tagged with the given EXIF orientation,
+// inserted as an APP1 segment right after SOI like a real camera JPEG.
+func encodeTestJPEGWithOrientation(t *testing.T, width, height int, orientation uint16) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			if y < height/2 {
+				img.Set(x, y, color.RGBA{B: 255, A: 255})
+			} else {
+				img.Set(x, y, color.RGBA{R: 255, A: 255})
+			}
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatalf("failed to encode base jpeg: %v", err)
+	}
+	base := buf.Bytes()
+	out := make([]byte, 0, len(base)+64)
+	out = append(out, base[:2]...) // SOI
+	out = append(out, buildExifOrientationSegment(orientation)...)
+	out = append(out, base[2:]...)
+	return out
+}
+
+func TestGenerateVariants_CorrectsExifOrientation(t *testing.T) {
+	// Stored pixel grid is landscape (32x16, bottom half red) tagged
+	// orientation 6 — "rotate 90 CW to display correctly", the same tag
+	// phones write for a portrait photo. Since the resized bytes we write
+	// carry no EXIF for a viewer to rotate by, the pixel data itself must
+	// already be corrected: portrait (16x32), with the stored bottom-left
+	// corner (red) now at the displayed top-left.
+	original := encodeTestJPEGWithOrientation(t, 32, 16, 6)
+
+	main, thumb := generateVariants(original, ".jpg")
+
+	for name, variant := range map[string][]byte{"main": main, "thumb": thumb} {
+		img, err := jpeg.Decode(bytes.NewReader(variant))
+		if err != nil {
+			t.Fatalf("%s: failed to decode corrected image: %v", name, err)
+		}
+		w, h := img.Bounds().Dx(), img.Bounds().Dy()
+		if w != h/2 {
+			t.Fatalf("%s: expected corrected image to be portrait (width = height/2), got %dx%d", name, w, h)
+		}
+		r, _, b, _ := img.At(0, 0).RGBA()
+		if r <= b {
+			t.Errorf("%s: expected top-left of corrected image to be red (from stored bottom-left), got r=%d b=%d", name, r, b)
+		}
+	}
+}
+
 func TestGenerateVariants_FallsBackToOriginalWhenJPEGDecodeFails(t *testing.T) {
 	corrupt := []byte("this is not a valid jpeg file at all")
 
