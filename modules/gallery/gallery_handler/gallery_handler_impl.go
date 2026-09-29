@@ -25,12 +25,41 @@ func NewHandler(svc gallery_service.Service) Handler {
 	return &handlerImpl{svc: svc}
 }
 
+// trimmedNonEmpty trims each value and drops blanks — multi-select filter
+// params arrive as repeated query keys (?eventName=A&eventName=B, parsed via
+// c.QueryArray), not comma-joined, so a value containing a literal comma
+// (plausible in an event name) is never split apart by mistake.
+func trimmedNonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// parseInts best-effort parses each value as an int, skipping invalid ones —
+// mirrors the rest of this handler's forgiving query parsing (e.g. page/limit).
+func parseInts(values []string) []int {
+	out := make([]int, 0, len(values))
+	for _, v := range values {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func (h *handlerImpl) ListPublic(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "9"))
 	sort := c.DefaultQuery("sort", "newest")
+	search := strings.TrimSpace(c.Query("search"))
+	eventNames := trimmedNonEmpty(c.QueryArray("eventName"))
+	years := parseInts(c.QueryArray("year"))
 
-	items, total, totalPages, err := h.svc.ListPublic(c.Request.Context(), page, limit, sort)
+	items, total, totalPages, err := h.svc.ListPublic(c.Request.Context(), page, limit, sort, search, eventNames, years)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -44,6 +73,16 @@ func (h *handlerImpl) ListPublic(c *gin.Context) {
 		"totalPages": totalPages,
 	}
 	httphelper.Success(c, "Berhasil mengambil daftar galeri", result)
+}
+
+func (h *handlerImpl) FilterOptionsPublic(c *gin.Context) {
+	options, err := h.svc.FilterOptionsPublic(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+
+	httphelper.Success(c, "Berhasil mengambil opsi filter galeri", options)
 }
 
 func (h *handlerImpl) ShowPublic(c *gin.Context) {

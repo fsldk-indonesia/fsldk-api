@@ -9,7 +9,10 @@ import (
 // Service defines the business logic operations for the gallery module.
 type Service interface {
 	// Public operations
-	ListPublic(ctx context.Context, page, limit int, sort string) ([]gallery_dto.GalleryListItem, int64, int, error)
+	ListPublic(ctx context.Context, page, limit int, sort, search string, eventNames []string, years []int) ([]gallery_dto.GalleryListItem, int64, int, error)
+	// FilterOptionsPublic returns the distinct years/event names for the
+	// public filter dropdowns (Tahun Kegiatan / Nama Kegiatan).
+	FilterOptionsPublic(ctx context.Context) (gallery_dto.FilterOptionsResponse, error)
 	GetPublic(ctx context.Context, id int64) (gallery_dto.GalleryDetailResponse, error)
 	ListPhotosPublic(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error)
 

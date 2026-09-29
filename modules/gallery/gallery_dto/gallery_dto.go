@@ -53,14 +53,28 @@ type ReorderPhotosRequest struct {
 // Filter holds query parameters for filtering and paginating galleries.
 type Filter struct {
 	Search     string
-	EventName  string
+	EventName  string // LIKE parsial — dipakai pencarian CMS (ListCMS), BUKAN filter dropdown publik.
 	EventTheme string
+	// EventNames & Years dipakai filter dropdown publik "Nama Kegiatan"/
+	// "Tahun Kegiatan" (lihat gallery_handler.ListPublic) — exact match via
+	// IN(), mendukung pilih lebih dari satu nilai sekaligus (multi-select).
+	// Kosong berarti tidak difilter.
+	EventNames []string
+	Years      []int // filter YEAR(COALESCE(eventDate, createdDate)) IN (...)
 	DateFrom   string // "YYYY-MM-DD", inklusif — filter kolom createdDate
 	DateTo     string // "YYYY-MM-DD", inklusif
 	SortBy     string
 	SortOrder  string
 	Limit      int
 	Offset     int
+}
+
+// FilterOptionsResponse holds the distinct values available for the public
+// gallery filter dropdowns (Tahun Kegiatan / Nama Kegiatan) — populated from
+// existing data so the UI never offers an option that returns zero results.
+type FilterOptionsResponse struct {
+	Years      []int    `json:"years"`
+	EventNames []string `json:"eventNames"`
 }
 
 // BulkDeleteRequest is the body for deleting multiple galleries at once.

@@ -19,6 +19,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, upl
 
 	// Public routes
 	pub.GET("/galleries", handler.ListPublic)
+	pub.GET("/galleries/filter-options", handler.FilterOptionsPublic)
 	pub.GET("/galleries/:id", handler.ShowPublic)
 	pub.GET("/galleries/:id/photos", handler.ListPhotosPublic)
 
