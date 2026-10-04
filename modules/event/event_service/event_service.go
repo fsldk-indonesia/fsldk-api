@@ -24,6 +24,8 @@ type Service interface {
 	PublicList(ctx context.Context, q dto.ListQuery, divisions, years, statuses []string, sort string) ([]event_dto.EventResponse, int, error)
 	// PublicDetail returns a published event by slug and increments its view count.
 	PublicDetail(ctx context.Context, slug string) (event_dto.EventResponse, error)
+	// FilterOptionsPublic returns distinct divisions/years for the public filter dropdowns.
+	FilterOptionsPublic(ctx context.Context) (event_dto.FilterOptionsResponse, error)
 	// CMSList returns all events (published or not) for the CMS dashboard.
 	CMSList(ctx context.Context, q dto.ListQuery, f event_dto.CMSFilter) ([]event_model.Event, int, error)
 	// CMSGet returns any event by ID for CMS editing.

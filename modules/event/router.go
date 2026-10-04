@@ -12,6 +12,7 @@ import (
 // RegisterPublicRoutes registers unauthenticated event endpoints.
 func RegisterPublicRoutes(pub *gin.RouterGroup, h event_handler.Handler) {
 	pub.GET("/events", h.ListPublic)
+	pub.GET("/events/filter-options", h.FilterOptionsPublic)
 	pub.GET("/events/:slug", h.ShowPublic)
 }
 

@@ -40,9 +40,15 @@ func NewService(repo event_repository.Repository, comment CommentCleaner) Servic
 // --- Public API ---
 
 func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, divisions, years, statuses []string, sort string) ([]event_dto.EventResponse, int, error) {
-	sortBy := "newest"
-	if sort == "title" {
-		sortBy = "title"
+	// "newest"/DESC (default, Terbaru) · "oldest" reuses the same coalesce
+	// column ASC (Terlama) · "title" ASC (Judul A-Z — previously hardcoded
+	// DESC here, which actually rendered Z-A).
+	sortBy, sortOrder := "newest", "DESC"
+	switch sort {
+	case "oldest":
+		sortOrder = "ASC"
+	case "title":
+		sortBy, sortOrder = "title", "ASC"
 	}
 	events, total, err := s.repo.List(ctx, event_dto.Filter{
 		Search:        q.Search,
@@ -51,7 +57,7 @@ func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, divisions
 		Statuses:      statuses,
 		PublishedOnly: true,
 		SortBy:        sortBy,
-		SortOrder:     "DESC",
+		SortOrder:     sortOrder,
 		Limit:         q.Limit,
 		Offset:        q.Offset(),
 	})
@@ -70,6 +76,25 @@ func (s *ServiceImpl) PublicDetail(ctx context.Context, slug string) (event_dto.
 	go func() { _ = s.repo.IncrementViewCount(context.Background(), e.EventID) }()
 	e.ViewCount++ // optimistic local update for the current response
 	return s.toResponse(e), nil
+}
+
+// FilterOptionsPublic returns distinct divisions/years for the public filter dropdowns.
+func (s *ServiceImpl) FilterOptionsPublic(ctx context.Context) (event_dto.FilterOptionsResponse, error) {
+	divisions, err := s.repo.DistinctDivisions(ctx)
+	if err != nil {
+		return event_dto.FilterOptionsResponse{}, apperror.Internal("")
+	}
+	years, err := s.repo.DistinctYears(ctx)
+	if err != nil {
+		return event_dto.FilterOptionsResponse{}, apperror.Internal("")
+	}
+	if divisions == nil {
+		divisions = []string{}
+	}
+	if years == nil {
+		years = []int{}
+	}
+	return event_dto.FilterOptionsResponse{Divisions: divisions, Years: years}, nil
 }
 
 // --- CMS API ---
