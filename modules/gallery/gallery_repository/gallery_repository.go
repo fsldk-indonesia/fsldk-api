@@ -23,6 +23,8 @@ type Repository interface {
 	// present in the table, for the public filter dropdowns.
 	DistinctFilterOptions(ctx context.Context) ([]int, []string, error)
 	FindByID(ctx context.Context, id int64) (gallery_model.Gallery, error)
+	FindBySlug(ctx context.Context, slug string) (gallery_model.Gallery, error)
+	SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error)
 	Create(ctx context.Context, g gallery_model.Gallery, photos []gallery_model.GalleryPhoto, authorID int64) (int64, error)
 	Update(ctx context.Context, id int64, g gallery_model.Gallery, updatedBy int64) error
 	Delete(ctx context.Context, id int64) error

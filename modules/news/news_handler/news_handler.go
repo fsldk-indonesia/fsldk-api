@@ -9,6 +9,7 @@ type Handler interface {
 	PublicDetail(c *gin.Context)
 	PublicFeatured(c *gin.Context)
 	Categories(c *gin.Context)
+	FilterOptionsPublic(c *gin.Context)
 	CMSList(c *gin.Context)
 	CMSGet(c *gin.Context)
 	Create(c *gin.Context)

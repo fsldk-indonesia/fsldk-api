@@ -35,9 +35,15 @@ type Filter struct {
 	Status        []string // "published" | "draft" — multi-select (IN), kosong = semua status
 	DateFrom      string   // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
 	DateTo        string   // "YYYY-MM-DD", inklusif
-	Limit         int
-	Offset        int
-	OrderBy       string
+	// Years/Reporters/IsFeatured dipakai dropdown filter PUBLIK "Filter Berita"
+	// (beda dari Reporter/DateFrom/DateTo di atas yang khusus CMS) — exact
+	// match (IN), mendukung pilih lebih dari satu nilai sekaligus.
+	Years      []int64  // filter YEAR(COALESCE(publishedDate, createdDate)) IN (...)
+	Reporters  []string // exact match (IN) terhadap newsReporter, BUKAN LIKE seperti Reporter CMS
+	IsFeatured *bool    // nil = tidak difilter, else true/false eksak
+	Limit      int
+	Offset     int
+	OrderBy    string
 }
 
 // CMSFilter menampung parameter filter khusus endpoint CMS list (di luar
@@ -52,6 +58,23 @@ type CMSFilter struct {
 	Reporter    string
 	DateFrom    string
 	DateTo      string
+}
+
+// PublicFilter menampung parameter filter dropdown publik "Filter Berita" di
+// luar kategori (yang sudah jadi parameter terpisah sejak awal pada
+// Service.PublicList) — Tahun Terbit, Penulis, dan status Unggulan.
+type PublicFilter struct {
+	Years      []int64
+	Reporters  []string
+	IsFeatured *bool
+}
+
+// FilterOptionsResponse menampung nilai distinct yang mengisi dropdown filter
+// publik (Tahun Terbit/Penulis) — supaya dropdown tidak pernah menawarkan
+// pilihan yang hasilnya kosong, pola sama seperti gallery_dto.FilterOptionsResponse.
+type FilterOptionsResponse struct {
+	Years     []int64  `json:"years"`
+	Reporters []string `json:"reporters"`
 }
 
 // BulkDeleteRequest adalah body untuk menghapus banyak berita sekaligus.

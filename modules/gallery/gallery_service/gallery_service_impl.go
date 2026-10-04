@@ -2,16 +2,24 @@ package gallery_service
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/slug"
 	"fsldk-api/modules/gallery/gallery_dto"
 	"fsldk-api/modules/gallery/gallery_model"
 	"fsldk-api/modules/gallery/gallery_repository"
 )
+
+// digitsOnly matches slugs/path params that are purely numeric — used to
+// detect legacy /galeri/<id> links (pre-slug) so they keep resolving by
+// galleryID instead of 404-ing after the slug migration.
+var digitsOnly = regexp.MustCompile(`^[0-9]+$`)
 
 // FileStore is the narrow slice of pkg/upload.Uploader this service depends
 // on: removing physical files from disk, and reading back an already-saved
@@ -105,6 +113,43 @@ func (s *serviceImpl) validateImageSize(imagePath string) error {
 	return nil
 }
 
+// resolveBySlug cari galeri lewat gallerySlug; kalau tidak ketemu dan slug-nya
+// murni digit, fallback ke galleryID (backward-compat link lama /galeri/<id>
+// dari sebelum kolom gallerySlug ada — lihat migrations/0044_gallery_slug).
+func (s *serviceImpl) resolveBySlug(ctx context.Context, slug string) (gallery_model.Gallery, error) {
+	item, err := s.repo.FindBySlug(ctx, slug)
+	if err == nil {
+		return item, nil
+	}
+	if err != gallery_repository.ErrNotFound || !digitsOnly.MatchString(slug) {
+		return item, err
+	}
+	id, convErr := strconv.ParseInt(slug, 10, 64)
+	if convErr != nil {
+		return item, err
+	}
+	return s.repo.FindByID(ctx, id)
+}
+
+// uniqueSlug menghasilkan slug ramah-URL dari title, menambahkan suffix
+// -2, -3, dst kalau sudah dipakai galeri lain — pola sama dengan
+// news_service_impl.go/event_service_impl.go.
+func (s *serviceImpl) uniqueSlug(ctx context.Context, title string, exceptID int64) (string, error) {
+	base := slug.Make(title)
+	candidate := base
+	for i := 2; i < 100; i++ {
+		exists, err := s.repo.SlugExists(ctx, candidate, exceptID)
+		if err != nil {
+			return "", apperror.Internal("")
+		}
+		if !exists {
+			return candidate, nil
+		}
+		candidate = fmt.Sprintf("%s-%d", base, i)
+	}
+	return fmt.Sprintf("%s-%d", base, exceptID), nil
+}
+
 func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort, search string, eventNames []string, years []int) ([]gallery_dto.GalleryListItem, int64, int, error) {
 	if page < 1 {
 		page = 1
@@ -153,6 +198,7 @@ func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort, sea
 			GalleryID:      it.GalleryID,
 			EventName:      it.EventName,
 			EventTheme:     it.EventTheme,
+			GallerySlug:    it.GallerySlug,
 			EventDate:      it.EventDate,
 			CoverImage:     it.CoverImage,
 			YoutubeVideoID: it.YoutubeVideoID,
@@ -172,6 +218,22 @@ func (s *serviceImpl) FilterOptionsPublic(ctx context.Context) (gallery_dto.Filt
 	return gallery_dto.FilterOptionsResponse{Years: years, EventNames: names}, nil
 }
 
+func (s *serviceImpl) toDetailResponse(item gallery_model.Gallery) gallery_dto.GalleryDetailResponse {
+	return gallery_dto.GalleryDetailResponse{
+		GalleryID:        item.GalleryID,
+		EventName:        item.EventName,
+		EventTheme:       item.EventTheme,
+		GallerySlug:      item.GallerySlug,
+		EventDate:        item.EventDate,
+		EventDescription: item.EventDescription,
+		CoverImage:       item.CoverImage,
+		YoutubeVideoID:   item.YoutubeVideoID,
+		DocumentLink:     item.DocumentLink,
+		TotalPhotos:      item.TotalPhotos,
+		CreatedDate:      item.CreatedDate,
+	}
+}
+
 func (s *serviceImpl) GetPublic(ctx context.Context, id int64) (gallery_dto.GalleryDetailResponse, error) {
 	item, err := s.repo.FindByID(ctx, id)
 	if err != nil {
@@ -180,22 +242,35 @@ func (s *serviceImpl) GetPublic(ctx context.Context, id int64) (gallery_dto.Gall
 		}
 		return gallery_dto.GalleryDetailResponse{}, err
 	}
-
-	return gallery_dto.GalleryDetailResponse{
-		GalleryID:        item.GalleryID,
-		EventName:        item.EventName,
-		EventTheme:       item.EventTheme,
-		EventDate:        item.EventDate,
-		EventDescription: item.EventDescription,
-		CoverImage:       item.CoverImage,
-		YoutubeVideoID:   item.YoutubeVideoID,
-		DocumentLink:     item.DocumentLink,
-		TotalPhotos:      item.TotalPhotos,
-		CreatedDate:      item.CreatedDate,
-	}, nil
+	return s.toDetailResponse(item), nil
 }
 
-func (s *serviceImpl) ListPhotosPublic(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error) {
+func (s *serviceImpl) GetPublicBySlug(ctx context.Context, slugStr string) (gallery_dto.GalleryDetailResponse, error) {
+	item, err := s.resolveBySlug(ctx, slugStr)
+	if err != nil {
+		if err == gallery_repository.ErrNotFound {
+			return gallery_dto.GalleryDetailResponse{}, apperror.NotFound("Galeri tidak ditemukan")
+		}
+		return gallery_dto.GalleryDetailResponse{}, err
+	}
+	return s.toDetailResponse(item), nil
+}
+
+func (s *serviceImpl) ListPhotosPublic(ctx context.Context, slugStr string, page, limit int) (gallery_dto.PhotoPageResponse, error) {
+	gallery, err := s.resolveBySlug(ctx, slugStr)
+	if err != nil {
+		if err == gallery_repository.ErrNotFound {
+			return gallery_dto.PhotoPageResponse{}, apperror.NotFound("Galeri tidak ditemukan")
+		}
+		return gallery_dto.PhotoPageResponse{}, err
+	}
+	return s.listPhotosByGalleryID(ctx, gallery.GalleryID, page, limit)
+}
+
+// listPhotosByGalleryID adalah logika asli ListPhotosPublic (sebelum jadi
+// slug-based) — dipakai ulang oleh ListPhotosPublic (resolve slug dulu) dan
+// ListPhotosCMS (langsung pakai galleryID, tidak melalui slug).
+func (s *serviceImpl) listPhotosByGalleryID(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -256,6 +331,7 @@ func (s *serviceImpl) ListCMS(ctx context.Context, f gallery_dto.Filter) ([]gall
 			GalleryID:      it.GalleryID,
 			EventName:      it.EventName,
 			EventTheme:     it.EventTheme,
+			GallerySlug:    it.GallerySlug,
 			EventDate:      it.EventDate,
 			CoverImage:     it.CoverImage,
 			YoutubeVideoID: it.YoutubeVideoID,
@@ -283,9 +359,15 @@ func (s *serviceImpl) Create(ctx context.Context, req gallery_dto.CreateRequest,
 	videoID := extractYouTubeID(req.YoutubeVideoID)
 	eventDate := parseEventDate(req.EventDate)
 
+	slugStr, err := s.uniqueSlug(ctx, req.EventName, 0)
+	if err != nil {
+		return 0, err
+	}
+
 	galleryModel := gallery_model.Gallery{
 		EventName:        req.EventName,
 		EventTheme:       req.EventTheme,
+		GallerySlug:      slugStr,
 		EventDate:        eventDate,
 		EventDescription: req.EventDescription,
 		CoverImage:       req.CoverImage,
@@ -325,9 +407,18 @@ func (s *serviceImpl) Update(ctx context.Context, id int64, req gallery_dto.Upda
 	videoID := extractYouTubeID(req.YoutubeVideoID)
 	eventDate := parseEventDate(req.EventDate)
 
+	slugStr := existing.GallerySlug
+	if existing.EventName != req.EventName {
+		slugStr, err = s.uniqueSlug(ctx, req.EventName, id)
+		if err != nil {
+			return err
+		}
+	}
+
 	galleryModel := gallery_model.Gallery{
 		EventName:        req.EventName,
 		EventTheme:       req.EventTheme,
+		GallerySlug:      slugStr,
 		EventDate:        eventDate,
 		EventDescription: req.EventDescription,
 		CoverImage:       req.CoverImage,
@@ -382,7 +473,7 @@ func (s *serviceImpl) BulkDelete(ctx context.Context, ids []int64) error {
 }
 
 func (s *serviceImpl) ListPhotosCMS(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error) {
-	return s.ListPhotosPublic(ctx, galleryID, page, limit)
+	return s.listPhotosByGalleryID(ctx, galleryID, page, limit)
 }
 
 func (s *serviceImpl) AddPhoto(ctx context.Context, galleryID int64, req gallery_dto.AddPhotoRequest, authorID int64) (gallery_dto.PhotoResponse, error) {

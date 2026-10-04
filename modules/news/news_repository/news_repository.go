@@ -26,4 +26,9 @@ type Repository interface {
 	Delete(ctx context.Context, id int64) error
 	IncrementView(ctx context.Context, id int64) error
 	Categories(ctx context.Context) ([]news_model.Category, error)
+	// DistinctFilterOptions returns distinct publishedDate years (fallback
+	// createdDate) and distinct non-empty reporters currently in the table —
+	// populates the public "Tahun Terbit"/"Penulis" filter dropdowns without
+	// ever offering an option that would return zero results.
+	DistinctFilterOptions(ctx context.Context) ([]int64, []string, error)
 }

@@ -45,12 +45,42 @@ func (h *HandlerImpl) hasPublishPermission(c *gin.Context) bool {
 
 func (h *HandlerImpl) PublicList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.PublicList(c.Request.Context(), q, c.Query("category"))
+	f := news_dto.PublicFilter{
+		Years:      dto.ParseInt64CSV(c.Query("year")),
+		Reporters:  dto.ParseCSV(c.Query("reporter")),
+		IsFeatured: parseOptionalBool(c.Query("featured")),
+	}
+	data, total, err := h.svc.PublicList(c.Request.Context(), q, c.Query("category"), f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+// parseOptionalBool mem-parse query param tri-state ("true"/"false"/kosong) —
+// nil berarti tidak difilter, beda dari false yang eksplisit memfilter hanya
+// yang bernilai false. Dipakai filter dropdown publik "Unggulan".
+func parseOptionalBool(s string) *bool {
+	switch s {
+	case "true":
+		v := true
+		return &v
+	case "false":
+		v := false
+		return &v
+	default:
+		return nil
+	}
+}
+
+func (h *HandlerImpl) FilterOptionsPublic(c *gin.Context) {
+	options, err := h.svc.FilterOptionsPublic(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", options)
 }
 
 func (h *HandlerImpl) PublicDetail(c *gin.Context) {
