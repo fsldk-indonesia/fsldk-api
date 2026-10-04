@@ -65,15 +65,22 @@ func (r *repositoryImpl) CountActiveKader(ctx context.Context) (int, error) {
 }
 
 func (r *repositoryImpl) Directory(ctx context.Context, q dto.ListQuery, organizationTypeCode, provinceName string) ([]statistic_dto.DirectoryEntry, int, error) {
-	db := r.db.WithContext(ctx).Table(constants.TableOrganization).Where("isActive = 1")
+	// Self-LEFT JOIN untuk resolve nama induk (parentOrganizationID -> p)
+	// — pola sama persis dengan organization_repository_impl.go, supaya
+	// frontend bisa menyusun direktori sebagai tree Puskomnas -> Puskomda ->
+	// LDK alih-alih daftar datar. LEFT (bukan INNER) karena root Puskomnas
+	// tidak punya induk (parentOrganizationID NULL).
+	db := r.db.WithContext(ctx).Table(constants.TableOrganization+" o").
+		Joins("LEFT JOIN "+constants.TableOrganization+" p ON p.organizationID = o.parentOrganizationID").
+		Where("o.isActive = 1")
 	if organizationTypeCode != "" {
-		db = db.Where("organizationTypeCode = ?", organizationTypeCode)
+		db = db.Where("o.organizationTypeCode = ?", organizationTypeCode)
 	}
 	if provinceName != "" {
-		db = db.Where("provinceName = ?", provinceName)
+		db = db.Where("o.provinceName = ?", provinceName)
 	}
 	if q.Search != "" {
-		db = db.Where("organizationName LIKE ?", "%"+q.Search+"%")
+		db = db.Where("o.organizationName LIKE ?", "%"+q.Search+"%")
 	}
 
 	var total int64
@@ -82,8 +89,10 @@ func (r *repositoryImpl) Directory(ctx context.Context, q dto.ListQuery, organiz
 	}
 
 	var rows []statistic_dto.DirectoryEntry
-	err := db.Select("organizationID, organizationTypeCode, organizationName, provinceName, cityName, photoURL").
-		Order("organizationTypeCode ASC, organizationName ASC").
+	err := db.Select("o.organizationID, o.organizationTypeCode, o.organizationName, o.provinceName, o.cityName, " +
+		"o.contactEmail, o.contactPhone, o.websiteURL, o.photoURL, " +
+		"o.parentOrganizationID, p.organizationName AS parentOrganizationName").
+		Order("o.organizationTypeCode ASC, o.organizationName ASC").
 		Limit(q.Limit).Offset(q.Offset()).
 		Find(&rows).Error
 	return rows, int(total), err

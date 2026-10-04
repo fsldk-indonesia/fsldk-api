@@ -15,6 +15,7 @@ type Response struct {
 	CityName               string    `json:"cityName,omitempty"`
 	ContactEmail           string    `json:"contactEmail,omitempty"`
 	ContactPhone           string    `json:"contactPhone,omitempty"`
+	WebsiteURL             string    `json:"websiteURL,omitempty"`
 	PhotoURL               string    `json:"photoURL,omitempty"`
 	IsActive               bool      `json:"isActive"`
 	CreatedDate            time.Time `json:"createdDate"`
@@ -53,6 +54,7 @@ type CreateRequest struct {
 	CityName             string `json:"cityName" validate:"max=100"`
 	ContactEmail         string `json:"contactEmail" validate:"omitempty,email,max=100"`
 	ContactPhone         string `json:"contactPhone" validate:"max=30"`
+	WebsiteURL           string `json:"websiteURL" validate:"omitempty,url,max=255"`
 }
 
 // UpdateRequest adalah body memperbarui profil organisasi.
@@ -62,6 +64,7 @@ type UpdateRequest struct {
 	CityName         string `json:"cityName" validate:"max=100"`
 	ContactEmail     string `json:"contactEmail" validate:"omitempty,email,max=100"`
 	ContactPhone     string `json:"contactPhone" validate:"max=30"`
+	WebsiteURL       string `json:"websiteURL" validate:"omitempty,url,max=255"`
 	PhotoURL         string `json:"photoURL" validate:"omitempty,url,max=255"`
 }
 
