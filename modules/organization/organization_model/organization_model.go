@@ -19,6 +19,7 @@ type Organization struct {
 	CityName               sql.NullString `gorm:"column:cityName"`
 	ContactEmail           sql.NullString `gorm:"column:contactEmail"`
 	ContactPhone           sql.NullString `gorm:"column:contactPhone"`
+	WebsiteURL             sql.NullString `gorm:"column:websiteURL"`
 	IsActive               bool           `gorm:"column:isActive"`
 	PhotoURL               sql.NullString `gorm:"column:photoURL"`
 	CreatedDate            time.Time      `gorm:"column:createdDate"`
@@ -34,5 +35,6 @@ type CreateParams struct {
 	CityName             sql.NullString
 	ContactEmail         sql.NullString
 	ContactPhone         sql.NullString
+	WebsiteURL           sql.NullString
 	CreatedBy            sql.NullInt64
 }

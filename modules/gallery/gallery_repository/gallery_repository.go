@@ -19,6 +19,9 @@ var (
 // Repository defines database operations for galleries and gallery photos.
 type Repository interface {
 	List(ctx context.Context, f gallery_dto.Filter) ([]gallery_model.Gallery, int64, error)
+	// DistinctFilterOptions returns distinct event years and event names
+	// present in the table, for the public filter dropdowns.
+	DistinctFilterOptions(ctx context.Context) ([]int, []string, error)
 	FindByID(ctx context.Context, id int64) (gallery_model.Gallery, error)
 	Create(ctx context.Context, g gallery_model.Gallery, photos []gallery_model.GalleryPhoto, authorID int64) (int64, error)
 	Update(ctx context.Context, id int64, g gallery_model.Gallery, updatedBy int64) error

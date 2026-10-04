@@ -6,6 +6,7 @@ import "github.com/gin-gonic/gin"
 type Handler interface {
 	// Public endpoints
 	ListPublic(c *gin.Context)
+	FilterOptionsPublic(c *gin.Context)
 	ShowPublic(c *gin.Context)
 	ListPhotosPublic(c *gin.Context)
 

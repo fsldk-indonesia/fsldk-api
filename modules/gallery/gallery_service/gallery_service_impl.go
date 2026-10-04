@@ -105,7 +105,7 @@ func (s *serviceImpl) validateImageSize(imagePath string) error {
 	return nil
 }
 
-func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort string) ([]gallery_dto.GalleryListItem, int64, int, error) {
+func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort, search string, eventNames []string, years []int) ([]gallery_dto.GalleryListItem, int64, int, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -114,16 +114,27 @@ func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort stri
 	}
 	offset := (page - 1) * limit
 
+	// "newest"/"oldest" mengurutkan tanggal kegiatan (fallback createdDate);
+	// "name" mengurutkan abjad nama kegiatan — dipakai opsi Urutkan publik
+	// "Terbaru"/"Judul A-Z" (pola sama seperti referensi ldksyahid-app).
+	sortBy := "COALESCE(eventDate, createdDate)"
 	sortOrder := "DESC"
-	if strings.ToLower(sort) == "oldest" {
+	switch strings.ToLower(sort) {
+	case "oldest":
+		sortOrder = "ASC"
+	case "name":
+		sortBy = "eventName"
 		sortOrder = "ASC"
 	}
 
 	filter := gallery_dto.Filter{
-		SortBy:    "COALESCE(eventDate, createdDate)",
-		SortOrder: sortOrder,
-		Limit:     limit,
-		Offset:    offset,
+		Search:     search,
+		EventNames: eventNames,
+		Years:      years,
+		SortBy:     sortBy,
+		SortOrder:  sortOrder,
+		Limit:      limit,
+		Offset:     offset,
 	}
 
 	items, total, err := s.repo.List(ctx, filter)
@@ -151,6 +162,14 @@ func (s *serviceImpl) ListPublic(ctx context.Context, page, limit int, sort stri
 	}
 
 	return list, total, totalPages, nil
+}
+
+func (s *serviceImpl) FilterOptionsPublic(ctx context.Context) (gallery_dto.FilterOptionsResponse, error) {
+	years, names, err := s.repo.DistinctFilterOptions(ctx)
+	if err != nil {
+		return gallery_dto.FilterOptionsResponse{}, err
+	}
+	return gallery_dto.FilterOptionsResponse{Years: years, EventNames: names}, nil
 }
 
 func (s *serviceImpl) GetPublic(ctx context.Context, id int64) (gallery_dto.GalleryDetailResponse, error) {

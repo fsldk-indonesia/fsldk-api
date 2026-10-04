@@ -37,6 +37,12 @@ func (r *repositoryImpl) List(ctx context.Context, f gallery_dto.Filter) ([]gall
 	if f.EventTheme != "" {
 		q = q.Where("LOWER(eventTheme) LIKE ?", "%"+strings.ToLower(f.EventTheme)+"%")
 	}
+	if len(f.EventNames) > 0 {
+		q = q.Where("eventName IN ?", f.EventNames)
+	}
+	if len(f.Years) > 0 {
+		q = q.Where("YEAR(COALESCE(eventDate, createdDate)) IN ?", f.Years)
+	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(createdDate) >= ?", f.DateFrom)
 	}
@@ -70,6 +76,31 @@ func (r *repositoryImpl) List(ctx context.Context, f gallery_dto.Filter) ([]gall
 	}
 
 	return items, total, nil
+}
+
+// DistinctFilterOptions returns the distinct event years (from
+// COALESCE(eventDate, createdDate), same fallback used by List's default
+// sort/year filter) and distinct event names currently in the table — used
+// to populate the public "Tahun Kegiatan"/"Nama Kegiatan" filter dropdowns
+// without ever offering an option that would return zero results.
+func (r *repositoryImpl) DistinctFilterOptions(ctx context.Context) ([]int, []string, error) {
+	var years []int
+	if err := r.db.WithContext(ctx).Model(&gallery_model.Gallery{}).
+		Distinct("YEAR(COALESCE(eventDate, createdDate)) as yr").
+		Order("yr DESC").
+		Pluck("yr", &years).Error; err != nil {
+		return nil, nil, err
+	}
+
+	var names []string
+	if err := r.db.WithContext(ctx).Model(&gallery_model.Gallery{}).
+		Distinct("eventName").
+		Order("eventName ASC").
+		Pluck("eventName", &names).Error; err != nil {
+		return nil, nil, err
+	}
+
+	return years, names, nil
 }
 
 func (r *repositoryImpl) FindByID(ctx context.Context, id int64) (gallery_model.Gallery, error) {

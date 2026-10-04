@@ -34,12 +34,23 @@ type NetworkStatsResponse struct {
 
 // DirectoryEntry is one organization row in the public network directory —
 // PhotoURL is the organization's logo, shown when set (fallback to a generic
-// icon is a frontend concern, not this DTO's).
+// icon is a frontend concern, not this DTO's). ParentOrganizationID/Name are
+// nil for the root Puskomnas (no parent); the frontend uses them to render
+// the directory as a Puskomnas -> Puskomda -> LDK tree instead of a flat
+// list, mirroring ms_organization.parentOrganizationID. ContactEmail/
+// ContactPhone/WebsiteURL are shown on the public LDK card too — this was a
+// deliberate product decision (contact details are meant to be discoverable
+// for the public directory), not an oversight.
 type DirectoryEntry struct {
-	OrganizationID       int64  `json:"organizationID"`
-	OrganizationTypeCode string `json:"organizationTypeCode"`
-	OrganizationName     string `json:"organizationName"`
-	ProvinceName         string `json:"provinceName,omitempty"`
-	CityName             string `json:"cityName,omitempty"`
-	PhotoURL             string `json:"photoURL,omitempty"`
+	OrganizationID         int64   `json:"organizationID"`
+	OrganizationTypeCode   string  `json:"organizationTypeCode"`
+	OrganizationName       string  `json:"organizationName"`
+	ProvinceName           string  `json:"provinceName,omitempty"`
+	CityName               string  `json:"cityName,omitempty"`
+	ContactEmail           string  `json:"contactEmail,omitempty"`
+	ContactPhone           string  `json:"contactPhone,omitempty"`
+	WebsiteURL             string  `json:"websiteURL,omitempty"`
+	PhotoURL               string  `json:"photoURL,omitempty"`
+	ParentOrganizationID   *int64  `json:"parentOrganizationID,omitempty"`
+	ParentOrganizationName *string `json:"parentOrganizationName,omitempty"`
 }
