@@ -86,13 +86,9 @@ func (h *handlerImpl) FilterOptionsPublic(c *gin.Context) {
 }
 
 func (h *handlerImpl) ShowPublic(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		httphelper.Error(c, apperror.BadRequest("ID tidak valid"))
-		return
-	}
+	slug := c.Param("slug")
 
-	gallery, err := h.svc.GetPublic(c.Request.Context(), id)
+	gallery, err := h.svc.GetPublicBySlug(c.Request.Context(), slug)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -102,16 +98,12 @@ func (h *handlerImpl) ShowPublic(c *gin.Context) {
 }
 
 func (h *handlerImpl) ListPhotosPublic(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		httphelper.Error(c, apperror.BadRequest("ID tidak valid"))
-		return
-	}
+	slug := c.Param("slug")
 
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "12"))
 
-	photos, err := h.svc.ListPhotosPublic(c.Request.Context(), id, page, limit)
+	photos, err := h.svc.ListPhotosPublic(c.Request.Context(), slug, page, limit)
 	if err != nil {
 		httphelper.Error(c, err)
 		return

@@ -87,6 +87,7 @@ type GalleryListItem struct {
 	GalleryID      int64      `json:"galleryID"`
 	EventName      string     `json:"eventName"`
 	EventTheme     string     `json:"eventTheme"`
+	GallerySlug    string     `json:"gallerySlug"`
 	EventDate      *time.Time `json:"eventDate"`
 	CoverImage     string     `json:"coverImage"`
 	YoutubeVideoID *string    `json:"youtubeVideoID"`
@@ -99,6 +100,7 @@ type GalleryDetailResponse struct {
 	GalleryID        int64      `json:"galleryID"`
 	EventName        string     `json:"eventName"`
 	EventTheme       string     `json:"eventTheme"`
+	GallerySlug      string     `json:"gallerySlug"`
 	EventDate        *time.Time `json:"eventDate"`
 	EventDescription string     `json:"eventDescription"`
 	CoverImage       string     `json:"coverImage"`

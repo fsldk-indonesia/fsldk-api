@@ -7,6 +7,7 @@ type Gallery struct {
 	GalleryID        int64          `gorm:"column:galleryID;primaryKey;autoIncrement"`
 	EventName        string         `gorm:"column:eventName"`
 	EventTheme       string         `gorm:"column:eventTheme"`
+	GallerySlug      string         `gorm:"column:gallerySlug"`
 	EventDate        *time.Time     `gorm:"column:eventDate"`
 	EventDescription string         `gorm:"column:eventDescription"`
 	CoverImage       string         `gorm:"column:coverImage"`

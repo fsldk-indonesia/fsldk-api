@@ -115,6 +115,25 @@ func (r *repositoryImpl) FindByID(ctx context.Context, id int64) (gallery_model.
 	return item, nil
 }
 
+func (r *repositoryImpl) FindBySlug(ctx context.Context, slug string) (gallery_model.Gallery, error) {
+	var item gallery_model.Gallery
+	err := r.db.WithContext(ctx).Where("gallerySlug = ?", slug).First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return item, ErrNotFound
+		}
+		return item, err
+	}
+	return item, nil
+}
+
+func (r *repositoryImpl) SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("ms_gallery").
+		Where("gallerySlug = ? AND galleryID <> ?", slug, exceptID).Count(&count).Error
+	return count > 0, err
+}
+
 func (r *repositoryImpl) Create(ctx context.Context, g gallery_model.Gallery, photos []gallery_model.GalleryPhoto, authorID int64) (int64, error) {
 	var createdID int64
 
@@ -149,6 +168,7 @@ func (r *repositoryImpl) Update(ctx context.Context, id int64, g gallery_model.G
 	updates := map[string]interface{}{
 		"eventName":        g.EventName,
 		"eventTheme":       g.EventTheme,
+		"gallerySlug":      g.GallerySlug,
 		"eventDate":        g.EventDate,
 		"eventDescription": g.EventDescription,
 		"coverImage":       g.CoverImage,

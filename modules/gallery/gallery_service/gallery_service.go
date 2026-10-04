@@ -14,7 +14,11 @@ type Service interface {
 	// public filter dropdowns (Tahun Kegiatan / Nama Kegiatan).
 	FilterOptionsPublic(ctx context.Context) (gallery_dto.FilterOptionsResponse, error)
 	GetPublic(ctx context.Context, id int64) (gallery_dto.GalleryDetailResponse, error)
-	ListPhotosPublic(ctx context.Context, galleryID int64, page, limit int) (gallery_dto.PhotoPageResponse, error)
+	// GetPublicBySlug cari galeri lewat gallerySlug; kalau slug-nya murni
+	// digit, fallback ke galleryID (backward-compat link lama /galeri/<id>).
+	GetPublicBySlug(ctx context.Context, slug string) (gallery_dto.GalleryDetailResponse, error)
+	// ListPhotosPublic menerima slug (sama fallback ID seperti GetPublicBySlug).
+	ListPhotosPublic(ctx context.Context, slug string, page, limit int) (gallery_dto.PhotoPageResponse, error)
 
 	// CMS operations
 	ListCMS(ctx context.Context, f gallery_dto.Filter) ([]gallery_dto.GalleryListItem, int64, error)
