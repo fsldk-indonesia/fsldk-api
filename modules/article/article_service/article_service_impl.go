@@ -33,9 +33,9 @@ func NewService(repo article_repository.Repository, comment CommentCleaner) Serv
 	return &ServiceImpl{repo: repo, comment: comment}
 }
 
-func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]article_model.Article, int, error) {
+func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlugs []string, years []int) ([]article_model.Article, int, error) {
 	return s.list(ctx, article_dto.Filter{
-		Search: q.Search, CategorySlug: categorySlug, PublishedOnly: true,
+		Search: q.Search, CategorySlugs: categorySlugs, Years: years, PublishedOnly: true,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "a.publishedDate DESC"),
 	})
 }
@@ -84,6 +84,17 @@ func (s *ServiceImpl) Categories(ctx context.Context) ([]article_model.Category,
 		data = []article_model.Category{}
 	}
 	return data, nil
+}
+
+func (s *ServiceImpl) FilterOptionsPublic(ctx context.Context) (article_dto.FilterOptionsResponse, error) {
+	years, err := s.repo.DistinctYears(ctx)
+	if err != nil {
+		return article_dto.FilterOptionsResponse{}, apperror.Internal("")
+	}
+	if years == nil {
+		years = []int{}
+	}
+	return article_dto.FilterOptionsResponse{Years: years}, nil
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, req article_dto.Request, authorID int64, canPublish bool) (article_model.Article, error) {

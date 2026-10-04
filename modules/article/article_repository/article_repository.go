@@ -23,4 +23,8 @@ type Repository interface {
 	SetPublished(ctx context.Context, id int64, published bool, updatedBy int64) error
 	Delete(ctx context.Context, id int64) error
 	Categories(ctx context.Context) ([]article_model.Category, error)
+	// DistinctYears returns the distinct publishedDate years currently in the
+	// table (published articles only) — used to populate the public "Tahun
+	// Publikasi" filter dropdown without ever offering an empty-result option.
+	DistinctYears(ctx context.Context) ([]int, error)
 }

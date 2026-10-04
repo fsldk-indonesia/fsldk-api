@@ -2,6 +2,7 @@ package article_handler
 
 import (
 	"strconv"
+	"strings"
 
 	"fsldk-api/base/appctx"
 	"fsldk-api/base/apperror"
@@ -14,6 +15,31 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// trimmedNonEmpty trims each value and drops blanks — multi-select filter
+// params arrive as repeated query keys (?category=a&category=b, parsed via
+// c.QueryArray), not comma-joined, mirroring the same convention used by the
+// Galeri module's public filter (gallery_handler_impl.go).
+func trimmedNonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// parseInts best-effort parses each value as an int, skipping invalid ones.
+func parseInts(values []string) []int {
+	out := make([]int, 0, len(values))
+	for _, v := range values {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
 
 // HandlerImpl adalah implementasi Handler.
 type HandlerImpl struct{ svc article_service.Service }
@@ -58,12 +84,23 @@ func (h *HandlerImpl) bindRequest(c *gin.Context) (article_dto.Request, bool) {
 
 func (h *HandlerImpl) PublicList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	data, total, err := h.svc.PublicList(c.Request.Context(), q, c.Query("category"))
+	categorySlugs := trimmedNonEmpty(c.QueryArray("category"))
+	years := parseInts(c.QueryArray("year"))
+	data, total, err := h.svc.PublicList(c.Request.Context(), q, categorySlugs, years)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
 	}
 	httphelper.Success(c, "", httphelper.BuildPagination(c, data, total, q.Page, q.Limit))
+}
+
+func (h *HandlerImpl) FilterOptionsPublic(c *gin.Context) {
+	data, err := h.svc.FilterOptionsPublic(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
 }
 
 func (h *HandlerImpl) PublicDetail(c *gin.Context) {
