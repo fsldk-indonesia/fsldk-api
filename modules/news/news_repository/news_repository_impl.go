@@ -68,6 +68,15 @@ func (r *RepositoryImpl) List(ctx context.Context, f news_dto.Filter) ([]news_mo
 	if f.DateTo != "" {
 		q = q.Where("DATE(n.createdDate) <= ?", f.DateTo)
 	}
+	if len(f.Years) > 0 {
+		q = q.Where("YEAR(COALESCE(n.publishedDate, n.createdDate)) IN ?", f.Years)
+	}
+	if len(f.Reporters) > 0 {
+		q = q.Where("n.newsReporter IN ?", f.Reporters)
+	}
+	if f.IsFeatured != nil {
+		q = q.Where("n.isFeatured = ?", *f.IsFeatured)
+	}
 
 	var total int64
 	if err := q.Session(&gorm.Session{}).Count(&total).Error; err != nil {
@@ -194,4 +203,30 @@ func (r *RepositoryImpl) Categories(ctx context.Context) ([]news_model.Category,
 	err := r.db.WithContext(ctx).Table("lk_news_category").
 		Where("isActive = 1").Order("categoryName").Find(&out).Error
 	return out, err
+}
+
+// DistinctFilterOptions returns the distinct publishedDate years (fallback
+// createdDate for drafts/unpublished rows without a publishedDate) and
+// distinct non-empty reporters currently in the table — used to populate
+// the public "Tahun Terbit"/"Penulis" filter dropdowns without ever
+// offering an option that would return zero results.
+func (r *RepositoryImpl) DistinctFilterOptions(ctx context.Context) ([]int64, []string, error) {
+	var years []int64
+	if err := r.db.WithContext(ctx).Table("ms_news").
+		Distinct("YEAR(COALESCE(publishedDate, createdDate)) as yr").
+		Order("yr DESC").
+		Pluck("yr", &years).Error; err != nil {
+		return nil, nil, err
+	}
+
+	var reporters []string
+	if err := r.db.WithContext(ctx).Table("ms_news").
+		Where("newsReporter IS NOT NULL AND newsReporter != ''").
+		Distinct("newsReporter").
+		Order("newsReporter ASC").
+		Pluck("newsReporter", &reporters).Error; err != nil {
+		return nil, nil, err
+	}
+
+	return years, reporters, nil
 }

@@ -20,12 +20,15 @@ type CommentCleaner interface {
 
 // Service adalah kontrak logika bisnis berita.
 type Service interface {
-	PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]news_model.News, int, error)
+	PublicList(ctx context.Context, q dto.ListQuery, categorySlug string, f news_dto.PublicFilter) ([]news_model.News, int, error)
 	CMSList(ctx context.Context, q dto.ListQuery, f news_dto.CMSFilter) ([]news_model.News, int, error)
 	PublicDetail(ctx context.Context, slug string) (news_model.News, error)
 	Get(ctx context.Context, id int64) (news_model.News, error)
 	Featured(ctx context.Context, limit int) ([]news_model.News, error)
 	Categories(ctx context.Context) ([]news_model.Category, error)
+	// FilterOptionsPublic returns the distinct years/reporters for the
+	// public "Filter Berita" dropdown (Tahun Terbit/Penulis).
+	FilterOptionsPublic(ctx context.Context) (news_dto.FilterOptionsResponse, error)
 	Create(ctx context.Context, req news_dto.Request, authorID int64, canPublish bool) (news_model.News, error)
 	Update(ctx context.Context, id int64, req news_dto.Request, updatedBy int64) (news_model.News, error)
 	SetPublished(ctx context.Context, id int64, published bool, updatedBy int64) error

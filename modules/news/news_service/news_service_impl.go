@@ -34,11 +34,20 @@ func NewService(repo news_repository.Repository, comment CommentCleaner) Service
 	return &ServiceImpl{repo: repo, comment: comment}
 }
 
-func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlug string) ([]news_model.News, int, error) {
+func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlug string, f news_dto.PublicFilter) ([]news_model.News, int, error) {
 	return s.list(ctx, news_dto.Filter{
 		Search: q.Search, CategorySlug: categorySlug, PublishedOnly: true,
+		Years: f.Years, Reporters: f.Reporters, IsFeatured: f.IsFeatured,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "n.publishedDate DESC"),
 	})
+}
+
+func (s *ServiceImpl) FilterOptionsPublic(ctx context.Context) (news_dto.FilterOptionsResponse, error) {
+	years, reporters, err := s.repo.DistinctFilterOptions(ctx)
+	if err != nil {
+		return news_dto.FilterOptionsResponse{}, apperror.Internal("")
+	}
+	return news_dto.FilterOptionsResponse{Years: years, Reporters: reporters}, nil
 }
 
 func (s *ServiceImpl) CMSList(ctx context.Context, q dto.ListQuery, f news_dto.CMSFilter) ([]news_model.News, int, error) {

@@ -14,6 +14,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h news_handler.Handler) {
 	pub.GET("/news", h.PublicList)
 	pub.GET("/news-featured", h.PublicFeatured)
 	pub.GET("/news-categories", h.Categories)
+	pub.GET("/news/filter-options", h.FilterOptionsPublic)
 	pub.GET("/news/:slug", h.PublicDetail)
 }
 
