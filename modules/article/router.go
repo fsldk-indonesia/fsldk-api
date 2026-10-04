@@ -12,6 +12,7 @@ import (
 // RegisterPublicRoutes mendaftarkan endpoint publik artikel.
 func RegisterPublicRoutes(pub *gin.RouterGroup, h article_handler.Handler) {
 	pub.GET("/articles", h.PublicList)
+	pub.GET("/articles/filter-options", h.FilterOptionsPublic)
 	pub.GET("/article-categories", h.Categories)
 	pub.GET("/articles/:slug", h.PublicDetail)
 }

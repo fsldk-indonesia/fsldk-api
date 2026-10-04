@@ -21,9 +21,10 @@ type PublishRequest struct {
 // Filter menampung parameter penyaringan daftar artikel (dipakai repository & service).
 type Filter struct {
 	Search        string
-	Writer        string  // LIKE terhadap articleWriter — filter kolom "Penulis" CMS
-	CategorySlug  string
-	CategoryIDs   []int64 // exact match (IN) — filter kolom "Kategori" CMS, multi-select by ID
+	Writer        string   // LIKE terhadap articleWriter — filter kolom "Penulis" CMS
+	CategorySlugs []string // exact match (IN) — filter kategori publik, multi-select by slug
+	CategoryIDs   []int64  // exact match (IN) — filter kolom "Kategori" CMS, multi-select by ID
+	Years         []int    // exact match (IN) terhadap YEAR(publishedDate) — filter "Tahun Publikasi" publik
 	PublishedOnly bool
 	Status        []string // "published" | "draft" — multi-select (IN), kosong = semua status
 	DateFrom      string   // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
@@ -31,6 +32,14 @@ type Filter struct {
 	Limit         int
 	Offset        int
 	OrderBy       string
+}
+
+// FilterOptionsResponse menampung nilai distinct untuk mengisi dropdown filter
+// publik "Tahun Publikasi" — kategori sudah punya endpoint sendiri (Categories),
+// tidak diulang di sini. Nilainya distinct dari data yang benar-benar ada,
+// supaya dropdown tidak pernah menawarkan pilihan yang hasilnya kosong.
+type FilterOptionsResponse struct {
+	Years []int `json:"years"`
 }
 
 // CMSFilter menampung parameter filter khusus endpoint CMS list (di luar

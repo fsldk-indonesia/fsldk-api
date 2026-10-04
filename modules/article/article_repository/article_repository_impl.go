@@ -52,11 +52,14 @@ func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]arti
 	if f.Writer != "" {
 		q = q.Where("a.articleWriter LIKE ?", "%"+f.Writer+"%")
 	}
-	if f.CategorySlug != "" {
-		q = q.Where("c.categorySlug = ?", f.CategorySlug)
+	if len(f.CategorySlugs) > 0 {
+		q = q.Where("c.categorySlug IN ?", f.CategorySlugs)
 	}
 	if len(f.CategoryIDs) > 0 {
 		q = q.Where("a.categoryID IN ?", f.CategoryIDs)
+	}
+	if len(f.Years) > 0 {
+		q = q.Where("YEAR(a.publishedDate) IN ?", f.Years)
 	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(a.createdDate) >= ?", f.DateFrom)
@@ -166,4 +169,14 @@ func (r *RepositoryImpl) Categories(ctx context.Context) ([]article_model.Catego
 	err := r.db.WithContext(ctx).Table("lk_article_category").
 		Where("isActive = 1").Order("categoryName").Find(&out).Error
 	return out, err
+}
+
+func (r *RepositoryImpl) DistinctYears(ctx context.Context) ([]int, error) {
+	var years []int
+	err := r.db.WithContext(ctx).Table("ms_article").
+		Where("isPublished = 1").Where("publishedDate IS NOT NULL").
+		Distinct("YEAR(publishedDate) as yr").
+		Order("yr DESC").
+		Pluck("yr", &years).Error
+	return years, err
 }
