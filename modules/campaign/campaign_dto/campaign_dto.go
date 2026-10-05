@@ -64,6 +64,11 @@ type UpdateRequest struct {
 type ListFilter struct {
 	Statuses   []string
 	CategoryID int64
+	// Province & IsFeatured — filter tambahan khusus listing publik (lihat
+	// PublicList), menyaring berdasarkan c.provinceName persis & c.isFeatured.
+	// nil IsFeatured berarti tidak difilter sama sekali (bukan false).
+	Province   string
+	IsFeatured *bool
 	Search     string
 	DateFrom   string
 	DateTo     string

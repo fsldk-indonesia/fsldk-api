@@ -61,6 +61,10 @@ func (f *fakeCampaignRepository) Categories(ctx context.Context) ([]campaign_mod
 	return nil, nil
 }
 
+func (f *fakeCampaignRepository) Provinces(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func (f *fakeCampaignRepository) Create(ctx context.Context, p campaign_model.CreateParams) (int64, error) {
 	return 0, nil
 }

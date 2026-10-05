@@ -29,9 +29,12 @@ type OrgAccessChecker interface {
 
 // Service adalah kontrak logika bisnis campaign.
 type Service interface {
-	PublicList(ctx context.Context, q dto.ListQuery, categoryID int64) ([]campaign_dto.Response, int, error)
+	// province & isFeatured adalah filter tambahan opsional khusus listing
+	// publik — province "" dan isFeatured nil berarti tidak difilter.
+	PublicList(ctx context.Context, q dto.ListQuery, categoryID int64, province string, isFeatured *bool) ([]campaign_dto.Response, int, error)
 	PublicDetail(ctx context.Context, slug string) (campaign_dto.DetailResponse, error)
 	Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error)
+	Provinces(ctx context.Context) ([]string, error)
 	PublicStats(ctx context.Context) (campaign_dto.PublicStatsResponse, error)
 
 	// Create/Update/Delete murni permission-gated (kantong_amal.campaign.

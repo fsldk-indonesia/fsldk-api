@@ -14,6 +14,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h campaign_handler.Handler) {
 	pub.GET("/campaigns", h.PublicList)
 	pub.GET("/campaigns/:slug", h.PublicDetail)
 	pub.GET("/campaign-categories", h.Categories)
+	pub.GET("/campaign-provinces", h.Provinces)
 	// Sibling top-level path (bukan /campaigns/stats) — pola sama dengan
 	// /campaign-categories di atas, sengaja MENGHINDARI konflik dengan
 	// /campaigns/:slug (gin match /campaigns/stats ke :slug lebih dulu,

@@ -24,6 +24,9 @@ type Repository interface {
 	SlugExists(ctx context.Context, slug string, exceptID int64) (bool, error)
 	CategoryExists(ctx context.Context, categoryID int64) (bool, error)
 	Categories(ctx context.Context) ([]campaign_model.Category, error)
+	// Provinces mengembalikan provinceName unik dari campaign PUBLISHED —
+	// dipakai populasi opsi filter "Provinsi" di listing publik.
+	Provinces(ctx context.Context) ([]string, error)
 	Create(ctx context.Context, p campaign_model.CreateParams) (int64, error)
 	Update(ctx context.Context, id int64, p campaign_model.UpdateParams) error
 	// Delete menghapus campaign secara permanen — pemanggil (campaign_service)
