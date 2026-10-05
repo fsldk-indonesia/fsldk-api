@@ -25,7 +25,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, upl
 
 	// CMS routes
 	galGroup := api.Group("/galleries")
-	galGroup.Use(mw.Auth(), mw.RequireVerified())
+	galGroup.Use(mw.Auth())
 	galGroup.GET("", mw.RequirePermission("gallery.view"), handler.ListCMS)
 	galGroup.POST("", mw.RequirePermission("gallery.create"), handler.Create)
 	galGroup.GET("/:id", mw.RequirePermission("gallery.view"), handler.ShowCMS)

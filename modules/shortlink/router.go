@@ -15,7 +15,7 @@ import (
 // auth + verifikasi + permission), di bawah grup /api/v1.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h shortlink_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/shortlinks")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermShortlinkView), h.List)
 		g.GET("/:id", mw.RequirePermission(constants.PermShortlinkView), h.Get)
@@ -49,7 +49,7 @@ func RegisterRequestPublicRoutes(pub *gin.RouterGroup, h shortlinkrequest_handle
 // tetap jelas dipisah per resource.
 func RegisterRequestCMSRoutes(rg *gin.RouterGroup, h shortlinkrequest_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/shortlink-requests")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermShortlinkView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermShortlinkView), h.CMSGet)

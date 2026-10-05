@@ -19,12 +19,12 @@ import (
 // siapa yang bisa melihat/mengelola daftar withdrawal ("Penarikan" di
 // sidebar), PermWithdrawalProcess menggerbang aksi pencairan sungguhan.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h withdrawal_handler.Handler, mw *middlewares.Middleware) {
-	rg.POST("/campaigns/:id/withdrawals", mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermWithdrawalRequest), h.Request)
-	rg.GET("/transfer/banks", mw.Auth(), mw.RequireVerified(), h.ListBanks)
-	rg.POST("/transfer/inquiry", mw.Auth(), mw.RequireVerified(), h.Inquiry)
+	rg.POST("/campaigns/:id/withdrawals", mw.Auth(), mw.RequirePermission(constants.PermWithdrawalRequest), h.Request)
+	rg.GET("/transfer/banks", mw.Auth(), h.ListBanks)
+	rg.POST("/transfer/inquiry", mw.Auth(), h.Inquiry)
 
 	g := rg.Group("/withdrawals")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermWithdrawalApprove), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermWithdrawalApprove), h.Detail)

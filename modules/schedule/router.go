@@ -17,7 +17,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h schedule_handler.Handler) {
 // RegisterCMSRoutes registers the schedule CMS endpoints.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h schedule_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/schedules")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermScheduleView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermScheduleView), h.CMSGet)

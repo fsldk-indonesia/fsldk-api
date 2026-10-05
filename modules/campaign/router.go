@@ -28,7 +28,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h campaign_handler.Handler) {
 // campaign manapun, mengikuti model celengan syahid ldksyahid-app).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h campaign_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/campaigns")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermCampaignView), h.CMSList)
 		g.GET("/lite", mw.RequirePermission(constants.PermCampaignView), h.CMSListLite)

@@ -90,6 +90,15 @@ func (h *HandlerImpl) ShowPublic(c *gin.Context) {
 	httphelper.Success(c, "", data)
 }
 
+func (h *HandlerImpl) FilterOptionsPublic(c *gin.Context) {
+	data, err := h.svc.FilterOptionsPublic(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 // --- CMS handlers ---
 
 func (h *HandlerImpl) ListCMS(c *gin.Context) {

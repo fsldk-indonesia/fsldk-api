@@ -17,7 +17,7 @@ import (
 // RegisterCMSRoutes mendaftarkan endpoint manajemen App Settings.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h setting_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/settings")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermSettingView), h.List)
 		g.PUT("/:id", mw.RequirePermission(constants.PermSettingUpdate), h.Update)

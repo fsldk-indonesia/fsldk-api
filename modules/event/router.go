@@ -12,13 +12,14 @@ import (
 // RegisterPublicRoutes registers unauthenticated event endpoints.
 func RegisterPublicRoutes(pub *gin.RouterGroup, h event_handler.Handler) {
 	pub.GET("/events", h.ListPublic)
+	pub.GET("/events/filter-options", h.FilterOptionsPublic)
 	pub.GET("/events/:slug", h.ShowPublic)
 }
 
 // RegisterCMSRoutes registers protected CMS event endpoints.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h event_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/events")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermEventView), h.ListCMS)
 		g.GET("/:id", mw.RequirePermission(constants.PermEventView), h.ShowCMS)

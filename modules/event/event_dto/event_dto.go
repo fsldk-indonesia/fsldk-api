@@ -61,6 +61,15 @@ type CMSFilter struct {
 	DateTo         string
 }
 
+// FilterOptionsResponse holds distinct values for populating the public
+// listing's filter dropdowns (Divisi/Tahun) — distinct from data that
+// actually exists, so the dropdown never offers a choice yielding zero
+// results. Mirrors article_dto.FilterOptionsResponse.
+type FilterOptionsResponse struct {
+	Divisions []string `json:"divisions"`
+	Years     []int    `json:"years"`
+}
+
 // BulkDeleteRequest is the body for deleting multiple events at once.
 type BulkDeleteRequest struct {
 	IDs []int64 `json:"ids" validate:"required,min=1"`

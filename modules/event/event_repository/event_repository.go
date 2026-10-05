@@ -22,4 +22,6 @@ type Repository interface {
 	Update(ctx context.Context, id int64, e event_model.Event, updatedBy int64) error
 	Delete(ctx context.Context, id int64) error
 	IncrementViewCount(ctx context.Context, id int64) error
+	DistinctDivisions(ctx context.Context) ([]string, error)
+	DistinctYears(ctx context.Context) ([]int, error)
 }

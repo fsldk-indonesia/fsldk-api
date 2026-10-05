@@ -180,6 +180,30 @@ func (r *RepositoryImpl) IncrementViewCount(ctx context.Context, id int64) error
 	return r.db.WithContext(ctx).Exec("UPDATE ms_event SET viewCount = viewCount + 1 WHERE eventID = ?", id).Error
 }
 
+// DistinctDivisions returns distinct eventDivision values among published
+// events, for the public filter dropdown — mirrors article_repository_impl.go's
+// DistinctYears (distinct from what actually exists, never offers an empty result).
+func (r *RepositoryImpl) DistinctDivisions(ctx context.Context) ([]string, error) {
+	var divisions []string
+	err := r.db.WithContext(ctx).Table("ms_event").
+		Where("isPublished = 1").Where("eventDivision <> ''").
+		Distinct("eventDivision").
+		Order("eventDivision").
+		Pluck("eventDivision", &divisions).Error
+	return divisions, err
+}
+
+// DistinctYears returns distinct startDate years among published events.
+func (r *RepositoryImpl) DistinctYears(ctx context.Context) ([]int, error) {
+	var years []int
+	err := r.db.WithContext(ctx).Table("ms_event").
+		Where("isPublished = 1").Where("startDate IS NOT NULL").
+		Distinct("YEAR(startDate) as yr").
+		Order("yr DESC").
+		Pluck("yr", &years).Error
+	return years, err
+}
+
 // buildValues maps event model fields to a column-value map for GORM writes.
 func buildValues(e event_model.Event, _ int64) map[string]interface{} {
 	return map[string]interface{}{

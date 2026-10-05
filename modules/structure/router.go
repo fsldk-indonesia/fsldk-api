@@ -22,7 +22,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, mw 
 
 	// CMS routes
 	strGroup := api.Group("/structures")
-	strGroup.Use(mw.Auth(), mw.RequireVerified())
+	strGroup.Use(mw.Auth())
 	strGroup.GET("", mw.RequirePermission(constants.PermStructureView), handler.ListCMS)
 	strGroup.POST("", mw.RequirePermission(constants.PermStructureCreate), handler.Create)
 	strGroup.GET("/:id", mw.RequirePermission(constants.PermStructureView), handler.ShowCMS)

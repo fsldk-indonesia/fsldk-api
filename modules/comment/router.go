@@ -24,7 +24,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h comment_handler.Handler, mw *m
 // modul di project ini — bukan berarti route-nya khusus staff.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h comment_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/comments")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.POST("", h.Create)
 		// LoadPermissions: Update/Delete otorisasinya owner ATAU pemegang

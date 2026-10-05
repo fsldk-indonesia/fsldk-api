@@ -17,7 +17,7 @@ import (
 // auth + verifikasi + permission), di bawah grup /api/v1.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h qrcode_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/qrcodes")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermQRCodeView), h.List)
 		g.GET("/:id", mw.RequirePermission(constants.PermQRCodeView), h.Get)
@@ -47,7 +47,7 @@ func RegisterRequestPublicRoutes(pub *gin.RouterGroup, h qrcoderequest_handler.H
 // request.
 func RegisterRequestCMSRoutes(rg *gin.RouterGroup, h qrcoderequest_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/qrcode-requests")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermQRCodeView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermQRCodeView), h.CMSGet)

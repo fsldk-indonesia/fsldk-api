@@ -13,13 +13,13 @@ import (
 func RegisterRoutes(rg *gin.RouterGroup, h organization_handler.Handler, mw *middlewares.Middleware) {
 	// Daftar organisasi yang dapat diakses pemanggil (dashboard switcher) —
 	// cukup terautentikasi, sama seperti /me/menus.
-	rg.GET("/me/organizations", mw.Auth(), mw.RequireVerified(), h.Me)
+	rg.GET("/me/organizations", mw.Auth(), h.Me)
 
 	// Direktori organisasi aktif lintas cakupan akses — dipakai skenario
 	// pemilihan bebas seperti Kader memilih LDK tujuan pendaftaran Sensus
 	// Kader, bukan navigasi/manajemen organisasi sehingga tidak dikunci
 	// permission admin organization.*.
-	rg.GET("/organizations/directory", mw.Auth(), mw.RequireVerified(), h.Directory)
+	rg.GET("/organizations/directory", mw.Auth(), h.Directory)
 
 	viewPerm := mw.RequirePermission(
 		constants.PermOrganizationProfileManage,
@@ -29,7 +29,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h organization_handler.Handler, mw *mid
 	)
 
 	g := rg.Group("/organizations")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", viewPerm, h.List)
 		g.GET("/:id", viewPerm, mw.RequireOrganizationScope("id"), h.Get)

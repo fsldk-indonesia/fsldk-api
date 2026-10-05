@@ -7,6 +7,7 @@ import "github.com/gin-gonic/gin"
 type Handler interface {
 	ListPublic(c *gin.Context)
 	ShowPublic(c *gin.Context)
+	FilterOptionsPublic(c *gin.Context)
 	ListCMS(c *gin.Context)
 	ShowCMS(c *gin.Context)
 	Create(c *gin.Context)

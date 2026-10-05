@@ -21,7 +21,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h news_handler.Handler) {
 // RegisterCMSRoutes mendaftarkan endpoint CMS berita (terproteksi).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h news_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/news")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermNewsView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermNewsView), h.CMSGet)

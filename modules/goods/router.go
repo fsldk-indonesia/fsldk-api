@@ -24,7 +24,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h goods_handler.Handler, mw *mid
 // RegisterCMSRoutes mendaftarkan endpoint CMS goods (produk & kategori).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h goods_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/goods")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermGoodsView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermGoodsView), h.CMSGet)
@@ -37,7 +37,7 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h goods_handler.Handler, mw *middlew
 	}
 
 	gc := rg.Group("/goods-categories")
-	gc.Use(mw.Auth(), mw.RequireVerified())
+	gc.Use(mw.Auth())
 	{
 		gc.GET("", mw.RequirePermission(constants.PermGoodsCategoryView), h.CategoryList)
 		gc.GET("/:id", mw.RequirePermission(constants.PermGoodsCategoryView), h.CategoryGet)

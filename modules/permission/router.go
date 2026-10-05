@@ -12,8 +12,8 @@ import (
 // RegisterRoutes mendaftarkan endpoint permission & menu.
 func RegisterRoutes(rg *gin.RouterGroup, h permission_handler.Handler, mw *middlewares.Middleware) {
 	// Daftar seluruh permission (untuk halaman manajemen role).
-	rg.GET("/permissions", mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermRoleView), h.ListAll)
+	rg.GET("/permissions", mw.Auth(), mw.RequirePermission(constants.PermRoleView), h.ListAll)
 
-	// Menu sidebar CMS: cukup terautentikasi + terverifikasi (tanpa permission khusus).
-	rg.GET("/me/menus", mw.Auth(), mw.RequireVerified(), h.Menu)
+	// Menu sidebar CMS: cukup terautentikasi (tanpa permission khusus).
+	rg.GET("/me/menus", mw.Auth(), h.Menu)
 }

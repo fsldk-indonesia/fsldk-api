@@ -25,7 +25,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h catalogbook_handler.Handler) {
 // RegisterCMSRoutes registers the catalogbook CMS endpoints.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h catalogbook_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/catalog-books")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermCatalogBookView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermCatalogBookView), h.CMSGet)

@@ -37,7 +37,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h dynamicform_handler.Handler, m
 // RegisterCMSRoutes registers the CMS endpoints under /api/v1/dynamic-forms.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h dynamicform_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/dynamic-forms")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermDynamicFormView), h.CMSList)
 		g.POST("", mw.RequirePermission(constants.PermDynamicFormCreate), h.Create)
