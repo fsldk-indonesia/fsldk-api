@@ -15,7 +15,7 @@ import (
 // digantikan Laporan Kantong Amal, item 6 revision-prompt-2.md).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h wallet_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/campaigns/:id")
-	g.Use(mw.Auth(), mw.RequireVerified(), mw.RequirePermission(constants.PermWalletView))
+	g.Use(mw.Auth(), mw.RequirePermission(constants.PermWalletView))
 	{
 		g.GET("/balance", h.CMSBalance)
 		g.GET("/ledger", h.CMSLedger)

@@ -13,7 +13,7 @@ import (
 // RegisterCMSRoutes mendaftarkan endpoint manajemen Welcome Popup.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h welcomepopup_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/welcome-popup")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermWelcomePopupView), h.Get)
 		g.PUT("", mw.RequirePermission(constants.PermWelcomePopupUpdate), h.Update)

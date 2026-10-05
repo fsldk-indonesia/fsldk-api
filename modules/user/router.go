@@ -12,7 +12,7 @@ import (
 // RegisterRoutes mendaftarkan endpoint modul user (terproteksi auth + verifikasi + permission).
 func RegisterRoutes(rg *gin.RouterGroup, h user_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/users")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		// Siapa pun yang login+verified boleh mencari nama pengguna untuk
 		// @mention di komentar — bukan permission user.view (lihat modules/comment).

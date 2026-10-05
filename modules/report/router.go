@@ -16,7 +16,7 @@ import (
 // Amal) tidak terpengaruh.
 func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/reports")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("/submissions/export", mw.RequirePermission(
 			constants.PermReportRegionExport, constants.PermReportNationalExport,

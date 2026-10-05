@@ -17,7 +17,7 @@ import (
 // sehingga tidak bisa diwakili satu aturan scope path/query param generik.
 func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/submissions")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.POST("", mw.RequirePermission(constants.PermSubmissionCreate), h.Create)
 		g.PUT("/:id/answers", mw.RequirePermission(constants.PermSubmissionUpdate), h.SaveAnswers)
@@ -38,7 +38,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 	}
 
 	k := rg.Group("/kaders")
-	k.Use(mw.Auth(), mw.RequireVerified())
+	k.Use(mw.Auth())
 	{
 		k.GET("", mw.RequirePermission(constants.PermSubmissionReviewLDK), h.ListKaders)
 		k.GET("/:id/code", h.GetKaderCode)

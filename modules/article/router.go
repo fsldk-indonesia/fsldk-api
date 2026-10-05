@@ -20,7 +20,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h article_handler.Handler) {
 // RegisterCMSRoutes mendaftarkan endpoint CMS artikel.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h article_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/articles")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermArticleView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermArticleView), h.CMSGet)

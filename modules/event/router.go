@@ -19,7 +19,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h event_handler.Handler) {
 // RegisterCMSRoutes registers protected CMS event endpoints.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h event_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/events")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermEventView), h.ListCMS)
 		g.GET("/:id", mw.RequirePermission(constants.PermEventView), h.ShowCMS)

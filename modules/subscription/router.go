@@ -24,7 +24,7 @@ func RegisterRoutes(api *gin.RouterGroup, pub *gin.RouterGroup, db *gorm.DB, mai
 
 	// CMS endpoints
 	cms := api.Group("/subscribers")
-	cms.Use(mw.Auth(), mw.RequireVerified())
+	cms.Use(mw.Auth())
 	cms.GET("", mw.RequirePermission(constants.PermSubscriptionView), handler.List)
 	cms.GET("/:id", mw.RequirePermission(constants.PermSubscriptionView), handler.Get)
 	cms.POST("/bulk", mw.RequirePermission(constants.PermSubscriptionCreate), handler.BulkAdd)

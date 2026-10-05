@@ -12,7 +12,7 @@ import (
 // RegisterRoutes mendaftarkan endpoint modul role.
 func RegisterRoutes(rg *gin.RouterGroup, h role_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/roles")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermRoleView), h.List)
 		g.GET("/:id", mw.RequirePermission(constants.PermRoleView), h.Get)

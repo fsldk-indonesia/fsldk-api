@@ -33,7 +33,7 @@ func RegisterCallbackRoutes(api *gin.RouterGroup, h donation_handler.Handler, mw
 
 // RegisterMeRoutes mendaftarkan endpoint riwayat donasi milik pengguna sendiri.
 func RegisterMeRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
-	rg.GET("/me/donations", mw.Auth(), mw.RequireVerified(), h.MyList)
+	rg.GET("/me/donations", mw.Auth(), h.MyList)
 }
 
 // RegisterCMSRoutes mendaftarkan endpoint CMS monitoring donasi + CRUD
@@ -42,7 +42,7 @@ func RegisterMeRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middl
 // gateway="bisatopup" di service layer (lihat donation_service_impl.go).
 func RegisterCMSRoutes(rg *gin.RouterGroup, h donation_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/donations")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermDonationView), h.CMSList)
 		g.GET("/:id", mw.RequirePermission(constants.PermDonationView), h.CMSGet)

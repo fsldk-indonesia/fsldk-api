@@ -24,7 +24,7 @@ func RegisterPublicRoutes(pub *gin.RouterGroup, h financeformat_handler.Handler)
 // RegisterCMSRoutes registers the financeformat CMS endpoints.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h financeformat_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/finance-formats")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermFinanceFormatView), h.CMSList)
 		g.GET("/types", mw.RequirePermission(constants.PermFinanceFormatView), h.FormatTypes)

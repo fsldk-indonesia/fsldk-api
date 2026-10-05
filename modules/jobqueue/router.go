@@ -14,7 +14,7 @@ import (
 // RegisterCMSRoutes mendaftarkan endpoint dashboard job queue.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h jobqueue_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/job-queue")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.GET("", mw.RequirePermission(constants.PermJobQueueView), h.CMSList)
 		g.GET("/stats", mw.RequirePermission(constants.PermJobQueueView), h.CMSStats)

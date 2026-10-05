@@ -17,7 +17,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_form_handler.Handler, mw *
 	manage := mw.RequirePermission(constants.PermSubmissionFormManage)
 
 	g := rg.Group("/submission-forms")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		// Struktur form PUBLISHED (bukan jawaban) bukan data sensitif — siapa
 		// pun yang login & terverifikasi boleh membacanya untuk merender form

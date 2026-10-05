@@ -12,7 +12,7 @@ import (
 // verifikasi) yang dipakai bersama oleh form Artikel & Berita CMS.
 func RegisterCMSRoutes(rg *gin.RouterGroup, h upload_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/uploads")
-	g.Use(mw.Auth(), mw.RequireVerified())
+	g.Use(mw.Auth())
 	{
 		g.POST("/image", h.UploadImage)
 		g.POST("/document", h.UploadDocument)
