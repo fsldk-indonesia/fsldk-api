@@ -41,6 +41,12 @@ func (r *RepositoryImpl) List(ctx context.Context, f campaign_dto.ListFilter) ([
 	if f.CategoryID > 0 {
 		q = q.Where("c.categoryID = ?", f.CategoryID)
 	}
+	if f.Province != "" {
+		q = q.Where("c.provinceName = ?", f.Province)
+	}
+	if f.IsFeatured != nil {
+		q = q.Where("c.isFeatured = ?", *f.IsFeatured)
+	}
 	if f.Search != "" {
 		q = q.Where("c.title LIKE ?", "%"+f.Search+"%")
 	}
@@ -102,6 +108,18 @@ func (r *RepositoryImpl) CategoryExists(ctx context.Context, categoryID int64) (
 func (r *RepositoryImpl) Categories(ctx context.Context) ([]campaign_model.Category, error) {
 	var out []campaign_model.Category
 	err := r.db.WithContext(ctx).Table(constants.TableCampaignCategory).Order("sortOrder").Find(&out).Error
+	return out, err
+}
+
+// Provinces mengembalikan daftar provinceName unik dari campaign PUBLISHED —
+// jadi field filter "Provinsi" di listing publik hanya menawarkan nilai yang
+// benar-benar ada datanya (sama prinsip dengan Categories di atas), bukan
+// daftar provinsi Indonesia yang di-hardcode.
+func (r *RepositoryImpl) Provinces(ctx context.Context) ([]string, error) {
+	var out []string
+	err := r.db.WithContext(ctx).Table(constants.TableCampaign).
+		Where("status = ? AND provinceName IS NOT NULL AND provinceName != ''", constants.CampaignStatusPublished).
+		Distinct("provinceName").Order("provinceName").Pluck("provinceName", &out).Error
 	return out, err
 }
 

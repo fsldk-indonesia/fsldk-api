@@ -64,10 +64,12 @@ func NewService(repo campaign_repository.Repository, orgAccess OrgAccessChecker,
 
 // ---------- Public ----------
 
-func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categoryID int64) ([]campaign_dto.Response, int, error) {
+func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categoryID int64, province string, isFeatured *bool) ([]campaign_dto.Response, int, error) {
 	return s.list(ctx, campaign_dto.ListFilter{
 		Statuses:   []string{constants.CampaignStatusPublished},
 		CategoryID: categoryID,
+		Province:   province,
+		IsFeatured: isFeatured,
 		Search:     q.Search,
 		Limit:      q.Limit,
 		Offset:     q.Offset(),
@@ -89,6 +91,10 @@ func (s *ServiceImpl) PublicStats(ctx context.Context) (campaign_dto.PublicStats
 		return campaign_dto.PublicStatsResponse{}, apperror.Internal("")
 	}
 	return campaign_dto.PublicStatsResponse{TotalDonors: donors, TotalCollected: collected}, nil
+}
+
+func (s *ServiceImpl) Provinces(ctx context.Context) ([]string, error) {
+	return s.repo.Provinces(ctx)
 }
 
 func (s *ServiceImpl) Categories(ctx context.Context) ([]campaign_dto.CategoryResponse, error) {

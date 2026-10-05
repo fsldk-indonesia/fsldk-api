@@ -43,7 +43,13 @@ func callerScope(c *gin.Context) campaign_service.CallerScope {
 func (h *HandlerImpl) PublicList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
 	categoryID, _ := strconv.ParseInt(c.Query("categoryID"), 10, 64)
-	data, total, err := h.svc.PublicList(c.Request.Context(), q, categoryID)
+	province := c.Query("province")
+	var isFeatured *bool
+	if raw := c.Query("featured"); raw != "" {
+		v := raw == "1" || raw == "true"
+		isFeatured = &v
+	}
+	data, total, err := h.svc.PublicList(c.Request.Context(), q, categoryID, province, isFeatured)
 	if err != nil {
 		httphelper.Error(c, err)
 		return
@@ -71,6 +77,15 @@ func (h *HandlerImpl) PublicStats(c *gin.Context) {
 
 func (h *HandlerImpl) Categories(c *gin.Context) {
 	data, err := h.svc.Categories(c.Request.Context())
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) Provinces(c *gin.Context) {
+	data, err := h.svc.Provinces(c.Request.Context())
 	if err != nil {
 		httphelper.Error(c, err)
 		return
