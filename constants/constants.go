@@ -176,6 +176,9 @@ const (
 	PermWelcomePopupView   = "welcomepopup.view"
 	PermWelcomePopupUpdate = "welcomepopup.update"
 
+	PermRapimnasView   = "rapimnas.view"
+	PermRapimnasUpdate = "rapimnas.update"
+
 	PermJobQueueView   = "jobqueue.view"
 	PermJobQueueRetry  = "jobqueue.retry"
 	PermJobQueueDelete = "jobqueue.delete"
