@@ -2,6 +2,7 @@ package rapimnas_repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"fsldk-api/modules/rapimnas/rapimnas_model"
@@ -20,7 +21,9 @@ import (
 func setupTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	// Use unique database name per test to avoid table-already-exists errors
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("gorm.Open() error = %v", err)
 	}
@@ -152,5 +155,46 @@ func TestSaveThenGet_ReplacesChildCollectionsInSubmittedOrder(t *testing.T) {
 	}
 	if len(got2.RundownDays) != 0 || len(got2.RundownEvents) != 0 {
 		t.Errorf("RundownDays/RundownEvents after second Save() (which submitted none) = %+v / %+v, want empty", got2.RundownDays, got2.RundownEvents)
+	}
+}
+
+func TestSave_RollsBackEverythingWhenAChildInsertViolatesForeignKey(t *testing.T) {
+	db := setupTestDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+
+	good := &rapimnas_model.Aggregate{
+		Setting:       rapimnas_model.Setting{HeroTitle: "Versi Baik"},
+		GalleryImages: []rapimnas_model.GalleryImage{{ImageUrl: "good.jpg"}},
+	}
+	if err := repo.Save(ctx, good); err != nil {
+		t.Fatalf("initial Save() error = %v", err)
+	}
+
+	bad := &rapimnas_model.Aggregate{
+		Setting:       rapimnas_model.Setting{HeroTitle: "Versi Rusak"},
+		GalleryImages: []rapimnas_model.GalleryImage{{ImageUrl: "bad.jpg"}},
+		RundownEvents: []rapimnas_model.RundownEvent{
+			// DayID 999 tidak pernah ada di RundownDays (yang dikirim kosong)
+			// maupun tabel ms_rapimnas_rundown_day manapun — memicu FK violation
+			// saat baris ini coba di-insert, di tengah transaksi (setelah
+			// Setting & GalleryImages "versi rusak" sudah lebih dulu dieksekusi
+			// dalam transaksi YANG SAMA).
+			{DayID: 999, Title: "Event Yatim"},
+		},
+	}
+	if err := repo.Save(ctx, bad); err == nil {
+		t.Fatal("Save() dengan RundownEvent.DayID yatim harus mengembalikan error (FK violation), tapi nil")
+	}
+
+	got, err := repo.Get(ctx)
+	if err != nil {
+		t.Fatalf("Get() setelah Save() gagal, error = %v", err)
+	}
+	if got.Setting.HeroTitle != "Versi Baik" {
+		t.Errorf("Setting.HeroTitle setelah rollback = %q, want %q (data lama, tidak tersentuh)", got.Setting.HeroTitle, "Versi Baik")
+	}
+	if len(got.GalleryImages) != 1 || got.GalleryImages[0].ImageUrl != "good.jpg" {
+		t.Errorf("GalleryImages setelah rollback = %+v, want [good.jpg] (data lama, tidak tersentuh oleh upaya Save() yang gagal)", got.GalleryImages)
 	}
 }
