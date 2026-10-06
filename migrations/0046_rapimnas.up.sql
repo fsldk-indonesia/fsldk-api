@@ -202,11 +202,14 @@ INSERT IGNORE INTO ms_rapimnas_setting (
 
 -- ---------- Seed: ms_rapimnas_home_card ("Rangkaian Kegiatan" teaser, Beranda) ----------
 
-INSERT IGNORE INTO ms_rapimnas_home_card (iconKey, title, description, sortOrder) VALUES
-('clipboard-list', 'Sidang Pleno', 'Menghimpun aspirasi dan merumuskan rekomendasi gerak FSLDK Indonesia.', 0),
-('user-group', 'Seminar Kepemudaan', 'Ruang diskusi generasi muda dalam menghadapi dinamika bangsa.', 1),
-('book-open', 'Pelatihan Manajemen (PMLDK)', 'Pengembangan kapasitas untuk mengelola LDK secara strategis.', 2),
-('map-pin', 'Field Trip Semarang', 'Mengeksplorasi budaya kota dan mempererat ukhuwah antardelegasi.', 3);
+INSERT INTO ms_rapimnas_home_card (iconKey, title, description, sortOrder)
+SELECT * FROM (
+    SELECT 'clipboard-list' AS iconKey, 'Sidang Pleno' AS title, 'Menghimpun aspirasi dan merumuskan rekomendasi gerak FSLDK Indonesia.' AS description, 0 AS sortOrder
+    UNION ALL SELECT 'user-group', 'Seminar Kepemudaan', 'Ruang diskusi generasi muda dalam menghadapi dinamika bangsa.', 1
+    UNION ALL SELECT 'book-open', 'Pelatihan Manajemen (PMLDK)', 'Pengembangan kapasitas untuk mengelola LDK secara strategis.', 2
+    UNION ALL SELECT 'map-pin', 'Field Trip Semarang', 'Mengeksplorasi budaya kota dan mempererat ukhuwah antardelegasi.', 3
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM ms_rapimnas_home_card);
 
 -- ---------- Seed: ms_rapimnas_rundown_day + ms_rapimnas_rundown_event ----------
 -- Data persis dari src/components/Rundown.tsx (dokumen "Rancangan Guidebook
@@ -220,52 +223,61 @@ INSERT IGNORE INTO ms_rapimnas_rundown_day (id, dayLabel, dateText, sortOrder) V
 (3, 'Hari Ketiga', 'Sabtu, 14 November 2026', 2),
 (4, 'Hari Keempat', 'Minggu, 15 November 2026', 3);
 
-INSERT IGNORE INTO ms_rapimnas_rundown_event (dayID, `time`, title, description, venue, sortOrder) VALUES
-(1, '', 'Kedatangan Peserta', 'Penyambutan akbar delegasi LDK dari seluruh Indonesia di Universitas Diponegoro.', '', 0),
-(1, '', 'Malam Keakraban Peserta', 'Momen untuk melepas penat, mempererat ukhuwah, dan membangun kedekatan antardelegasi.', '', 1),
-
-(2, '', 'Tahajud Berjamaah', 'Memulai hari dengan ibadah dan munajat bersama.', '', 0),
-(2, '08.00 - 11.30', 'Grand Opening RAPIMNAS', 'Pembukaan resmi rangkaian Rapimnas FSLDK Indonesia 2026.', 'Hall Gedung Kewirausahaan FEB Undip Lt 4', 1),
-(2, '13.00 - 21.10', 'Sidang Komisi', 'Awal rangkaian sidang untuk mengevaluasi gerak bersama dan isu strategis.', 'Aula Gedung Art Center A', 2),
-(2, '13.00 - 16.45', 'Seminar Kepemudaan', 'Ruang inspirasi bagi generasi muda untuk memperluas wawasan, mengasah perspektif, dan membangun semangat kepemimpinan dalam menghadapi tantangan zaman.', 'Hall Gedung Kewirausahaan FEB Undip Lt 4', 3),
-(2, '13.00 - 15.00', 'Final Lomba', 'Awal rangkaian sidang untuk mengevaluasi gerak bersama dan isu strategis.', 'Aula FPP Undip', 4),
-(2, '19.00 - 22.00', 'Closing UMF', 'Sesi diskusi inspiratif ''More Than What You See: Mengenal Palestina dari Sisi yang Jarang Kita Ceritakan''.', 'Masjid Kampus Undip', 5),
-
-(3, '07.00 - 10.30', 'Eco Movement x Semai Asa', 'Aksi nyata kepedulian terhadap lingkungan sebagai bentuk tanggung jawab ekologis.', '', 0),
-(3, '13.20 - 15.00', 'Sidang Komisi (Lanjutan)', 'Melanjutkan pembahasan agenda strategis nasional.', 'BBPMP Provinsi Jateng', 1),
-(3, '15.30 - 17.45', 'Sidang Pemilihan Tuan Rumah RAPIMNAS 2', 'Sidang penentuan tuan rumah agenda selanjutnya.', 'BBPMP Provinsi Jateng', 2),
-(3, '12.30 - 15.00', 'PMLDK', 'Sesi pengembangan kapasitas untuk membekali peserta dengan wawasan dan keterampilan dalam mengelola organisasi, membangun tim, serta merancang gerak LDK yang efektif.', 'BBPMP Provinsi Jateng', 3),
-(3, '14.40 - 17.15', 'Bedah GD Kaderisasi & Sosialisasi Sensus Nasional', 'Ruang untuk memetakan kondisi serta arah kaderisasi FSLDK Indonesia secara menyeluruh.', 'BBPMP Provinsi Jateng', 4),
-(3, '18.00 - 22.00', 'Grand Closing', 'Penutup rangkaian Rapimnas 1 FSLDK Indonesia 2026.', 'BBPMP Provinsi Jateng', 5),
-
-(4, '04.00 - 06.30', 'Gerakan Subuh Jamaah Nasional (GSJN)', 'Momentum spiritual menyatukan langkah dalam ibadah salat Subuh berjamaah serentak.', 'Masjid Kampus Undip', 0),
-(4, '07.00 - 17.00', 'Semarang Field Trip', 'Eksplorasi berbagai destinasi di Kota Semarang untuk mengenal kekayaan sejarah, budaya, dan suasana kota sekaligus mempererat kebersamaan antardelgasi.', '', 1);
+INSERT INTO ms_rapimnas_rundown_event (dayID, `time`, title, description, venue, sortOrder)
+SELECT * FROM (
+    SELECT 1 AS dayID, '' AS `time`, 'Kedatangan Peserta' AS title, 'Penyambutan akbar delegasi LDK dari seluruh Indonesia di Universitas Diponegoro.' AS description, '' AS venue, 0 AS sortOrder
+    UNION ALL SELECT 1, '', 'Malam Keakraban Peserta', 'Momen untuk melepas penat, mempererat ukhuwah, dan membangun kedekatan antardelegasi.', '', 1
+    UNION ALL SELECT 2, '', 'Tahajud Berjamaah', 'Memulai hari dengan ibadah dan munajat bersama.', '', 0
+    UNION ALL SELECT 2, '08.00 - 11.30', 'Grand Opening RAPIMNAS', 'Pembukaan resmi rangkaian Rapimnas FSLDK Indonesia 2026.', 'Hall Gedung Kewirausahaan FEB Undip Lt 4', 1
+    UNION ALL SELECT 2, '13.00 - 21.10', 'Sidang Komisi', 'Awal rangkaian sidang untuk mengevaluasi gerak bersama dan isu strategis.', 'Aula Gedung Art Center A', 2
+    UNION ALL SELECT 2, '13.00 - 16.45', 'Seminar Kepemudaan', 'Ruang inspirasi bagi generasi muda untuk memperluas wawasan, mengasah perspektif, dan membangun semangat kepemimpinan dalam menghadapi tantangan zaman.', 'Hall Gedung Kewirausahaan FEB Undip Lt 4', 3
+    UNION ALL SELECT 2, '13.00 - 15.00', 'Final Lomba', 'Awal rangkaian sidang untuk mengevaluasi gerak bersama dan isu strategis.', 'Aula FPP Undip', 4
+    UNION ALL SELECT 2, '19.00 - 22.00', 'Closing UMF', 'Sesi diskusi inspiratif ''More Than What You See: Mengenal Palestina dari Sisi yang Jarang Kita Ceritakan''.', 'Masjid Kampus Undip', 5
+    UNION ALL SELECT 3, '07.00 - 10.30', 'Eco Movement x Semai Asa', 'Aksi nyata kepedulian terhadap lingkungan sebagai bentuk tanggung jawab ekologis.', '', 0
+    UNION ALL SELECT 3, '13.20 - 15.00', 'Sidang Komisi (Lanjutan)', 'Melanjutkan pembahasan agenda strategis nasional.', 'BBPMP Provinsi Jateng', 1
+    UNION ALL SELECT 3, '15.30 - 17.45', 'Sidang Pemilihan Tuan Rumah RAPIMNAS 2', 'Sidang penentuan tuan rumah agenda selanjutnya.', 'BBPMP Provinsi Jateng', 2
+    UNION ALL SELECT 3, '12.30 - 15.00', 'PMLDK', 'Sesi pengembangan kapasitas untuk membekali peserta dengan wawasan dan keterampilan dalam mengelola organisasi, membangun tim, serta merancang gerak LDK yang efektif.', 'BBPMP Provinsi Jateng', 3
+    UNION ALL SELECT 3, '14.40 - 17.15', 'Bedah GD Kaderisasi & Sosialisasi Sensus Nasional', 'Ruang untuk memetakan kondisi serta arah kaderisasi FSLDK Indonesia secara menyeluruh.', 'BBPMP Provinsi Jateng', 4
+    UNION ALL SELECT 3, '18.00 - 22.00', 'Grand Closing', 'Penutup rangkaian Rapimnas 1 FSLDK Indonesia 2026.', 'BBPMP Provinsi Jateng', 5
+    UNION ALL SELECT 4, '04.00 - 06.30', 'Gerakan Subuh Jamaah Nasional (GSJN)', 'Momentum spiritual menyatukan langkah dalam ibadah salat Subuh berjamaah serentak.', 'Masjid Kampus Undip', 0
+    UNION ALL SELECT 4, '07.00 - 17.00', 'Semarang Field Trip', 'Eksplorasi berbagai destinasi di Kota Semarang untuk mengenal kekayaan sejarah, budaya, dan suasana kota sekaligus mempererat kebersamaan antardelgasi.', '', 1
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM ms_rapimnas_rundown_event);
 
 -- ---------- Seed: ms_rapimnas_resource (Arsip & Dokumen) ----------
 -- 2 entri terakhir diseed isVisible=FALSE — persis 2 entri yang dikomentari
 -- (bukan dihapus) di src/app/arsip/page.tsx (Twibbon, Panduan Lomba Essai).
 
-INSERT IGNORE INTO ms_rapimnas_resource (title, description, iconKey, url, buttonLabel, isVisible, sortOrder) VALUES
-('Logo & Maskot RAPIMNAS 1 2026', 'Unduh logo resmi dan Maskot RAPIMNAS 1 2026 Indonesia format PNG resolusi tinggi.', 'file-text', 'https://drive.google.com/drive/folders/14r_q9l9CKuw-4fFvy64rzXUjjHait5r3?usp=sharing', 'Unduh Logo', TRUE, 0),
-('Twibbon & Caption Publikasi', 'Mari meriahkan timeline media sosial dengan menggunakan Twibbon resmi RAPIMNAS 1. Sudah termasuk template caption untuk Instagram.', 'file-text', '#', 'Pasang Twibbon', FALSE, 1),
-('Panduan Lomba Essai Nasional', 'Buku panduan lengkap (syarat, ketentuan, dan timeline) Lomba Essai Nasional dalam rangka menyemarakkan RAPIMNAS 1 FSLDK Indonesia.', 'book-open', '#', 'Unduh Panduan', FALSE, 2),
-('Proposal Acara', 'Proposal lengkap untuk acara RAPIMNAS 1 FSLDK Indonesia 2026.', 'clipboard-list', 'https://docs.google.com/document/d/1x91GD0PbsdjJV3qMh0b5S1lhziZkqcHV/edit', 'Lihat Proposal', TRUE, 3);
+INSERT INTO ms_rapimnas_resource (title, description, iconKey, url, buttonLabel, isVisible, sortOrder)
+SELECT * FROM (
+    SELECT 'Logo & Maskot RAPIMNAS 1 2026' AS title, 'Unduh logo resmi dan Maskot RAPIMNAS 1 2026 Indonesia format PNG resolusi tinggi.' AS description, 'file-text' AS iconKey, 'https://drive.google.com/drive/folders/14r_q9l9CKuw-4fFvy64rzXUjjHait5r3?usp=sharing' AS url, 'Unduh Logo' AS buttonLabel, TRUE AS isVisible, 0 AS sortOrder
+    UNION ALL SELECT 'Twibbon & Caption Publikasi', 'Mari meriahkan timeline media sosial dengan menggunakan Twibbon resmi RAPIMNAS 1. Sudah termasuk template caption untuk Instagram.', 'file-text', '#', 'Pasang Twibbon', FALSE, 1
+    UNION ALL SELECT 'Panduan Lomba Essai Nasional', 'Buku panduan lengkap (syarat, ketentuan, dan timeline) Lomba Essai Nasional dalam rangka menyemarakkan RAPIMNAS 1 FSLDK Indonesia.', 'book-open', '#', 'Unduh Panduan', FALSE, 2
+    UNION ALL SELECT 'Proposal Acara', 'Proposal lengkap untuk acara RAPIMNAS 1 FSLDK Indonesia 2026.', 'clipboard-list', 'https://docs.google.com/document/d/1x91GD0PbsdjJV3qMh0b5S1lhziZkqcHV/edit', 'Lihat Proposal', TRUE, 3
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM ms_rapimnas_resource);
 
 -- ---------- Seed: ms_rapimnas_pickup_location ----------
 
-INSERT IGNORE INTO ms_rapimnas_pickup_location (name, type, description, mapLink, sortOrder) VALUES
-('Stasiun Tawang', 'Stasiun Kereta', '', 'https://maps.app.goo.gl/uhWsicESR7dhy6rA9', 0),
-('Stasiun Poncol', 'Stasiun Kereta', '', 'https://maps.app.goo.gl/HGqB5AiWU6XBdVaM8', 1),
-('Bandara Ahmad Yani', 'Bandara', '', 'https://maps.app.goo.gl/YakbzkmQkKTNWucx9', 2),
-('Terminal Banyumanik', 'Terminal Bus', '', 'https://maps.app.goo.gl/a8YXt1uwqGtm9GkB9', 3);
+INSERT INTO ms_rapimnas_pickup_location (name, type, description, mapLink, sortOrder)
+SELECT * FROM (
+    SELECT 'Stasiun Tawang' AS name, 'Stasiun Kereta' AS type, '' AS description, 'https://maps.app.goo.gl/uhWsicESR7dhy6rA9' AS mapLink, 0 AS sortOrder
+    UNION ALL SELECT 'Stasiun Poncol', 'Stasiun Kereta', '', 'https://maps.app.goo.gl/HGqB5AiWU6XBdVaM8', 1
+    UNION ALL SELECT 'Bandara Ahmad Yani', 'Bandara', '', 'https://maps.app.goo.gl/YakbzkmQkKTNWucx9', 2
+    UNION ALL SELECT 'Terminal Banyumanik', 'Terminal Bus', '', 'https://maps.app.goo.gl/a8YXt1uwqGtm9GkB9', 3
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM ms_rapimnas_pickup_location);
 
 -- ---------- Seed: ms_rapimnas_contact ----------
 
-INSERT IGNORE INTO ms_rapimnas_contact (contactType, name, phoneNumber, sortOrder) VALUES
-('peserta_cp', 'Fakhri', '0895-3842-52700', 0),
-('peserta_cp', 'Alya', '0823-2219-6244', 1),
-('footer_wa', 'Ghozi', '0813-9321-0245', 0),
-('footer_wa', 'Aina', '0813-2844-2500', 1);
+INSERT INTO ms_rapimnas_contact (contactType, name, phoneNumber, sortOrder)
+SELECT * FROM (
+    SELECT 'peserta_cp' AS contactType, 'Fakhri' AS name, '0895-3842-52700' AS phoneNumber, 0 AS sortOrder
+    UNION ALL SELECT 'peserta_cp', 'Alya', '0823-2219-6244', 1
+    UNION ALL SELECT 'footer_wa', 'Ghozi', '0813-9321-0245', 0
+    UNION ALL SELECT 'footer_wa', 'Aina', '0813-2844-2500', 1
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM ms_rapimnas_contact);
 
 -- ---------- Seed: permission & menu CMS ----------
 
