@@ -3,6 +3,9 @@ package rapimnas_service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/modules/rapimnas/rapimnas_dto"
@@ -180,7 +183,155 @@ func (s *ServiceImpl) GetPublic(ctx context.Context) (rapimnas_dto.PublicRespons
 	return toPublicResponse(*agg), nil
 }
 
-// Update placeholder — replaced with the real implementation in Task 10.
+// parseDateTime menerima beberapa format umum ISO8601/datetime-local; sama
+// seperti helper sejenis di event_service_impl.go (duplikasi kecil ini
+// konsisten dengan modul lain di codebase — setiap service punya copy-nya
+// sendiri, bukan helper bersama).
+func parseDateTime(s string) (*time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	formats := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+	}
+	for _, f := range formats {
+		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("cannot parse datetime: %q", s)
+}
+
+func nullableStr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// toAggregate meratakan UpdateRequest menjadi Aggregate. SortOrder tiap item
+// diabaikan dan ditimpa dengan posisi array (fresh sortOrder, lihat Design
+// decisions #2) — CountdownTargetDate SENGAJA tidak diisi di sini; Update()
+// mem-parse & menimpanya setelah toAggregate() dipanggil, supaya kegagalan
+// parse bisa ditolak sebelum membangun apa pun yang lain.
+func toAggregate(req rapimnas_dto.UpdateRequest, actorID int64) rapimnas_model.Aggregate {
+	misiJSON, _ := json.Marshal(req.TentangMisi)
+	tujuanJSON, _ := json.Marshal(req.TentangTujuan)
+	kegiatanJSON, _ := json.Marshal(req.TentangKegiatan)
+	misiStr, tujuanStr, kegiatanStr := string(misiJSON), string(tujuanJSON), string(kegiatanJSON)
+
+	setting := rapimnas_model.Setting{
+		ID:                rapimnas_model.SingletonID,
+		HeroBadgeText:     req.HeroBadgeText,
+		HeroTitle:         req.HeroTitle,
+		HeroDateRangeText: req.HeroDateRangeText,
+		HeroTaglineQuote:  req.HeroTaglineQuote,
+		HeroImageUrl:      nullableStr(req.HeroImageUrl),
+
+		Feature1IconKey: req.Feature1IconKey, Feature1Title: req.Feature1Title, Feature1Desc: req.Feature1Desc,
+		Feature2IconKey: req.Feature2IconKey, Feature2Title: req.Feature2Title, Feature2Desc: req.Feature2Desc,
+
+		CtaTitle: req.CtaTitle, CtaDescription: req.CtaDescription, CtaButtonLabel: req.CtaButtonLabel,
+		CtaMascotImageUrl: nullableStr(req.CtaMascotImageUrl),
+
+		FooterContactEmail: req.FooterContactEmail, FooterCopyrightText: req.FooterCopyrightText,
+		FooterIgHandle: req.FooterIgHandle, FooterIgUrl: req.FooterIgUrl,
+		FooterTiktokHandle: req.FooterTiktokHandle, FooterTiktokUrl: req.FooterTiktokUrl,
+
+		JadwalHeaderSubtitle: req.JadwalHeaderSubtitle,
+
+		TentangTaglineQuote: req.TentangTaglineQuote, TentangDescParagraph1: req.TentangDescParagraph1,
+		TentangDescParagraph2: req.TentangDescParagraph2, TentangVisiText: req.TentangVisiText,
+		TentangMisiJSON: &misiStr, TentangTujuanJSON: &tujuanStr, TentangKegiatanJSON: &kegiatanStr,
+
+		PesertaEarlyBirdDateRange: req.PesertaEarlyBirdDateRange, PesertaRegulerDateRange: req.PesertaRegulerDateRange,
+		PesertaHargaNonSemarangEarlyBird: req.PesertaHargaNonSemarangEarlyBird,
+		PesertaHargaNonSemarangReguler:   req.PesertaHargaNonSemarangReguler,
+		PesertaHargaSemarangEarlyBird:    req.PesertaHargaSemarangEarlyBird,
+		PesertaHargaSemarangReguler:      req.PesertaHargaSemarangReguler,
+		PesertaBankName:                  req.PesertaBankName, PesertaBankAccountNumber: req.PesertaBankAccountNumber,
+		PesertaBankAccountHolder: req.PesertaBankAccountHolder,
+		PesertaGuidebookUrl:      nullableStr(req.PesertaGuidebookUrl), PesertaGoogleFormUrl: req.PesertaGoogleFormUrl,
+		PesertaMapEmbedUrl: nullableStr(req.PesertaMapEmbedUrl),
+
+		PanitiaIsOpen: req.PanitiaIsOpen, PanitiaClosedMessage: req.PanitiaClosedMessage,
+
+		UpdatedBy: &actorID,
+	}
+
+	galleryImages := make([]rapimnas_model.GalleryImage, len(req.GalleryImages))
+	for i, g := range req.GalleryImages {
+		galleryImages[i] = rapimnas_model.GalleryImage{ImageUrl: g.ImageUrl, SortOrder: i}
+	}
+
+	homeCards := make([]rapimnas_model.HomeCard, len(req.HomeCards))
+	for i, c := range req.HomeCards {
+		homeCards[i] = rapimnas_model.HomeCard{IconKey: c.IconKey, Title: c.Title, Description: c.Description, SortOrder: i}
+	}
+
+	var rundownDays []rapimnas_model.RundownDay
+	var rundownEvents []rapimnas_model.RundownEvent
+	for dayIdx, d := range req.Rundown {
+		correlationID := int64(dayIdx)
+		rundownDays = append(rundownDays, rapimnas_model.RundownDay{
+			ID: correlationID, DayLabel: d.DayLabel, DateText: d.DateText, SortOrder: dayIdx,
+		})
+		for evtIdx, e := range d.Events {
+			rundownEvents = append(rundownEvents, rapimnas_model.RundownEvent{
+				DayID: correlationID, Time: e.Time, Title: e.Title, Description: e.Description,
+				Venue: e.Venue, SortOrder: evtIdx,
+			})
+		}
+	}
+
+	resources := make([]rapimnas_model.Resource, len(req.Resources))
+	for i, r := range req.Resources {
+		resources[i] = rapimnas_model.Resource{
+			Title: r.Title, Description: r.Description, IconKey: r.IconKey, Url: r.Url,
+			ButtonLabel: r.ButtonLabel, IsVisible: r.IsVisible, SortOrder: i,
+		}
+	}
+
+	pickupLocations := make([]rapimnas_model.PickupLocation, len(req.PickupLocations))
+	for i, p := range req.PickupLocations {
+		pickupLocations[i] = rapimnas_model.PickupLocation{
+			Name: p.Name, Type: p.Type, Description: p.Description, MapLink: p.MapLink, SortOrder: i,
+		}
+	}
+
+	contacts := make([]rapimnas_model.Contact, len(req.Contacts))
+	for i, c := range req.Contacts {
+		contacts[i] = rapimnas_model.Contact{ContactType: c.ContactType, Name: c.Name, PhoneNumber: c.PhoneNumber, SortOrder: i}
+	}
+
+	return rapimnas_model.Aggregate{
+		Setting: setting, GalleryImages: galleryImages, HomeCards: homeCards,
+		RundownDays: rundownDays, RundownEvents: rundownEvents, Resources: resources,
+		PickupLocations: pickupLocations, Contacts: contacts,
+	}
+}
+
 func (s *ServiceImpl) Update(ctx context.Context, req rapimnas_dto.UpdateRequest, actorID int64) (rapimnas_dto.CMSResponse, error) {
-	return rapimnas_dto.CMSResponse{}, apperror.Internal("not implemented")
+	countdown, err := parseDateTime(req.CountdownTargetDate)
+	if err != nil {
+		return rapimnas_dto.CMSResponse{}, apperror.BadRequest("countdownTargetDate tidak valid")
+	}
+
+	now := time.Now()
+	agg := toAggregate(req, actorID)
+	agg.Setting.CountdownTargetDate = countdown
+	agg.Setting.UpdatedDate = &now
+
+	if err := s.repo.Save(ctx, &agg); err != nil {
+		return rapimnas_dto.CMSResponse{}, apperror.Internal("")
+	}
+	return s.Get(ctx)
 }
