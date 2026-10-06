@@ -101,7 +101,7 @@ func settingValues(s rapimnas_model.Setting) map[string]interface{} {
 		"pesertaGuidebookUrl": s.PesertaGuidebookUrl, "pesertaGoogleFormUrl": s.PesertaGoogleFormUrl,
 		"pesertaMapEmbedUrl": s.PesertaMapEmbedUrl,
 		"panitiaIsOpen": s.PanitiaIsOpen, "panitiaClosedMessage": s.PanitiaClosedMessage,
-		"updatedBy": s.UpdatedBy,
+		"updatedDate": s.UpdatedDate, "updatedBy": s.UpdatedBy,
 	}
 }
 
