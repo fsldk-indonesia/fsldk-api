@@ -128,6 +128,11 @@ import (
 	"fsldk-api/modules/welcomepopup/welcomepopup_repository"
 	"fsldk-api/modules/welcomepopup/welcomepopup_service"
 
+	"fsldk-api/modules/rapimnas"
+	"fsldk-api/modules/rapimnas/rapimnas_handler"
+	"fsldk-api/modules/rapimnas/rapimnas_repository"
+	"fsldk-api/modules/rapimnas/rapimnas_service"
+
 	"fsldk-api/modules/jobqueue"
 	"fsldk-api/modules/jobqueue/jobqueue_handler"
 	"fsldk-api/modules/jobqueue/jobqueue_repository"
@@ -219,6 +224,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	qrcodeReqRepo := qrcoderequest_repository.NewRepository(db)
 	settingRepo := setting_repository.NewRepository(db)
 	welcomePopupRepo := welcomepopup_repository.NewRepository(db)
+	rapimnasRepo := rapimnas_repository.NewRepository(db)
 	commentRepo := comment_repository.NewRepository(db)
 	tokenStore := auth_repository.NewTokenStore(db)
 	campaignRepo := campaign_repository.NewRepository(db)
@@ -245,6 +251,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	qrcodeSvc := qrcode_service.NewService(qrcodeRepo, apiBaseURL, "assets/uploads")
 	settingSvc := setting_service.NewService(settingRepo)
 	welcomePopupSvc := welcomepopup_service.NewService(welcomePopupRepo)
+	rapimnasSvc := rapimnas_service.NewService(rapimnasRepo)
 	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,
 		cfg.KirimdevTemplateLanguage, cfg.KirimdevWebhookSecrets(),
 		time.Duration(cfg.KirimdevReplyWindowMinutes)*time.Minute)
@@ -359,6 +366,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	shortlinkReqH := shortlinkrequest_handler.NewHandler(shortlinkReqSvc, kirimdevClient, jobqueueSvc, qrcodeReqSvc)
 	settingH := setting_handler.NewHandler(settingSvc)
 	welcomePopupH := welcomepopup_handler.NewHandler(welcomePopupSvc)
+	rapimnasH := rapimnas_handler.NewHandler(rapimnasSvc)
 	uploadH := upload_handler.NewHandler(uploadSvc)
 	zakatH := zakat_handler.NewHandler(zakatSvc)
 	reportH := report_handler.NewHandler(reportSvc)
@@ -442,6 +450,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	setting.RegisterPublicRoutes(pub, settingH)
 	welcomepopup.RegisterCMSRoutes(api, welcomePopupH, mw)
 	welcomepopup.RegisterPublicRoutes(pub, welcomePopupH)
+	rapimnas.RegisterCMSRoutes(api, rapimnasH, mw)
+	rapimnas.RegisterPublicRoutes(pub, rapimnasH)
 	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)
 
 	upload.RegisterCMSRoutes(api, uploadH, mw)
