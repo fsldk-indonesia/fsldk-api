@@ -76,3 +76,14 @@ func TestGet_CMS_IncludesHiddenResourcesAndAuditFields(t *testing.T) {
 		t.Errorf("Get().UpdatedBy = %v, want %d", res.UpdatedBy, actorID)
 	}
 }
+
+func TestJsonStrArray_NullJSONStringReturnsEmptySliceNotNil(t *testing.T) {
+	nullStr := "null"
+	got := jsonStrArray(&nullStr)
+	if got == nil {
+		t.Fatal("jsonStrArray(&\"null\") returned nil, want non-nil empty slice (so it marshals to JSON [] not null)")
+	}
+	if len(got) != 0 {
+		t.Errorf("jsonStrArray(&\"null\") = %+v, want empty slice", got)
+	}
+}

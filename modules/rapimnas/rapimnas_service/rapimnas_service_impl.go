@@ -35,6 +35,9 @@ func jsonStrArray(raw *string) []string {
 	if err := json.Unmarshal([]byte(*raw), &out); err != nil {
 		return []string{}
 	}
+	if out == nil {
+		return []string{}
+	}
 	return out
 }
 
