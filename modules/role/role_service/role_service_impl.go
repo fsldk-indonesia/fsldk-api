@@ -107,6 +107,10 @@ func (s *ServiceImpl) SetPermissions(ctx context.Context, id int64, ids []int64)
 	if err := s.repo.SetPermissions(ctx, id, ids); err != nil {
 		return role_dto.Response{}, apperror.Internal("")
 	}
+	// Permission role berubah — paksa seluruh pemegang role ini login ulang
+	// supaya access token lama (membawa permission lama) tidak dipakai lagi,
+	// lihat migrations 0047 & middlewares.Auth().
+	_ = s.repo.BumpTokenVersionForRole(ctx, id)
 	return s.Get(ctx, id)
 }
 

@@ -47,4 +47,11 @@ type Repository interface {
 	MarkEmailVerified(ctx context.Context, id int64) error
 	SoftDelete(ctx context.Context, id int64, updatedBy int64) error
 	LogLogin(ctx context.Context, userID int64, ip, ua, status string) error
+	// TokenVersion mengembalikan versi token aktif akun (lihat migrations
+	// 0047) — dibaca middlewares.Auth() tiap request untuk menolak access
+	// token yang diterbitkan sebelum versi ini dinaikkan.
+	TokenVersion(ctx context.Context, id int64) (int, error)
+	// BumpTokenVersion menaikkan versi token satu akun, memaksa seluruh
+	// access token yang sudah terbit untuknya ditolak pada request berikutnya.
+	BumpTokenVersion(ctx context.Context, id int64) error
 }

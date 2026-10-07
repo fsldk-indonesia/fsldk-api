@@ -122,6 +122,23 @@ func (s *ServiceImpl) resolveEffectiveOrg(ctx context.Context, u user_model.User
 	}
 }
 
+// effectiveWildcardTierAccess mengembalikan nilai wildcardTierAccess EFEKTIF
+// akun ini. Super Admin otomatis dianggap punya akses penuh ke seluruh tier
+// (LDK, Puskomda, Puskomnas) TANPA perlu wildcardTierAccess diisi manual di
+// DB/form Kelola Pengguna — konsisten dengan perannya yang memang akses
+// penuh ke seluruh sistem. Dipusatkan di SATU titik (dibaca saat klaim token
+// & profil diterbitkan) supaya seluruh pemeriksaan cakupan organisasi hilir
+// (organization_service_impl.go IsAccessible, checkOrgAccess di modul
+// submission/report/dashboard/campaign, dst.) otomatis ikut benar tanpa
+// perlu disentuh satu per satu — mereka semua membaca klaim ini dari
+// token/context, bukan query ulang ke DB.
+func effectiveWildcardTierAccess(u user_model.User) string {
+	if u.RoleName == constants.RoleSuperAdmin {
+		return constants.OrgTypeLDK + "," + constants.OrgTypePuskomda + "," + constants.OrgTypePuskomnas
+	}
+	return u.WildcardTierAccess.String
+}
+
 func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest) (auth_dto.RegisterResponse, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 
@@ -420,13 +437,14 @@ func (s *ServiceImpl) buildAuthResponse(ctx context.Context, u user_model.User) 
 	}
 	access, err := s.tokens.GenerateAccess(token.AccessParams{
 		UserID:               u.UserID,
+		TokenVersion:         u.TokenVersion,
 		RoleID:               u.RoleID,
 		Email:                u.Email,
 		RoleName:             u.RoleName,
 		EmailVerified:        emailVerified(u),
 		OrganizationID:       profile.OrganizationID,
 		OrganizationTypeCode: profile.OrganizationTypeCode,
-		WildcardTierAccess:   u.WildcardTierAccess.String,
+		WildcardTierAccess:   effectiveWildcardTierAccess(u),
 	})
 	if err != nil {
 		return auth_dto.AuthResponse{}, apperror.Internal("")
@@ -468,8 +486,8 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 		OrganizationID:       effectiveOrgID,
 		OrganizationTypeCode: effectiveOrgType,
 	}
-	if u.WildcardTierAccess.Valid && u.WildcardTierAccess.String != "" {
-		profile.WildcardTierAccess = strings.Split(u.WildcardTierAccess.String, ",")
+	if w := effectiveWildcardTierAccess(u); w != "" {
+		profile.WildcardTierAccess = strings.Split(w, ",")
 	}
 	return profile, nil
 }

@@ -13,6 +13,7 @@ type User struct {
 	UserID               int64          `gorm:"column:userID;primaryKey"`
 	RoleID               int64          `gorm:"column:roleID"`
 	RoleName             string         `gorm:"column:roleName;->"`
+	TokenVersion         int            `gorm:"column:tokenVersion"`
 	OrganizationID       sql.NullInt64  `gorm:"column:organizationID"`
 	OrganizationTypeCode sql.NullString `gorm:"column:organizationTypeCode;->"`
 	WildcardTierAccess   sql.NullString `gorm:"column:wildcardTierAccess"`

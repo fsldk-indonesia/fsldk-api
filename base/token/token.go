@@ -11,7 +11,12 @@ import (
 
 // Claims adalah payload access token.
 type Claims struct {
-	UserID               int64  `json:"userID"`
+	UserID int64 `json:"userID"`
+	// TokenVersion adalah "generasi" token akun ini saat token diterbitkan —
+	// dibandingkan middlewares.Auth() ke nilai live di DB tiap request;
+	// selisih (role/permission akun berubah setelah token ini terbit)
+	// ditolak 401, memaksa login ulang (lihat migrations 0047).
+	TokenVersion         int    `json:"tokenVersion"`
 	Email                string `json:"email"`
 	RoleID               int64  `json:"roleID"`
 	RoleName             string `json:"roleName"`
@@ -50,6 +55,7 @@ func NewManager(accessSecret, refreshSecret string, accessExpireMin, refreshExpi
 // AccessParams menampung data identitas untuk penerbitan access token.
 type AccessParams struct {
 	UserID               int64
+	TokenVersion         int
 	RoleID               int64
 	Email                string
 	RoleName             string
@@ -65,6 +71,7 @@ func (m *Manager) GenerateAccess(p AccessParams) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID:               p.UserID,
+		TokenVersion:         p.TokenVersion,
 		Email:                p.Email,
 		RoleID:               p.RoleID,
 		RoleName:             p.RoleName,

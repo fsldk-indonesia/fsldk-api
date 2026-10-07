@@ -31,17 +31,27 @@ type OrgScopeLoader interface {
 	IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error)
 }
 
+// TokenVersionLoader menyediakan versi token aktif (live, dari DB) milik
+// seorang pengguna — dibandingkan Auth() ke klaim tokenVersion di access
+// token tiap request, supaya token yang diterbitkan SEBELUM role/permission
+// akun berubah otomatis ditolak (lihat migrations 0047). Diimplementasikan
+// oleh modul user.
+type TokenVersionLoader interface {
+	TokenVersion(ctx context.Context, userID int64) (int, error)
+}
+
 // Middleware menampung dependensi yang dibutuhkan seluruh middleware.
 type Middleware struct {
-	Token *token.Manager
-	Cfg   config.AppConfig
-	Perm  PermissionLoader
-	Org   OrgScopeLoader
+	Token    *token.Manager
+	Cfg      config.AppConfig
+	Perm     PermissionLoader
+	Org      OrgScopeLoader
+	TokenVer TokenVersionLoader
 }
 
 // New membuat instance Middleware.
-func New(tm *token.Manager, cfg config.AppConfig, perm PermissionLoader, org OrgScopeLoader) *Middleware {
-	return &Middleware{Token: tm, Cfg: cfg, Perm: perm, Org: org}
+func New(tm *token.Manager, cfg config.AppConfig, perm PermissionLoader, org OrgScopeLoader, tokenVer TokenVersionLoader) *Middleware {
+	return &Middleware{Token: tm, Cfg: cfg, Perm: perm, Org: org, TokenVer: tokenVer}
 }
 
 // Auth memvalidasi access token dan menyimpan identitas pengguna ke context.
@@ -55,6 +65,10 @@ func (m *Middleware) Auth() gin.HandlerFunc {
 		claims, err := m.Token.ParseAccess(raw)
 		if err != nil {
 			httphelper.Error(c, apperror.Unauthorized("Token tidak valid atau kedaluwarsa"))
+			return
+		}
+		if currentVer, err := m.TokenVer.TokenVersion(c.Request.Context(), claims.UserID); err != nil || currentVer != claims.TokenVersion {
+			httphelper.Error(c, apperror.Unauthorized("Sesi Anda sudah tidak berlaku, silakan masuk kembali"))
 			return
 		}
 		c.Set(constants.CtxUserID, claims.UserID)
