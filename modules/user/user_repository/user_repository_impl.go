@@ -16,7 +16,7 @@ import (
 // 0015/0017) — sebelumnya tidak ikut di-select di sini sehingga FindByID/
 // FindByEmail/List/SearchActive tidak pernah membaca baliknya walau kolomnya
 // sudah bisa ditulis (bug laten, diperbaiki sekaligus saat menambah customPhotoURL).
-const selectCols = "u.userID, u.roleID, r.roleName, u.organizationID, o.organizationTypeCode, " +
+const selectCols = "u.userID, u.roleID, r.roleName, u.tokenVersion, u.organizationID, o.organizationTypeCode, " +
 	"u.wildcardTierAccess, u.fullName, u.email, u.username, u.password, " +
 	"u.googleID, u.emailVerifiedDate, u.phoneNumber, u.address, u.photoURL, u.customPhotoURL, u.mustChangePassword, " +
 	"u.isActive, u.createdDate, u.createdBy, u.updatedDate, u.updatedBy"
@@ -226,6 +226,19 @@ func (r *RepositoryImpl) SoftDelete(ctx context.Context, id int64, updatedBy int
 		"updatedDate": time.Now(),
 		"updatedBy":   updatedBy,
 	}).Error
+}
+
+func (r *RepositoryImpl) TokenVersion(ctx context.Context, id int64) (int, error) {
+	var v int
+	err := r.db.WithContext(ctx).Table("ms_user").Select("tokenVersion").Where("userID = ?", id).Take(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, ErrNotFound
+	}
+	return v, err
+}
+
+func (r *RepositoryImpl) BumpTokenVersion(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Exec("UPDATE ms_user SET tokenVersion = tokenVersion + 1 WHERE userID = ?", id).Error
 }
 
 func (r *RepositoryImpl) LogLogin(ctx context.Context, userID int64, ip, ua, status string) error {

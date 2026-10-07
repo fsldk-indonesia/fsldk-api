@@ -24,4 +24,9 @@ type Repository interface {
 	PermissionNames(ctx context.Context, roleID int64) ([]string, error)
 	SetPermissions(ctx context.Context, roleID int64, permissionIDs []int64) error
 	UsersByRole(ctx context.Context, roleID int64) ([]role_model.RoleUser, error)
+	// BumpTokenVersionForRole menaikkan tokenVersion SELURUH akun yang
+	// sedang memegang role ini (lihat migrations 0047) — dipanggil setelah
+	// SetPermissions supaya access token yang sudah terbit untuk akun-akun
+	// itu ditolak request berikutnya oleh middlewares.Auth().
+	BumpTokenVersionForRole(ctx context.Context, roleID int64) error
 }

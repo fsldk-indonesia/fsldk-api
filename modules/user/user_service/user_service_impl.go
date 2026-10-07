@@ -264,6 +264,14 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateR
 	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, orgID, wildcard, caller.UserID); err != nil {
 		return user_dto.Response{}, apperror.Internal("")
 	}
+	if before.RoleID != req.RoleID || before.OrganizationID != orgID || before.WildcardTierAccess != wildcard {
+		// Role, organisasi (LDK), atau Akses Lintas Tier akun berubah — semua
+		// ikut menentukan scope CMS (role → permission, organizationTypeCode/
+		// wildcardTierAccess → tier yang bisa diakses, lihat
+		// AuthRepository.tierRank() di frontend). Paksa access token lama
+		// ditolak request berikutnya, lihat migrations 0047 & middlewares.Auth().
+		_ = s.repo.BumpTokenVersion(ctx, id)
+	}
 	s.audit.LogUser(ctx, auditlog.Entry{
 		ActorUserID: caller.UserID, ActorOrganizationID: caller.OrganizationID,
 		Action: "UPDATE", Entity: "ms_user", EntityID: id,

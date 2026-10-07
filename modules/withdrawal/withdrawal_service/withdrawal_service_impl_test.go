@@ -279,6 +279,8 @@ func (f *fakeUserRepository) SoftDelete(ctx context.Context, id int64, updatedBy
 func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua, status string) error {
 	return nil
 }
+func (f *fakeUserRepository) TokenVersion(ctx context.Context, id int64) (int, error) { return 0, nil }
+func (f *fakeUserRepository) BumpTokenVersion(ctx context.Context, id int64) error     { return nil }
 
 type fakeWalletService struct{}
 

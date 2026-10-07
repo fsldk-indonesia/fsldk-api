@@ -377,8 +377,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	withdrawalH := withdrawal_handler.NewHandler(withdrawalSvc)
 
 	// Middleware bersama (permSvc memenuhi kontrak PermissionLoader, orgSvc
-	// memenuhi kontrak OrgScopeLoader)
-	mw := middlewares.New(tm, cfg, permSvc, orgSvc)
+	// memenuhi kontrak OrgScopeLoader, userRepo memenuhi kontrak TokenVersionLoader)
+	mw := middlewares.New(tm, cfg, permSvc, orgSvc, userRepo)
 
 	// Engine
 	if cfg.AppEnv == "production" {

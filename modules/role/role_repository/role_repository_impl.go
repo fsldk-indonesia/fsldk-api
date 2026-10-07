@@ -111,6 +111,10 @@ func (r *RepositoryImpl) UsersByRole(ctx context.Context, roleID int64) ([]role_
 	return out, err
 }
 
+func (r *RepositoryImpl) BumpTokenVersionForRole(ctx context.Context, roleID int64) error {
+	return r.db.WithContext(ctx).Exec("UPDATE ms_user SET tokenVersion = tokenVersion + 1 WHERE roleID = ?", roleID).Error
+}
+
 func (r *RepositoryImpl) SetPermissions(ctx context.Context, roleID int64, permissionIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec("DELETE FROM map_role_permission WHERE roleID = ?", roleID).Error; err != nil {
