@@ -41,6 +41,22 @@ func parseInts(values []string) []int {
 	return out
 }
 
+// parseBoolPtr parses "true"/"1" or "false"/"0" into a *bool — nil (meaning
+// "no filter") for an absent or unrecognized value, distinguishing the
+// "Punya PDF" filter's three states (semua / ya / tidak) without a sentinel.
+func parseBoolPtr(v string) *bool {
+	switch strings.TrimSpace(v) {
+	case "true", "1":
+		b := true
+		return &b
+	case "false", "0":
+		b := false
+		return &b
+	default:
+		return nil
+	}
+}
+
 // HandlerImpl adalah implementasi Handler.
 type HandlerImpl struct{ svc article_service.Service }
 
@@ -84,9 +100,14 @@ func (h *HandlerImpl) bindRequest(c *gin.Context) (article_dto.Request, bool) {
 
 func (h *HandlerImpl) PublicList(c *gin.Context) {
 	q := dto.ParseListQuery(c)
-	categorySlugs := trimmedNonEmpty(c.QueryArray("category"))
-	years := parseInts(c.QueryArray("year"))
-	data, total, err := h.svc.PublicList(c.Request.Context(), q, categorySlugs, years)
+	f := article_dto.PublicFilter{
+		CategorySlugs: trimmedNonEmpty(c.QueryArray("category")),
+		Years:         parseInts(c.QueryArray("year")),
+		Writers:       trimmedNonEmpty(c.QueryArray("writer")),
+		Months:        parseInts(c.QueryArray("month")),
+		HasPdf:        parseBoolPtr(c.Query("hasPdf")),
+	}
+	data, total, err := h.svc.PublicList(c.Request.Context(), q, f)
 	if err != nil {
 		httphelper.Error(c, err)
 		return

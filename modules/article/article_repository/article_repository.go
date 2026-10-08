@@ -27,4 +27,8 @@ type Repository interface {
 	// table (published articles only) — used to populate the public "Tahun
 	// Publikasi" filter dropdown without ever offering an empty-result option.
 	DistinctYears(ctx context.Context) ([]int, error)
+	// DistinctWriters returns the distinct articleWriter values currently in
+	// the table (published articles only) — used to populate the public
+	// "Penulis" filter dropdown without ever offering an empty-result option.
+	DistinctWriters(ctx context.Context) ([]string, error)
 }

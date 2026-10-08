@@ -20,7 +20,7 @@ type CommentCleaner interface {
 
 // Service adalah kontrak logika bisnis artikel.
 type Service interface {
-	PublicList(ctx context.Context, q dto.ListQuery, categorySlugs []string, years []int) ([]article_model.Article, int, error)
+	PublicList(ctx context.Context, q dto.ListQuery, f article_dto.PublicFilter) ([]article_model.Article, int, error)
 	CMSList(ctx context.Context, q dto.ListQuery, f article_dto.CMSFilter) ([]article_model.Article, int, error)
 	PublicDetail(ctx context.Context, slug string) (article_model.Article, error)
 	Get(ctx context.Context, id int64) (article_model.Article, error)
