@@ -61,6 +61,19 @@ func (r *RepositoryImpl) List(ctx context.Context, f article_dto.Filter) ([]arti
 	if len(f.Years) > 0 {
 		q = q.Where("YEAR(a.publishedDate) IN ?", f.Years)
 	}
+	if len(f.Writers) > 0 {
+		q = q.Where("a.articleWriter IN ?", f.Writers)
+	}
+	if len(f.Months) > 0 {
+		q = q.Where("MONTH(a.publishedDate) IN ?", f.Months)
+	}
+	if f.HasPdf != nil {
+		if *f.HasPdf {
+			q = q.Where("a.articlePdf IS NOT NULL AND a.articlePdf <> ''")
+		} else {
+			q = q.Where("(a.articlePdf IS NULL OR a.articlePdf = '')")
+		}
+	}
 	if f.DateFrom != "" {
 		q = q.Where("DATE(a.createdDate) >= ?", f.DateFrom)
 	}
@@ -179,4 +192,14 @@ func (r *RepositoryImpl) DistinctYears(ctx context.Context) ([]int, error) {
 		Order("yr DESC").
 		Pluck("yr", &years).Error
 	return years, err
+}
+
+func (r *RepositoryImpl) DistinctWriters(ctx context.Context) ([]string, error) {
+	var writers []string
+	err := r.db.WithContext(ctx).Table("ms_article").
+		Where("isPublished = 1").Where("articleWriter IS NOT NULL AND articleWriter <> ''").
+		Distinct("articleWriter").
+		Order("articleWriter").
+		Pluck("articleWriter", &writers).Error
+	return writers, err
 }

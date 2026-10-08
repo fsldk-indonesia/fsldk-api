@@ -33,9 +33,10 @@ func NewService(repo article_repository.Repository, comment CommentCleaner) Serv
 	return &ServiceImpl{repo: repo, comment: comment}
 }
 
-func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, categorySlugs []string, years []int) ([]article_model.Article, int, error) {
+func (s *ServiceImpl) PublicList(ctx context.Context, q dto.ListQuery, f article_dto.PublicFilter) ([]article_model.Article, int, error) {
 	return s.list(ctx, article_dto.Filter{
-		Search: q.Search, CategorySlugs: categorySlugs, Years: years, PublishedOnly: true,
+		Search: q.Search, CategorySlugs: f.CategorySlugs, Years: f.Years,
+		Writers: f.Writers, Months: f.Months, HasPdf: f.HasPdf, PublishedOnly: true,
 		Limit: q.Limit, Offset: q.Offset(), OrderBy: q.OrderBy(sortColumns, "a.publishedDate DESC"),
 	})
 }
@@ -91,10 +92,17 @@ func (s *ServiceImpl) FilterOptionsPublic(ctx context.Context) (article_dto.Filt
 	if err != nil {
 		return article_dto.FilterOptionsResponse{}, apperror.Internal("")
 	}
+	writers, err := s.repo.DistinctWriters(ctx)
+	if err != nil {
+		return article_dto.FilterOptionsResponse{}, apperror.Internal("")
+	}
 	if years == nil {
 		years = []int{}
 	}
-	return article_dto.FilterOptionsResponse{Years: years}, nil
+	if writers == nil {
+		writers = []string{}
+	}
+	return article_dto.FilterOptionsResponse{Years: years, Writers: writers}, nil
 }
 
 func (s *ServiceImpl) Create(ctx context.Context, req article_dto.Request, authorID int64, canPublish bool) (article_model.Article, error) {

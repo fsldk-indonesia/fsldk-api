@@ -22,9 +22,12 @@ type PublishRequest struct {
 type Filter struct {
 	Search        string
 	Writer        string   // LIKE terhadap articleWriter — filter kolom "Penulis" CMS
+	Writers       []string // exact match (IN) terhadap articleWriter — filter "Penulis" publik, multi-select dari nilai distinct
 	CategorySlugs []string // exact match (IN) — filter kategori publik, multi-select by slug
 	CategoryIDs   []int64  // exact match (IN) — filter kolom "Kategori" CMS, multi-select by ID
 	Years         []int    // exact match (IN) terhadap YEAR(publishedDate) — filter "Tahun Publikasi" publik
+	Months        []int    // exact match (IN) terhadap MONTH(publishedDate) — filter "Bulan Publikasi" publik
+	HasPdf        *bool    // nil = semua, true = articlePdf terisi, false = articlePdf kosong — filter "Punya PDF" publik
 	PublishedOnly bool
 	Status        []string // "published" | "draft" — multi-select (IN), kosong = semua status
 	DateFrom      string   // "YYYY-MM-DD", inklusif — filter kolom "Tanggal" (createdDate) CMS
@@ -34,12 +37,25 @@ type Filter struct {
 	OrderBy       string
 }
 
+// PublicFilter menampung parameter filter khusus endpoint publik List — dipisah
+// dari Filter (dipakai repository) dengan alasan yang sama dengan CMSFilter:
+// supaya signature service.PublicList tidak terus bertambah parameter
+// positional setiap kali kolom filter baru ditambahkan.
+type PublicFilter struct {
+	CategorySlugs []string
+	Years         []int
+	Writers       []string
+	Months        []int
+	HasPdf        *bool
+}
+
 // FilterOptionsResponse menampung nilai distinct untuk mengisi dropdown filter
-// publik "Tahun Publikasi" — kategori sudah punya endpoint sendiri (Categories),
-// tidak diulang di sini. Nilainya distinct dari data yang benar-benar ada,
-// supaya dropdown tidak pernah menawarkan pilihan yang hasilnya kosong.
+// publik "Tahun Publikasi" & "Penulis" — kategori sudah punya endpoint sendiri
+// (Categories), tidak diulang di sini. Nilainya distinct dari data yang benar-benar
+// ada, supaya dropdown tidak pernah menawarkan pilihan yang hasilnya kosong.
 type FilterOptionsResponse struct {
-	Years []int `json:"years"`
+	Years   []int    `json:"years"`
+	Writers []string `json:"writers"`
 }
 
 // CMSFilter menampung parameter filter khusus endpoint CMS list (di luar
