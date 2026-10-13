@@ -35,6 +35,22 @@ type PuskomdaSummary struct {
 	TotalKaderAktif int `json:"totalKaderAktif"`
 }
 
+// DeadlineAlert adalah satu baris peringatan deadline operasional (lihat
+// setting_model.GroupDeadline) yang ditampilkan sebagai banner closeable di
+// dashboard CMS Utama — hanya disertakan oleh dashboard_service bila sisa
+// hari <=30 (termasuk yang sudah lewat, DaysRemaining negatif).
+type DeadlineAlert struct {
+	Label         string `json:"label"`
+	SettingKey    string `json:"settingKey"`
+	Deadline      string `json:"deadline"` // "YYYY-MM-DD"
+	DaysRemaining int    `json:"daysRemaining"`
+	IsOverdue     bool   `json:"isOverdue"`
+	// Cost — estimasi biaya dari settingValue2 (digit polos), nil bila belum
+	// diisi admin. Diformat "Rp ..." di frontend (lihat formatRupiah di
+	// dashboard.index.page.ts), bukan di sini, supaya satu titik format.
+	Cost *int64 `json:"cost,omitempty"`
+}
+
 // LevelCount adalah jumlah LDK per level hasil levelisasi saat ini.
 type LevelCount struct {
 	LevelCode  string `json:"levelCode"`
@@ -107,6 +123,9 @@ type UtamaSummary struct {
 	NetworkKaderAktif        int                 `json:"networkKaderAktif"`
 	NetworkLevelDistribution []LevelCount        `json:"networkLevelDistribution"`
 	NetworkPerPuskomda       []PuskomdaBreakdown `json:"networkPerPuskomda"`
+
+	// DeadlineAlerts — lihat komentar DeadlineAlert di atas.
+	DeadlineAlerts []DeadlineAlert `json:"deadlineAlerts"`
 }
 
 // Summary adalah response GET /dashboard/summary — hanya satu dari Utama/LDK/

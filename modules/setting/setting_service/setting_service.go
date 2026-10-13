@@ -15,4 +15,7 @@ type Service interface {
 	// tidak ditemukan/kosong — BUKAN error, supaya pemanggil (mis.
 	// shortlinkrequest_service) tetap bisa jalan meski belum dikonfigurasi.
 	GetValue(ctx context.Context, group, key string) (string, error)
+	// GetValue2 — sama seperti GetValue tapi membaca settingValue2 (nilai
+	// kedua generik, lihat setting_model.Setting.SettingValue2).
+	GetValue2(ctx context.Context, group, key string) (string, error)
 }

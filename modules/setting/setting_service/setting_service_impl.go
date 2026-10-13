@@ -25,17 +25,22 @@ func toResponse(s setting_model.Setting) setting_dto.Response {
 	if s.SettingValue != nil {
 		value = *s.SettingValue
 	}
+	value2 := ""
+	if s.SettingValue2 != nil {
+		value2 = *s.SettingValue2
+	}
 	updatedDate := ""
 	if s.UpdatedDate != nil {
 		updatedDate = s.UpdatedDate.Format("2006-01-02 15:04:05")
 	}
 	return setting_dto.Response{
-		SettingID:    s.SettingID,
-		SettingGroup: s.SettingGroup,
-		SettingKey:   s.SettingKey,
-		SettingLabel: s.SettingLabel,
-		SettingValue: value,
-		UpdatedDate:  updatedDate,
+		SettingID:     s.SettingID,
+		SettingGroup:  s.SettingGroup,
+		SettingKey:    s.SettingKey,
+		SettingLabel:  s.SettingLabel,
+		SettingValue:  value,
+		SettingValue2: value2,
+		UpdatedDate:   updatedDate,
 	}
 }
 
@@ -55,7 +60,7 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req setting_dto.Upda
 	if _, err := s.repo.FindByID(ctx, id); err != nil {
 		return setting_dto.Response{}, apperror.NotFound("Setting tidak ditemukan")
 	}
-	if err := s.repo.Update(ctx, id, req.SettingValue, actorID); err != nil {
+	if err := s.repo.Update(ctx, id, req.SettingValue, req.SettingValue2, actorID); err != nil {
 		return setting_dto.Response{}, apperror.Internal("")
 	}
 	updated, err := s.repo.FindByID(ctx, id)
@@ -77,4 +82,18 @@ func (s *ServiceImpl) GetValue(ctx context.Context, group, key string) (string, 
 		return "", nil
 	}
 	return *setting.SettingValue, nil
+}
+
+func (s *ServiceImpl) GetValue2(ctx context.Context, group, key string) (string, error) {
+	setting, err := s.repo.FindByGroupKey(ctx, group, key)
+	if err != nil {
+		if errors.Is(err, setting_repository.ErrNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	if setting.SettingValue2 == nil {
+		return "", nil
+	}
+	return *setting.SettingValue2, nil
 }

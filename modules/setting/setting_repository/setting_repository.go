@@ -16,5 +16,5 @@ type Repository interface {
 	List(ctx context.Context) ([]setting_model.Setting, error)
 	FindByID(ctx context.Context, id int64) (setting_model.Setting, error)
 	FindByGroupKey(ctx context.Context, group, key string) (setting_model.Setting, error)
-	Update(ctx context.Context, id int64, value string, updatedBy int64) error
+	Update(ctx context.Context, id int64, value, value2 string, updatedBy int64) error
 }

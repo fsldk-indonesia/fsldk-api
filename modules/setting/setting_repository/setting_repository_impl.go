@@ -45,10 +45,11 @@ func (r *RepositoryImpl) FindByGroupKey(ctx context.Context, group, key string) 
 	return s, err
 }
 
-func (r *RepositoryImpl) Update(ctx context.Context, id int64, value string, updatedBy int64) error {
+func (r *RepositoryImpl) Update(ctx context.Context, id int64, value, value2 string, updatedBy int64) error {
 	return r.db.WithContext(ctx).Table("ms_setting").Where("settingID = ?", id).Updates(map[string]interface{}{
-		"settingValue": value,
-		"updatedDate":  time.Now(),
-		"updatedBy":    sql.NullInt64{Int64: updatedBy, Valid: updatedBy > 0},
+		"settingValue":  value,
+		"settingValue2": value2,
+		"updatedDate":   time.Now(),
+		"updatedBy":     sql.NullInt64{Int64: updatedBy, Valid: updatedBy > 0},
 	}).Error
 }
