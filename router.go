@@ -241,7 +241,11 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
 	userSvc := user_service.NewService(userRepo, orgSvc, audit)
 	roleSvc := role_service.NewService(roleRepo)
-	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc)
+	settingSvc := setting_service.NewService(settingRepo)
+	// dashSvc butuh settingSvc untuk menghitung banner peringatan deadline
+	// operasional (lihat dashboard_service_impl.go deadlineAlerts) — karenanya
+	// settingSvc dikonstruksi lebih dulu, bukan lagi setelah qrcodeSvc.
+	dashSvc := dashboard_service.NewService(dashRepo, formRepo, orgSvc, settingSvc)
 	shortlinkSvc := shortlink_service.NewService(shortlinkRepo, cfg.FrontendURL)
 	// apiBaseURL dipakai qrcode_service/qrcoderequest_service membentuk ImageURL
 	// absolut (mis. untuk email notifikasi) — AppURL + prefix grup /api/v1.
@@ -249,7 +253,6 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	// "assets/uploads" = folder fisik yang sama dipakai uploadpkg.NewUploader —
 	// qrcode_service membacanya untuk menempelkan ikon tengah pada gambar QR.
 	qrcodeSvc := qrcode_service.NewService(qrcodeRepo, apiBaseURL, "assets/uploads")
-	settingSvc := setting_service.NewService(settingRepo)
 	welcomePopupSvc := welcomepopup_service.NewService(welcomePopupRepo)
 	rapimnasSvc := rapimnas_service.NewService(rapimnasRepo)
 	kirimdevClient := kirimdev.NewClient(cfg.KirimdevAPIKey, cfg.KirimdevPhoneNumberID, cfg.KirimdevBaseURL,

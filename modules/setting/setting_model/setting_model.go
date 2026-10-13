@@ -14,7 +14,11 @@ type Setting struct {
 	SettingKey   string     `gorm:"column:settingKey"`
 	SettingLabel string     `gorm:"column:settingLabel"`
 	SettingValue *string    `gorm:"column:settingValue"`
-	IsHide       bool       `gorm:"column:isHide"`
+	// SettingValue2 — kolom nilai kedua generik, dipakai pertama kali oleh
+	// group "deadline" untuk estimasi biaya (digit polos, mis. "1500000").
+	// NULL untuk setting lain yang tidak membutuhkannya.
+	SettingValue2 *string    `gorm:"column:settingValue2"`
+	IsHide        bool       `gorm:"column:isHide"`
 	UpdatedDate  *time.Time `gorm:"column:updatedDate"`
 }
 
@@ -57,4 +61,15 @@ const (
 	// publik lewat endpoint yang sama dengan KeyContactEmail (lihat
 	// setting_handler.PublicContactWhatsapp).
 	KeyContactWhatsapp = "contact_whatsapp"
+
+	// GroupDeadline/KeyDeadline* — tanggal jatuh tempo operasional (format
+	// "YYYY-MM-DD"), dibaca dashboard_service untuk banner peringatan
+	// closeable di dashboard CMS Utama saat sisa waktu menipis atau sudah
+	// lewat (lihat dashboard_dto.DeadlineAlert). isHide=false, settingValue
+	// kosong by default — diisi admin lewat App Settings.
+	GroupDeadline                 = "deadline"
+	KeyDeadlineWhatsAppIntegration = "whatsapp_integration"
+	KeyDeadlineHostingServer       = "hosting_server"
+	KeyDeadlineRentDomain          = "rent_domain"
+	KeyDeadlineCertificateWebsite  = "certificate_website"
 )
