@@ -32,18 +32,25 @@ func NewService(repo dashboard_repository.Repository, formRepo submission_form_r
 // label yang ditampilkan di banner — satu sumber kebenaran urutan & teks
 // supaya menambah deadline baru cukup menambah satu baris di sini plus satu
 // baris migration seed (lihat migrations/0048_setting_deadline.up.sql).
-var deadlineAlertSpecs = []struct{ key, label string }{
-	{setting_model.KeyDeadlineWhatsAppIntegration, "WhatsApp Integration"},
-	{setting_model.KeyDeadlineHostingServer, "Hosting Server"},
-	{setting_model.KeyDeadlineRentDomain, "Rent Domain"},
-	{setting_model.KeyDeadlineCertificateWebsite, "Certificate Website"},
+// thresholdDays beda per jenis: Hosting Server & Rent Domain butuh
+// lead-time lebih panjang (perpanjangan/pembayaran ke pihak ketiga biasanya
+// perlu diajukan jauh-jauh hari) makanya H-90, sisanya tetap H-30.
+var deadlineAlertSpecs = []struct {
+	key, label    string
+	thresholdDays int
+}{
+	{setting_model.KeyDeadlineWhatsAppIntegration, "WhatsApp Integration", 30},
+	{setting_model.KeyDeadlineHostingServer, "Hosting Server", 90},
+	{setting_model.KeyDeadlineRentDomain, "Rent Domain", 90},
+	{setting_model.KeyDeadlineCertificateWebsite, "Certificate Website", 30},
 }
 
 // deadlineAlerts membaca ke-4 setting deadline operasional dan mengembalikan
-// hanya yang sisa harinya <=30 (termasuk yang sudah lewat) — ditampilkan
-// sebagai banner peringatan closeable di dashboard CMS Utama. Best-effort:
-// key yang kosong/belum diisi admin atau nilainya tidak bisa diparse sebagai
-// tanggal dilewati diam-diam, tidak menggagalkan seluruh ringkasan dashboard.
+// hanya yang sisa harinya <=thresholdDays milik masing-masing (termasuk yang
+// sudah lewat) — ditampilkan sebagai banner peringatan closeable di
+// dashboard CMS Utama. Best-effort: key yang kosong/belum diisi admin atau
+// nilainya tidak bisa diparse sebagai tanggal dilewati diam-diam, tidak
+// menggagalkan seluruh ringkasan dashboard.
 func (s *ServiceImpl) deadlineAlerts(ctx context.Context) []dashboard_dto.DeadlineAlert {
 	today := time.Now().Truncate(24 * time.Hour)
 	alerts := make([]dashboard_dto.DeadlineAlert, 0, len(deadlineAlertSpecs))
@@ -57,7 +64,7 @@ func (s *ServiceImpl) deadlineAlerts(ctx context.Context) []dashboard_dto.Deadli
 			continue
 		}
 		daysRemaining := int(deadline.Sub(today).Hours() / 24)
-		if daysRemaining > 30 {
+		if daysRemaining > spec.thresholdDays {
 			continue
 		}
 		var cost *int64
