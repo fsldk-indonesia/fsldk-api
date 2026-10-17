@@ -273,6 +273,9 @@ func (f *fakeUserRepository) UpdateCustomPhoto(ctx context.Context, id int64, ph
 	return nil
 }
 func (f *fakeUserRepository) MarkEmailVerified(ctx context.Context, id int64) error { return nil }
+func (f *fakeUserRepository) SetEmailVerified(ctx context.Context, id int64, verified bool) error {
+	return nil
+}
 func (f *fakeUserRepository) SoftDelete(ctx context.Context, id int64, updatedBy int64) error {
 	return nil
 }

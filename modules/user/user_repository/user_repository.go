@@ -45,6 +45,12 @@ type Repository interface {
 	// resolvedPhotoURL): customPhotoURL > photoURL > inisial huruf di FE.
 	UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error
 	MarkEmailVerified(ctx context.Context, id int64) error
+	// SetEmailVerified lets an admin directly force-verify or un-verify an
+	// account (Kelola Pengguna Update), unlike MarkEmailVerified (self-verify
+	// only, guarded by `WHERE emailVerifiedDate IS NULL`). Verifying preserves
+	// an already-set timestamp instead of overwriting it; un-verifying clears
+	// it to NULL.
+	SetEmailVerified(ctx context.Context, id int64, verified bool) error
 	SoftDelete(ctx context.Context, id int64, updatedBy int64) error
 	LogLogin(ctx context.Context, userID int64, ip, ua, status string) error
 	// TokenVersion mengembalikan versi token aktif akun (lihat migrations

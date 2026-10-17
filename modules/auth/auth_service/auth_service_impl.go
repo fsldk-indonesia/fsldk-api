@@ -171,7 +171,7 @@ func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest
 		return auth_dto.RegisterResponse{}, apperror.Internal("Gagal membuat akun")
 	}
 
-	if err := s.sendVerification(ctx, userID, req.FullName, email); err != nil {
+	if err := s.SendVerificationEmail(ctx, userID, req.FullName, email); err != nil {
 		return auth_dto.RegisterResponse{}, apperror.Internal("Akun dibuat namun email verifikasi gagal dikirim. Silakan gunakan kirim ulang.")
 	}
 
@@ -183,7 +183,7 @@ func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest
 	}, nil
 }
 
-func (s *ServiceImpl) sendVerification(ctx context.Context, userID int64, name, email string) error {
+func (s *ServiceImpl) SendVerificationEmail(ctx context.Context, userID int64, name, email string) error {
 	_ = s.store.InvalidateAll(ctx, userID, constants.EmailTokenVerification)
 
 	tokenStr, err := security.RandomToken(32)
@@ -219,7 +219,7 @@ func (s *ServiceImpl) ResendVerification(ctx context.Context, userID int64) erro
 	if emailVerified(u) {
 		return apperror.Unprocessable("Email Anda sudah terverifikasi")
 	}
-	if err := s.sendVerification(ctx, u.UserID, u.FullName, u.Email); err != nil {
+	if err := s.SendVerificationEmail(ctx, u.UserID, u.FullName, u.Email); err != nil {
 		return apperror.Internal("Gagal mengirim email verifikasi")
 	}
 	return nil

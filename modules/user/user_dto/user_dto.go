@@ -24,11 +24,16 @@ type Response struct {
 // lapisan service sesuai kewenangan pemanggil — nilai dari client tidak
 // pernah dipercaya langsung untuk menentukan cakupan akses.
 type CreateRequest struct {
-	FullName           string   `json:"fullName" validate:"required,min=3,max=150"`
-	Email              string   `json:"email" validate:"required,email,max=150"`
-	RoleID             int64    `json:"roleID" validate:"required"`
-	Password           string   `json:"password" validate:"required,min=8,max=100"`
-	IsActive           *bool    `json:"isActive"`
+	FullName string `json:"fullName" validate:"required,min=3,max=150"`
+	Email    string `json:"email" validate:"required,email,max=150"`
+	RoleID   int64  `json:"roleID" validate:"required"`
+	Password string `json:"password" validate:"required,max=100"`
+	IsActive *bool  `json:"isActive"`
+	// EmailVerified = true (default from the CMS form) langsung menandai akun
+	// terverifikasi tanpa kirim email — perilaku lama yang selalu berlaku
+	// sebelum field ini ada. false mengirim email verifikasi asli (pola sama
+	// seperti registrasi mandiri, lihat auth_service.SendVerificationEmail).
+	EmailVerified      bool     `json:"emailVerified"`
 	OrganizationID     *int64   `json:"organizationID"`
 	WildcardTierAccess []string `json:"wildcardTierAccess" validate:"omitempty,dive,oneof=LDK PUSKOMDA PUSKOMNAS"`
 }
@@ -36,11 +41,17 @@ type CreateRequest struct {
 // UpdateRequest adalah body memperbarui pengguna. Password opsional — bila
 // diisi, password pengguna diganti; bila kosong, password lama dipertahankan.
 type UpdateRequest struct {
-	FullName           string   `json:"fullName" validate:"required,min=3,max=150"`
-	Email              string   `json:"email" validate:"required,email,max=150"`
-	RoleID             int64    `json:"roleID" validate:"required"`
-	IsActive           bool     `json:"isActive"`
-	Password           string   `json:"password" validate:"omitempty,min=8,max=100"`
+	FullName string `json:"fullName" validate:"required,min=3,max=150"`
+	Email    string `json:"email" validate:"required,email,max=150"`
+	RoleID   int64  `json:"roleID" validate:"required"`
+	IsActive bool   `json:"isActive"`
+	Password string `json:"password" validate:"omitempty,max=100"`
+	// EmailVerified mencerminkan status verifikasi email saat ini, bisa
+	// diubah admin lewat form Update: true memverifikasi langsung (tanpa
+	// email, murni override admin — lihat user_repository.SetEmailVerified),
+	// false mencabut status terverifikasi (mis. memaksa verifikasi ulang).
+	// Tidak ada email dikirim otomatis dari jalur Update ini.
+	EmailVerified      bool     `json:"emailVerified"`
 	OrganizationID     *int64   `json:"organizationID"`
 	WildcardTierAccess []string `json:"wildcardTierAccess" validate:"omitempty,dive,oneof=LDK PUSKOMDA PUSKOMNAS"`
 }

@@ -12,6 +12,11 @@ type Service interface {
 	Register(ctx context.Context, req auth_dto.RegisterRequest) (auth_dto.RegisterResponse, error)
 	VerifyEmail(ctx context.Context, token string) error
 	ResendVerification(ctx context.Context, userID int64) error
+	// SendVerificationEmail creates a fresh verification token and emails it —
+	// exported so other modules (e.g. user_service, when an admin creates a
+	// user without bypassing verification) can trigger the same flow
+	// self-registration uses, without duplicating the token+email logic.
+	SendVerificationEmail(ctx context.Context, userID int64, name, email string) error
 	Login(ctx context.Context, req auth_dto.LoginRequest, ip, ua string) (auth_dto.AuthResponse, error)
 	LoginGoogle(ctx context.Context, idToken, ip, ua string) (auth_dto.AuthResponse, error)
 	Refresh(ctx context.Context, refreshToken string) (auth_dto.AuthResponse, error)

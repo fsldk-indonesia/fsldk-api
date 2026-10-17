@@ -9,6 +9,7 @@ import (
 	"fsldk-api/base/dto"
 	"fsldk-api/base/security"
 	"fsldk-api/constants"
+	"fsldk-api/modules/auth/auth_service"
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/modules/user/user_repository"
@@ -29,11 +30,14 @@ type ServiceImpl struct {
 	repo     user_repository.Repository
 	orgScope OrgScopeChecker
 	audit    *auditlog.Logger
+	authSvc  auth_service.Service
 }
 
-// NewService membuat Service pengguna.
-func NewService(repo user_repository.Repository, orgScope OrgScopeChecker, audit *auditlog.Logger) Service {
-	return &ServiceImpl{repo: repo, orgScope: orgScope, audit: audit}
+// NewService membuat Service pengguna. authSvc dipakai Create() memicu email
+// verifikasi asli (pola sama seperti registrasi mandiri) saat admin TIDAK
+// mencentang bypass — lihat auth_service.SendVerificationEmail.
+func NewService(repo user_repository.Repository, orgScope OrgScopeChecker, audit *auditlog.Logger, authSvc auth_service.Service) Service {
+	return &ServiceImpl{repo: repo, orgScope: orgScope, audit: audit, authSvc: authSvc}
 }
 
 // nullIntValue mengekstrak nilai polos dari sql.NullInt64 untuk payload audit
@@ -220,18 +224,26 @@ func (s *ServiceImpl) Create(ctx context.Context, req user_dto.CreateRequest, ca
 	if req.IsActive != nil {
 		active = *req.IsActive
 	}
+	fullName := strings.TrimSpace(req.FullName)
 	id, err := s.repo.Create(ctx, user_model.CreateParams{
 		RoleID:             req.RoleID,
 		OrganizationID:     orgID,
 		WildcardTierAccess: wildcard,
-		FullName:           strings.TrimSpace(req.FullName),
+		FullName:           fullName,
 		Email:              email,
 		Password:           sql.NullString{String: hashed, Valid: true},
-		EmailVerified:      true,
+		EmailVerified:      req.EmailVerified,
 		CreatedBy:          sql.NullInt64{Int64: caller.UserID, Valid: caller.UserID > 0},
 	})
 	if err != nil {
 		return user_dto.Response{}, apperror.Internal("Gagal membuat pengguna")
+	}
+	if !req.EmailVerified {
+		// Verifikasi TIDAK di-bypass — kirim email verifikasi asli, pola sama
+		// seperti registrasi mandiri (lihat auth_service.Register).
+		if err := s.authSvc.SendVerificationEmail(ctx, id, fullName, email); err != nil {
+			return user_dto.Response{}, apperror.Internal("Pengguna dibuat namun email verifikasi gagal dikirim. Edit ulang pengguna ini untuk mengirim ulang atau memverifikasi langsung.")
+		}
 	}
 	if !active {
 		_ = s.repo.SetActive(ctx, id, false, caller.UserID)
@@ -263,6 +275,23 @@ func (s *ServiceImpl) Update(ctx context.Context, id int64, req user_dto.UpdateR
 	}
 	if err := s.repo.Update(ctx, id, strings.TrimSpace(req.FullName), email, req.RoleID, req.IsActive, orgID, wildcard, caller.UserID); err != nil {
 		return user_dto.Response{}, apperror.Internal("")
+	}
+	// Admin override langsung status verifikasi — lihat
+	// user_repository.SetEmailVerified. Mencentang (true) tidak pernah
+	// mengirim email (murni override admin). Men-uncheck (false) HANYA
+	// mengirim ulang email verifikasi bila akun ini SEBELUMNYA sudah
+	// terverifikasi — itu berarti aksi "cabut verifikasi" yang disengaja,
+	// beda dari sekadar menyimpan ulang form saat checkbox memang sudah
+	// tidak tercentang (tidak boleh resend tiap kali, lihat skenario uji
+	// NoResend_WhenAlreadyUnverifiedAndStaysUnverified).
+	wasVerified := before.EmailVerifiedDate.Valid
+	if err := s.repo.SetEmailVerified(ctx, id, req.EmailVerified); err != nil {
+		return user_dto.Response{}, apperror.Internal("")
+	}
+	if wasVerified && !req.EmailVerified {
+		if err := s.authSvc.SendVerificationEmail(ctx, id, strings.TrimSpace(req.FullName), email); err != nil {
+			return user_dto.Response{}, apperror.Internal("Status verifikasi diperbarui namun email verifikasi gagal dikirim ulang. Coba simpan ulang.")
+		}
 	}
 	if before.RoleID != req.RoleID || before.OrganizationID != orgID || before.WildcardTierAccess != wildcard {
 		// Role, organisasi (LDK), atau Akses Lintas Tier akun berubah — semua
