@@ -46,4 +46,16 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 		k.POST("/:id/reactivate", mw.RequirePermission(constants.PermKaderDeactivate), h.ReactivateKader)
 		k.POST("/:id/reinstate", mw.RequirePermission(constants.PermKaderDeactivate), h.ReinstateKader)
 	}
+
+	// /pengurus adalah GROUP TERPISAH dari /kaders (bukan nested di
+	// bawahnya) — Gin/httprouter tidak bisa campur segmen statis dengan
+	// wildcard (:id) di kedalaman path yang sama, dan /kaders/:id/... sudah
+	// menempati kedalaman itu.
+	p := rg.Group("/pengurus")
+	p.Use(mw.Auth())
+	{
+		pengurusPerms := []string{constants.PermPengurusLDKManage, constants.PermPengurusPuskomdaManage, constants.PermPengurusPuskomnasManage}
+		p.GET("", mw.RequirePermission(pengurusPerms...), h.ListPengurus)
+		p.PATCH("/:userID/role", mw.RequirePermission(pengurusPerms...), h.UpdatePengurusRole)
+	}
 }
