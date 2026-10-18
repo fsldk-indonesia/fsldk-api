@@ -249,10 +249,11 @@ func (s *ServiceImpl) Directory(ctx context.Context, typeCode string) ([]organiz
 	out := make([]organization_dto.DirectoryEntry, 0, len(orgs))
 	for _, o := range orgs {
 		out = append(out, organization_dto.DirectoryEntry{
-			OrganizationID:   o.OrganizationID,
-			OrganizationName: o.OrganizationName,
-			ProvinceName:     o.ProvinceName.String,
-			CityName:         o.CityName.String,
+			OrganizationID:         o.OrganizationID,
+			OrganizationName:       o.OrganizationName,
+			ParentOrganizationName: o.ParentOrganizationName.String,
+			ProvinceName:           o.ProvinceName.String,
+			CityName:               o.CityName.String,
 		})
 	}
 	return out, nil
