@@ -394,7 +394,7 @@ func (s *ServiceImpl) validateScoringBeforePublish(ctx context.Context, versionI
 	return nil
 }
 
-func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, mode string, actorID int64) (submission_form_dto.PublishVersionResult, error) {
+func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.PublishVersionResult, error) {
 	v, err := s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {
 		return submission_form_dto.PublishVersionResult{}, apperror.NotFound("Version tidak ditemukan")
@@ -419,13 +419,13 @@ func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, mode 
 	}
 	s.audit.LogForm(ctx, auditlog.Entry{
 		ActorUserID: actorID, Action: "PUBLISH", Entity: "ms_submission_form_version", EntityID: versionID,
-		After: map[string]interface{}{"formID": v.FormID, "versionNumber": v.VersionNumber, "cascadeMode": mode},
+		After: map[string]interface{}{"formID": v.FormID, "versionNumber": v.VersionNumber},
 	})
 
 	var cascadeJobID int64
 	if hasOldVersion {
 		cascadeJobID, err = s.cascader.EnqueueCascade(ctx, CascadeInput{
-			FormID: v.FormID, OldVersionID: oldVersion.VersionID, NewVersionID: versionID, Mode: mode, ActorID: actorID,
+			FormID: v.FormID, OldVersionID: oldVersion.VersionID, NewVersionID: versionID, ActorID: actorID,
 		})
 		if err != nil {
 			return submission_form_dto.PublishVersionResult{}, apperror.Internal("")

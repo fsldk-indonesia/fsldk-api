@@ -176,14 +176,8 @@ type UpdateOptionRequest struct {
 	Score       *float64 `json:"score"`
 }
 
-// PublishVersionRequest adalah body memilih mode cascade saat mempublikasikan
-// version — lihat TechSpec DL-1/DL-4 (selalu wajib pilih salah satu).
-type PublishVersionRequest struct {
-	Mode string `json:"mode" validate:"required,oneof=RESET REASSESS"`
-}
-
 // PublishImpactResponse adalah jumlah submission yang akan terdampak bila
-// version ini dipublish — ditampilkan FE sebelum admin memilih mode publish.
+// version ini dipublish — ditampilkan FE sebagai info sebelum konfirmasi publish.
 type PublishImpactResponse struct {
 	AffectedCount int `json:"affectedCount"`
 }

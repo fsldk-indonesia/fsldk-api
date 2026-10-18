@@ -88,10 +88,4 @@ type Repository interface {
 	// SubmittedByUserID/OrganizationIDs — dipakai job cascade publish yang
 	// memproses submission lintas organisasi.
 	ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error)
-	// WipeSubmission mengosongkan TOTAL data submission (jawaban, skor,
-	// review, histori status, kode kader/hasil levelisasi — tanpa jejak
-	// audit) lalu memindahkannya ke newVersionID berstatus DRAFT. Dipakai
-	// mode RESET cascade publish (TechSpec DL-1) — SATU transaksi, bukan
-	// insert baris histori apapun (itulah yang membedakannya dari REASSESS).
-	WipeSubmission(ctx context.Context, sub submission_model.Submission, newVersionID int64) error
 }

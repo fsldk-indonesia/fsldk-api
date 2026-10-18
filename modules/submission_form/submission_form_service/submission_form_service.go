@@ -17,10 +17,10 @@ type Service interface {
 
 	CreateVersion(ctx context.Context, formID int64, req submission_form_dto.CreateVersionRequest, actorID int64) (submission_form_dto.VersionDetailResponse, error)
 	GetVersion(ctx context.Context, versionID int64) (submission_form_dto.VersionDetailResponse, error)
-	// PublishVersion mempublikasikan version DRAFT. mode (constants.CascadeModeReset
-	// | CascadeModeReassess) menentukan bagaimana submission yang masih
-	// mengacu ke version PUBLISHED sebelumnya diperlakukan — lihat CascadeInput.
-	PublishVersion(ctx context.Context, versionID int64, mode string, actorID int64) (submission_form_dto.PublishVersionResult, error)
+	// PublishVersion mempublikasikan version DRAFT. Submission yang masih
+	// mengacu ke version PUBLISHED sebelumnya otomatis dicascade (reassessment
+	// massal) — lihat CascadeInput.
+	PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.PublishVersionResult, error)
 	// PublishImpact menghitung submission yang akan terdampak bila version
 	// ini dipublish — dipakai FE menampilkan peringatan sebelum admin memilih mode.
 	PublishImpact(ctx context.Context, versionID int64) (submission_form_dto.PublishImpactResponse, error)
@@ -43,13 +43,12 @@ type Service interface {
 	DeleteOption(ctx context.Context, optionID int64) error
 }
 
-// CascadeInput adalah parameter memicu cascade reset/reassessment massal
-// saat sebuah version baru dipublish.
+// CascadeInput adalah parameter memicu reassessment massal saat sebuah
+// version baru dipublish.
 type CascadeInput struct {
 	FormID       int64
 	OldVersionID int64
 	NewVersionID int64
-	Mode         string // constants.CascadeModeReset | constants.CascadeModeReassess
 	ActorID      int64
 }
 

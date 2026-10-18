@@ -67,11 +67,10 @@ type ReopenRequest struct {
 // CascadeJobPayload adalah payload constants.JobSubmissionFormPublishCascade —
 // diisi submission_service.EnqueueCascade, dibaca HandlePublishCascadeJob.
 type CascadeJobPayload struct {
-	FormID       int64  `json:"formID"`
-	OldVersionID int64  `json:"oldVersionID"`
-	NewVersionID int64  `json:"newVersionID"`
-	Mode         string `json:"mode"`
-	ActorID      int64  `json:"actorID"`
+	FormID       int64 `json:"formID"`
+	OldVersionID int64 `json:"oldVersionID"`
+	NewVersionID int64 `json:"newVersionID"`
+	ActorID      int64 `json:"actorID"`
 }
 
 // FieldScoreInput adalah satu skor manual (Puskomnas) untuk satu field pada

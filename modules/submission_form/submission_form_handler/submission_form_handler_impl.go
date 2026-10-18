@@ -119,16 +119,7 @@ func (h *HandlerImpl) PublishVersion(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req submission_form_dto.PublishVersionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
-		return
-	}
-	if err := validation.Struct(req); err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	data, err := h.svc.PublishVersion(c.Request.Context(), id, req.Mode, appctx.UserID(c))
+	data, err := h.svc.PublishVersion(c.Request.Context(), id, appctx.UserID(c))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

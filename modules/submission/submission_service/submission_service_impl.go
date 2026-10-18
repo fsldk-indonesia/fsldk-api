@@ -1751,13 +1751,12 @@ func (s *ServiceImpl) CountAffectedByForm(ctx context.Context, formID int64) (in
 	return s.repo.CountByFormAndStatuses(ctx, formID, cascadeEligibleStatuses)
 }
 
-// EnqueueCascade memasukkan job reset/reassessment massal ke jobqueue —
-// memenuhi submission_form_service.SubmissionCascader. Dipanggil
+// EnqueueCascade memasukkan job reassessment massal ke jobqueue — memenuhi
+// submission_form_service.SubmissionCascader. Dipanggil
 // submission_form_service.PublishVersion setelah version baru berhasil dipublish.
 func (s *ServiceImpl) EnqueueCascade(ctx context.Context, in submission_form_service.CascadeInput) (int64, error) {
 	payload := submission_dto.CascadeJobPayload{
-		FormID: in.FormID, OldVersionID: in.OldVersionID, NewVersionID: in.NewVersionID,
-		Mode: in.Mode, ActorID: in.ActorID,
+		FormID: in.FormID, OldVersionID: in.OldVersionID, NewVersionID: in.NewVersionID, ActorID: in.ActorID,
 	}
 	return s.jobqueueSvc.Enqueue(ctx, jobqueue_dto.EnqueueInput{
 		Queue: jobqueue_model.QueueDefault, JobType: constants.JobSubmissionFormPublishCascade, Payload: payload,
@@ -1768,11 +1767,13 @@ func (s *ServiceImpl) EnqueueCascade(ctx context.Context, in submission_form_ser
 // constants.JobSubmissionFormPublishCascade (didaftarkan lewat
 // jobqueueSvc.RegisterHandler di root router.go) — memproses seluruh
 // submission yang mengacu ke version lama form ini (status apa pun kecuali
-// DRAFT/CANCELLED/REJECTED, lihat cascadeEligibleStatuses) sesuai mode
-// RESET/REASSESS yang dipilih admin saat publish. Query ulang dari
+// DRAFT/CANCELLED/REJECTED, lihat cascadeEligibleStatuses) lewat reassessment
+// massal: jawaban lama di-remap ke version baru by fieldCode (mekanisme sama
+// dengan migrateToLatestVersion yang sudah dipakai ReassessKader), lalu
+// direset ke DRAFT dengan histori tetap tercatat. Query ulang dari
 // ListByFormAndStatuses di setiap retry otomatis idempotent: submission yang
-// sudah diproses sudah berstatus DRAFT (RESET) atau DRAFT (REASSESS), jadi
-// tidak akan muncul lagi di hasil query (lihat TechSpec §6).
+// sudah diproses sudah berstatus DRAFT, jadi tidak akan muncul lagi di hasil
+// query (lihat TechSpec §6).
 func (s *ServiceImpl) HandlePublishCascadeJob(ctx context.Context, payload string) error {
 	var p submission_dto.CascadeJobPayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
@@ -1784,15 +1785,6 @@ func (s *ServiceImpl) HandlePublishCascadeJob(ctx context.Context, payload strin
 	}
 	caller := CallerScope{UserID: p.ActorID}
 	for _, sub := range subs {
-		if p.Mode == constants.CascadeModeReset {
-			if err := s.repo.WipeSubmission(ctx, sub, p.NewVersionID); err != nil {
-				return fmt.Errorf("wipe submission %d: %w", sub.SubmissionID, err)
-			}
-			continue
-		}
-		// REASSESS: remap jawaban lama ke version baru by fieldCode (mekanisme
-		// sama dengan migrateToLatestVersion yang sudah dipakai ReassessKader),
-		// lalu reset ke DRAFT dengan histori tetap tercatat.
 		migrated := s.migrateToLatestVersion(ctx, sub)
 		if err := s.repo.UpdateStatus(ctx, migrated.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, p.ActorID); err != nil {
 			return fmt.Errorf("reassess submission %d: %w", sub.SubmissionID, err)
