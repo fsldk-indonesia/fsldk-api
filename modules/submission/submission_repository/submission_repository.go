@@ -66,6 +66,11 @@ type Repository interface {
 	// isCurrent=1 milik sebuah organisasi (hasil resmi yang berlaku saat ini).
 	FindCurrentLevelResult(ctx context.Context, organizationID int64) (submission_model.LevelisasiResult, error)
 	FindLevelResultBySubmission(ctx context.Context, submissionID int64) (submission_model.LevelisasiResult, error)
+	// FindLevelResultHistory mengembalikan SELURUH baris milik organisasi ini
+	// (isCurrent maupun tidak — ClearCurrentLevelResult tidak pernah
+	// menghapus, cuma menandai isCurrent=0 untuk audit), terurut dari yang
+	// paling awal dicapai.
+	FindLevelResultHistory(ctx context.Context, organizationID int64) ([]submission_model.LevelisasiResult, error)
 	// ClearCurrentLevelResult menandai baris isCurrent=1 milik organisasi
 	// (bila ada) menjadi isCurrent=0 — dipanggil sebelum insert siklus baru.
 	ClearCurrentLevelResult(ctx context.Context, organizationID int64) error

@@ -289,6 +289,22 @@ func checkVersion(sub submission_model.Submission, clientVersion int) error {
 	return nil
 }
 
+func (s *ServiceImpl) toLevelResultResponse(ctx context.Context, res submission_model.LevelisasiResult) submission_dto.LevelResultResponse {
+	label, _ := s.repo.LevelLabel(ctx, res.LevelCode)
+	lr := submission_dto.LevelResultResponse{
+		ResultID:          res.ResultID,
+		LevelCode:         res.LevelCode,
+		LevelLabel:        label,
+		JustificationNote: res.JustificationNote.String,
+		EstablishedDate:   res.EstablishedDate,
+		IsPublished:       res.IsPublished,
+	}
+	if res.PublishedDate.Valid {
+		lr.PublishedDate = &res.PublishedDate.Time
+	}
+	return lr
+}
+
 func toKaderResponse(k submission_model.Kader) submission_dto.KaderResponse {
 	out := submission_dto.KaderResponse{
 		KaderID:        k.KaderID,
@@ -931,19 +947,20 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 
 	var levelResult *submission_dto.LevelResultResponse
 	if res, err := s.repo.FindLevelResultBySubmission(ctx, sub.SubmissionID); err == nil {
-		label, _ := s.repo.LevelLabel(ctx, res.LevelCode)
-		lr := submission_dto.LevelResultResponse{
-			ResultID:          res.ResultID,
-			LevelCode:         res.LevelCode,
-			LevelLabel:        label,
-			JustificationNote: res.JustificationNote.String,
-			EstablishedDate:   res.EstablishedDate,
-			IsPublished:       res.IsPublished,
-		}
-		if res.PublishedDate.Valid {
-			lr.PublishedDate = &res.PublishedDate.Time
-		}
+		lr := s.toLevelResultResponse(ctx, res)
 		levelResult = &lr
+	}
+
+	// Dibatasi subjek Organisasi (Levelisasi) — subjek Kader tidak relevan
+	// dengan tangga level LDK, sama seperti consolidatedScore di bawah.
+	var levelHistory []submission_dto.LevelResultResponse
+	if sub.SubjectType == constants.SubjectTypeOrganization {
+		if rows, err := s.repo.FindLevelResultHistory(ctx, sub.OrganizationID); err == nil {
+			levelHistory = make([]submission_dto.LevelResultResponse, 0, len(rows))
+			for _, res := range rows {
+				levelHistory = append(levelHistory, s.toLevelResultResponse(ctx, res))
+			}
+		}
 	}
 
 	var kaderResp *submission_dto.KaderResponse
@@ -995,6 +1012,7 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 		Answers:           answerResponses,
 		StatusHistory:     historyResponses,
 		LevelResult:       levelResult,
+		LevelHistory:      levelHistory,
 		Kader:             kaderResp,
 		ConsolidatedScore: consolidatedScore,
 	}, nil

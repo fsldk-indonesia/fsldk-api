@@ -321,6 +321,14 @@ func (r *RepositoryImpl) FindLevelResultBySubmission(ctx context.Context, submis
 	return res, err
 }
 
+func (r *RepositoryImpl) FindLevelResultHistory(ctx context.Context, organizationID int64) ([]submission_model.LevelisasiResult, error) {
+	var out []submission_model.LevelisasiResult
+	err := r.db.WithContext(ctx).Table("tr_levelisasi_result").
+		Where("organizationID = ?", organizationID).
+		Order("establishedDate ASC").Find(&out).Error
+	return out, err
+}
+
 func (r *RepositoryImpl) ClearCurrentLevelResult(ctx context.Context, organizationID int64) error {
 	return r.db.WithContext(ctx).Table("tr_levelisasi_result").
 		Where("organizationID = ? AND isCurrent = 1", organizationID).

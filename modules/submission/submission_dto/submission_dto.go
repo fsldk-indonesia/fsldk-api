@@ -204,6 +204,11 @@ type DetailResponse struct {
 	Answers          []AnswerResponse           `json:"answers"`
 	StatusHistory    []StatusHistoryResponse    `json:"statusHistory"`
 	LevelResult      *LevelResultResponse       `json:"levelResult,omitempty"`
+	// LevelHistory adalah SELURUH tr_levelisasi_result organisasi ini
+	// (isCurrent maupun tidak — riwayat tidak pernah dihapus), terurut dari
+	// yang paling awal dicapai — dipakai kartu "Record Levelisasi" (tangga 4
+	// level Pra Mula/Mula/Madya/Mandiri) di Status Pendataan.
+	LevelHistory     []LevelResultResponse      `json:"levelHistory,omitempty"`
 	Kader            *KaderResponse             `json:"kader,omitempty"`
 	ConsolidatedScore *ConsolidatedScoreResponse `json:"consolidatedScore,omitempty"`
 }
