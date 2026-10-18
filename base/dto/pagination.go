@@ -47,8 +47,10 @@ func ParseListQuery(c *gin.Context) ListQuery {
 		page = 1
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
-	if limit < 1 || limit > 100 {
+	if limit < 1 {
 		limit = 10
+	} else if limit > 100 {
+		limit = 100
 	}
 	return ListQuery{
 		Page:   page,
