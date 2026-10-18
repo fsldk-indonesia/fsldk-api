@@ -422,6 +422,20 @@ const (
 	JobDynamicFormGSheetRebuild = "dynamicform.gsheet.rebuild" // payload: {formID}
 )
 
+// JobSubmissionFormPublishCascade memproses reset/reassessment massal
+// submission saat sebuah submission_form version baru dipublish (lihat
+// submission_service.HandlePublishCascadeJob). Payload: submission_dto.CascadeJobPayload.
+const (
+	JobSubmissionFormPublishCascade = "submission_form.publish_cascade"
+)
+
+// Mode cascade yang dipilih admin saat mempublikasikan version baru
+// submission_form — lihat TechSpec-Submission-Form-Publish-Cascade.md DL-1.
+const (
+	CascadeModeReset    = "RESET"
+	CascadeModeReassess = "REASSESS"
+)
+
 // Tipe entry tr_wallet_ledger (Kantong Amal).
 const (
 	LedgerEntryDonationCredit    = "DONATION_CREDIT"
