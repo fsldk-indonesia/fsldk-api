@@ -301,6 +301,9 @@ func toKaderResponse(k submission_model.Kader) submission_dto.KaderResponse {
 	if k.IssuedDate.Valid {
 		out.IssuedDate = &k.IssuedDate.Time
 	}
+	if k.UpdatedDate.Valid {
+		out.StatusChangedDate = &k.UpdatedDate.Time
+	}
 	return out
 }
 
@@ -946,7 +949,11 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 	var kaderResp *submission_dto.KaderResponse
 	if k, err := s.repo.FindKaderBySubmission(ctx, sub.SubmissionID); err == nil {
 		kr := toKaderResponse(k)
-		if k.Status == constants.KaderStatusActive {
+		// Nama LDK/Puskomda dibutuhkan kartu "Info Kekaderan" di Profil Saya,
+		// yang tampil untuk ACTIVE maupun INACTIVE (lihat
+		// user.my-profile.page.html) — kader yang dinonaktifkan tetap pernah
+		// disetujui & terikat ke LDK itu, bukan cuma ACTIVE yang relevan.
+		if k.Status == constants.KaderStatusActive || k.Status == constants.KaderStatusInactive {
 			if org, err := s.orgRepo.FindByID(ctx, k.OrganizationID); err == nil {
 				kr.OrganizationName = org.OrganizationName
 				kr.ParentOrganizationName = org.ParentOrganizationName.String

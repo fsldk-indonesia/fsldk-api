@@ -75,6 +75,10 @@ type Kader struct {
 	Status         string         `gorm:"column:status"`
 	IssuedDate     sql.NullTime   `gorm:"column:issuedDate"`
 	CreatedDate    time.Time      `gorm:"column:createdDate"`
+	// UpdatedDate dibump UpdateKaderStatus tiap kali status berubah (lihat
+	// submission_repository_impl.go) — dipakai menampilkan "Nonaktif sejak"
+	// di kartu Info Kekaderan selama status SAAT INI masih INACTIVE.
+	UpdatedDate sql.NullTime `gorm:"column:updatedDate"`
 }
 
 // CreateParams menampung data untuk membuat submission baru.

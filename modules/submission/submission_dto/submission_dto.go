@@ -93,8 +93,10 @@ type LevelResultResponse struct {
 }
 
 // KaderResponse adalah representasi data kader untuk API. OrganizationName/
-// ParentOrganizationName hanya diisi saat status ACTIVE (disetujui) — dipakai
-// Profil Saya Portal Kader menampilkan Nama LDK & Nama Puskomda pembina.
+// ParentOrganizationName hanya diisi saat status ACTIVE/INACTIVE (pernah
+// disetujui) — dipakai Profil Saya Portal Kader menampilkan Nama LDK & Nama
+// Puskomda pembina. StatusChangedDate = kapan status SAAT INI mulai berlaku
+// (mis. "Nonaktif sejak" selama status-nya masih INACTIVE).
 type KaderResponse struct {
 	KaderID                int64      `json:"kaderID"`
 	SubmissionID           int64      `json:"submissionID"`
@@ -105,6 +107,7 @@ type KaderResponse struct {
 	FullName               string     `json:"fullName"`
 	Status                 string     `json:"status"`
 	IssuedDate             *time.Time `json:"issuedDate,omitempty"`
+	StatusChangedDate      *time.Time `json:"statusChangedDate,omitempty"`
 }
 
 // ListFilter menampung parameter penyaringan daftar submission.
