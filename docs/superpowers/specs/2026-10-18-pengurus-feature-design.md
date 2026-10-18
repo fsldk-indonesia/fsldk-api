@@ -200,9 +200,9 @@ membatalkan... dicatat, bukan menggagalkan transaksi").
 
 ```sql
 INSERT IGNORE INTO lk_permission (permissionCode, permissionName, moduleName, menuLabel, menuIcon, menuRoute, sortOrder) VALUES
-('pengurus.ldk.manage',       'Kelola Pengurus LDK',       'submission', 'Pengurus', 'users-round', '/cms-ldk/pengurus', 15),
-('pengurus.puskomda.manage',  'Kelola Pengurus Puskomda',  'submission', 'Pengurus', 'users-round', '/cms-puskomda/pengurus', 15),
-('pengurus.puskomnas.manage', 'Kelola Pengurus Puskomnas', 'submission', 'Pengurus', 'users-round', '/cms-puskomnas/pengurus', 15);
+('pengurus.ldk.manage',       'Kelola Pengurus LDK',       'submission', 'Pengurus', 'id-card', '/cms-ldk/pengurus', 15),
+('pengurus.puskomda.manage',  'Kelola Pengurus Puskomda',  'submission', 'Pengurus', 'id-card', '/cms-puskomda/pengurus', 15),
+('pengurus.puskomnas.manage', 'Kelola Pengurus Puskomnas', 'submission', 'Pengurus', 'id-card', '/cms-puskomnas/pengurus', 15);
 
 INSERT IGNORE INTO map_role_permission (roleID, permissionID)
 SELECT r.roleID, p.permissionID FROM ms_role r JOIN lk_permission p

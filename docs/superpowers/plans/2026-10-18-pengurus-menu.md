@@ -53,9 +53,9 @@ Create `fsldk-api/migrations/0051_pengurus_menu.up.sql`:
 -- ============================================================
 
 INSERT IGNORE INTO lk_permission (permissionCode, permissionName, moduleName, menuLabel, menuIcon, menuRoute, sortOrder) VALUES
-('pengurus.ldk.manage',       'Kelola Pengurus LDK',       'submission', 'Pengurus', 'users-round', '/cms-ldk/pengurus', 15),
-('pengurus.puskomda.manage',  'Kelola Pengurus Puskomda',  'submission', 'Pengurus', 'users-round', '/cms-puskomda/pengurus', 15),
-('pengurus.puskomnas.manage', 'Kelola Pengurus Puskomnas', 'submission', 'Pengurus', 'users-round', '/cms-puskomnas/pengurus', 15);
+('pengurus.ldk.manage',       'Kelola Pengurus LDK',       'submission', 'Pengurus', 'id-card', '/cms-ldk/pengurus', 15),
+('pengurus.puskomda.manage',  'Kelola Pengurus Puskomda',  'submission', 'Pengurus', 'id-card', '/cms-puskomda/pengurus', 15),
+('pengurus.puskomnas.manage', 'Kelola Pengurus Puskomnas', 'submission', 'Pengurus', 'id-card', '/cms-puskomnas/pengurus', 15);
 
 INSERT IGNORE INTO map_role_permission (roleID, permissionID)
 SELECT r.roleID, p.permissionID FROM ms_role r JOIN lk_permission p ON TRUE
@@ -1701,7 +1701,7 @@ Create `fsldk-web/src/app/modules/pengurus/pages/index/pengurus.index.page.html`
 } @else if (items().length === 0) {
   <div class="card card-pad">
     <div class="empty-state empty-state-inline">
-      <span class="icon-badge lg icon-badge-soft"><app-icon name="users-round" [size]="26" /></span>
+      <span class="icon-badge lg icon-badge-soft"><app-icon name="id-card" [size]="26" /></span>
       <h4>Belum ada kader aktif</h4>
       <p class="text-muted">Kader aktif di organisasi Anda akan muncul di sini.</p>
     </div>
