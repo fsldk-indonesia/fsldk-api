@@ -17,7 +17,13 @@ type Service interface {
 
 	CreateVersion(ctx context.Context, formID int64, req submission_form_dto.CreateVersionRequest, actorID int64) (submission_form_dto.VersionDetailResponse, error)
 	GetVersion(ctx context.Context, versionID int64) (submission_form_dto.VersionDetailResponse, error)
-	PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.VersionDetailResponse, error)
+	// PublishVersion mempublikasikan version DRAFT. mode (constants.CascadeModeReset
+	// | CascadeModeReassess) menentukan bagaimana submission yang masih
+	// mengacu ke version PUBLISHED sebelumnya diperlakukan — lihat CascadeInput.
+	PublishVersion(ctx context.Context, versionID int64, mode string, actorID int64) (submission_form_dto.PublishVersionResult, error)
+	// PublishImpact menghitung submission yang akan terdampak bila version
+	// ini dipublish — dipakai FE menampilkan peringatan sebelum admin memilih mode.
+	PublishImpact(ctx context.Context, versionID int64) (submission_form_dto.PublishImpactResponse, error)
 	// GetPublishedByFormCode mengembalikan struktur version PUBLISHED aktif
 	// milik sebuah form — dipakai LDK/Kader untuk merender form pengisian,
 	// jadi tidak digerbang permission admin form builder (struktur form
@@ -35,4 +41,25 @@ type Service interface {
 	CreateOption(ctx context.Context, fieldID int64, req submission_form_dto.CreateOptionRequest) (submission_form_dto.OptionResponse, error)
 	UpdateOption(ctx context.Context, optionID int64, req submission_form_dto.UpdateOptionRequest) (submission_form_dto.OptionResponse, error)
 	DeleteOption(ctx context.Context, optionID int64) error
+}
+
+// CascadeInput adalah parameter memicu cascade reset/reassessment massal
+// saat sebuah version baru dipublish.
+type CascadeInput struct {
+	FormID       int64
+	OldVersionID int64
+	NewVersionID int64
+	Mode         string // constants.CascadeModeReset | constants.CascadeModeReassess
+	ActorID      int64
+}
+
+// SubmissionCascader adalah interface kecil (consumer-defined, meniru pola
+// OrgScopeResolver di submission_service) yang menjembatani submission_form_service
+// ke modul submission TANPA mengimpor seluruh submission_service.Service
+// (interface gemuk) — satu-satunya cara modul ini tahu ada submission yang
+// mengacu ke version lama. Dipenuhi submission_service.Service lewat
+// CountAffectedByForm/EnqueueCascade.
+type SubmissionCascader interface {
+	CountAffectedByForm(ctx context.Context, formID int64) (int, error)
+	EnqueueCascade(ctx context.Context, in CascadeInput) (int64, error)
 }

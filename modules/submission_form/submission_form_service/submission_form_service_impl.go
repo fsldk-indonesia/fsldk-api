@@ -18,13 +18,16 @@ import (
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo  submission_form_repository.Repository
-	audit *auditlog.Logger
+	repo     submission_form_repository.Repository
+	audit    *auditlog.Logger
+	cascader SubmissionCascader
 }
 
-// NewService membuat Service submission_form.
-func NewService(repo submission_form_repository.Repository, audit *auditlog.Logger) Service {
-	return &ServiceImpl{repo: repo, audit: audit}
+// NewService membuat Service submission_form. cascader (lihat SubmissionCascader)
+// menghitung & memicu cascade reset/reassessment massal ke modul submission
+// saat version baru dipublish — dipenuhi submission_service.Service.
+func NewService(repo submission_form_repository.Repository, audit *auditlog.Logger, cascader SubmissionCascader) Service {
+	return &ServiceImpl{repo: repo, audit: audit, cascader: cascader}
 }
 
 // ---------- helper ----------
@@ -391,32 +394,66 @@ func (s *ServiceImpl) validateScoringBeforePublish(ctx context.Context, versionI
 	return nil
 }
 
-func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, actorID int64) (submission_form_dto.VersionDetailResponse, error) {
+func (s *ServiceImpl) PublishVersion(ctx context.Context, versionID int64, mode string, actorID int64) (submission_form_dto.PublishVersionResult, error) {
 	v, err := s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {
-		return submission_form_dto.VersionDetailResponse{}, apperror.NotFound("Version tidak ditemukan")
+		return submission_form_dto.PublishVersionResult{}, apperror.NotFound("Version tidak ditemukan")
 	}
 	if v.Status != constants.FormVersionDraft {
-		return submission_form_dto.VersionDetailResponse{}, apperror.Unprocessable("Hanya version berstatus DRAFT yang dapat dipublish")
+		return submission_form_dto.PublishVersionResult{}, apperror.Unprocessable("Hanya version berstatus DRAFT yang dapat dipublish")
 	}
 	if err := s.validateScoringBeforePublish(ctx, versionID); err != nil {
-		return submission_form_dto.VersionDetailResponse{}, err
+		return submission_form_dto.PublishVersionResult{}, err
 	}
+	// Dicari SEBELUM PublishVersion/ArchiveOtherPublished mengubah statusnya —
+	// inilah version yang submission lama masih mengacu padanya (formVersionID),
+	// jadi target cascade reset/reassessment.
+	oldVersion, oldErr := s.repo.FindPublishedVersionByForm(ctx, v.FormID)
+	hasOldVersion := oldErr == nil
+
 	if err := s.repo.PublishVersion(ctx, versionID, actorID); err != nil {
-		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")
+		return submission_form_dto.PublishVersionResult{}, apperror.Internal("")
 	}
 	if err := s.repo.ArchiveOtherPublished(ctx, v.FormID, versionID); err != nil {
-		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")
+		return submission_form_dto.PublishVersionResult{}, apperror.Internal("")
 	}
 	s.audit.LogForm(ctx, auditlog.Entry{
 		ActorUserID: actorID, Action: "PUBLISH", Entity: "ms_submission_form_version", EntityID: versionID,
-		After: map[string]interface{}{"formID": v.FormID, "versionNumber": v.VersionNumber},
+		After: map[string]interface{}{"formID": v.FormID, "versionNumber": v.VersionNumber, "cascadeMode": mode},
 	})
+
+	var cascadeJobID int64
+	if hasOldVersion {
+		cascadeJobID, err = s.cascader.EnqueueCascade(ctx, CascadeInput{
+			FormID: v.FormID, OldVersionID: oldVersion.VersionID, NewVersionID: versionID, Mode: mode, ActorID: actorID,
+		})
+		if err != nil {
+			return submission_form_dto.PublishVersionResult{}, apperror.Internal("")
+		}
+	}
+
 	v, err = s.repo.FindVersionByID(ctx, versionID)
 	if err != nil {
-		return submission_form_dto.VersionDetailResponse{}, apperror.Internal("")
+		return submission_form_dto.PublishVersionResult{}, apperror.Internal("")
 	}
-	return s.buildVersionDetail(ctx, v)
+	detail, err := s.buildVersionDetail(ctx, v)
+	if err != nil {
+		return submission_form_dto.PublishVersionResult{}, err
+	}
+	return submission_form_dto.PublishVersionResult{VersionDetailResponse: detail, CascadeJobID: cascadeJobID}, nil
+}
+
+// PublishImpact — lihat dokumentasi method di Service interface.
+func (s *ServiceImpl) PublishImpact(ctx context.Context, versionID int64) (submission_form_dto.PublishImpactResponse, error) {
+	v, err := s.repo.FindVersionByID(ctx, versionID)
+	if err != nil {
+		return submission_form_dto.PublishImpactResponse{}, apperror.NotFound("Version tidak ditemukan")
+	}
+	count, err := s.cascader.CountAffectedByForm(ctx, v.FormID)
+	if err != nil {
+		return submission_form_dto.PublishImpactResponse{}, apperror.Internal("")
+	}
+	return submission_form_dto.PublishImpactResponse{AffectedCount: count}, nil
 }
 
 // ---------- Section ----------
