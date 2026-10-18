@@ -14,6 +14,9 @@ import (
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/constants"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/jobqueue/jobqueue_model"
+	"fsldk-api/modules/jobqueue/jobqueue_service"
 	"fsldk-api/modules/organization/organization_repository"
 	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/submission/submission_dto"
@@ -21,6 +24,7 @@ import (
 	"fsldk-api/modules/submission/submission_repository"
 	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
+	"fsldk-api/modules/submission_form/submission_form_service"
 	"fsldk-api/modules/user/user_repository"
 )
 
@@ -42,15 +46,18 @@ var sortColumns = map[string]string{
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo     submission_repository.Repository
-	formRepo submission_form_repository.Repository
-	orgRepo  organization_repository.Repository
-	userRepo user_repository.Repository
-	roleRepo role_repository.Repository
-	orgScope OrgScopeResolver
+	repo        submission_repository.Repository
+	formRepo    submission_form_repository.Repository
+	orgRepo     organization_repository.Repository
+	userRepo    user_repository.Repository
+	roleRepo    role_repository.Repository
+	orgScope    OrgScopeResolver
+	jobqueueSvc jobqueue_service.Service
 }
 
-// NewService membuat Service submission.
+// NewService membuat Service submission. jobqueueSvc dipakai EnqueueCascade
+// memasukkan job reset/reassessment massal (lihat HandlePublishCascadeJob)
+// saat submission_form_service mem-publish version baru.
 func NewService(
 	repo submission_repository.Repository,
 	formRepo submission_form_repository.Repository,
@@ -58,8 +65,9 @@ func NewService(
 	userRepo user_repository.Repository,
 	roleRepo role_repository.Repository,
 	orgScope OrgScopeResolver,
+	jobqueueSvc jobqueue_service.Service,
 ) Service {
-	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, roleRepo: roleRepo, orgScope: orgScope}
+	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, roleRepo: roleRepo, orgScope: orgScope, jobqueueSvc: jobqueueSvc}
 }
 
 // promoteToKaderRole mengubah role akun pendaftar Sensus Kader dari
@@ -217,6 +225,20 @@ var editableStatuses = map[string]bool{
 	constants.SubmissionStatusRevisionRequestedPuskomda:  true,
 	constants.SubmissionStatusRevisionRequestedPuskomnas: true,
 	constants.SubmissionStatusRevisionRequestedLDK:       true,
+}
+
+// cascadeEligibleStatuses adalah seluruh status yang ikut diproses saat
+// publish cascade (reset/reassessment massal, lihat HandlePublishCascadeJob)
+// — DRAFT/CANCELLED/REJECTED sengaja TIDAK disertakan (TechSpec DL-2).
+// Diekspresikan sebagai daftar INCLUDE, bukan exclude, supaya status baru
+// yang ditambah nanti tidak diam-diam ikut tercakup tanpa sengaja.
+var cascadeEligibleStatuses = []string{
+	constants.SubmissionStatusSubmitted,
+	constants.SubmissionStatusPuskomdaReview, constants.SubmissionStatusRevisionRequestedPuskomda, constants.SubmissionStatusApprovedPuskomda,
+	constants.SubmissionStatusPuskomnasReview, constants.SubmissionStatusRevisionRequestedPuskomnas, constants.SubmissionStatusApprovedPuskomnas,
+	constants.SubmissionStatusLevelEstablished, constants.SubmissionStatusPublished,
+	constants.SubmissionStatusLDKReview, constants.SubmissionStatusRevisionRequestedLDK, constants.SubmissionStatusApprovedLDK,
+	constants.SubmissionStatusCodeIssued, constants.SubmissionStatusActive,
 }
 
 // callerHasTier menentukan apakah pemanggil dapat bertindak sebagai tier
@@ -1584,6 +1606,68 @@ func (s *ServiceImpl) ReassessKader(ctx context.Context, id int64, caller Caller
 		return submission_dto.Response{}, apperror.Internal("")
 	}
 	return s.toResponse(sub, form.FormCode), nil
+}
+
+// CountAffectedByForm menghitung submission (lintas organisasi) yang akan
+// terdampak cascade publish — memenuhi submission_form_service.SubmissionCascader.
+func (s *ServiceImpl) CountAffectedByForm(ctx context.Context, formID int64) (int, error) {
+	return s.repo.CountByFormAndStatuses(ctx, formID, cascadeEligibleStatuses)
+}
+
+// EnqueueCascade memasukkan job reset/reassessment massal ke jobqueue —
+// memenuhi submission_form_service.SubmissionCascader. Dipanggil
+// submission_form_service.PublishVersion setelah version baru berhasil dipublish.
+func (s *ServiceImpl) EnqueueCascade(ctx context.Context, in submission_form_service.CascadeInput) (int64, error) {
+	payload := submission_dto.CascadeJobPayload{
+		FormID: in.FormID, OldVersionID: in.OldVersionID, NewVersionID: in.NewVersionID,
+		Mode: in.Mode, ActorID: in.ActorID,
+	}
+	return s.jobqueueSvc.Enqueue(ctx, jobqueue_dto.EnqueueInput{
+		Queue: jobqueue_model.QueueDefault, JobType: constants.JobSubmissionFormPublishCascade, Payload: payload,
+	})
+}
+
+// HandlePublishCascadeJob adalah handler jobqueue untuk
+// constants.JobSubmissionFormPublishCascade (didaftarkan lewat
+// jobqueueSvc.RegisterHandler di root router.go) — memproses seluruh
+// submission yang mengacu ke version lama form ini (status apa pun kecuali
+// DRAFT/CANCELLED/REJECTED, lihat cascadeEligibleStatuses) sesuai mode
+// RESET/REASSESS yang dipilih admin saat publish. Query ulang dari
+// ListByFormAndStatuses di setiap retry otomatis idempotent: submission yang
+// sudah diproses sudah berstatus DRAFT (RESET) atau DRAFT (REASSESS), jadi
+// tidak akan muncul lagi di hasil query (lihat TechSpec §6).
+func (s *ServiceImpl) HandlePublishCascadeJob(ctx context.Context, payload string) error {
+	var p submission_dto.CascadeJobPayload
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		return err
+	}
+	subs, err := s.repo.ListByFormAndStatuses(ctx, p.FormID, cascadeEligibleStatuses)
+	if err != nil {
+		return err
+	}
+	caller := CallerScope{UserID: p.ActorID}
+	for _, sub := range subs {
+		if p.Mode == constants.CascadeModeReset {
+			if err := s.repo.WipeSubmission(ctx, sub, p.NewVersionID); err != nil {
+				return fmt.Errorf("wipe submission %d: %w", sub.SubmissionID, err)
+			}
+			continue
+		}
+		// REASSESS: remap jawaban lama ke version baru by fieldCode (mekanisme
+		// sama dengan migrateToLatestVersion yang sudah dipakai ReassessKader),
+		// lalu reset ke DRAFT dengan histori tetap tercatat.
+		migrated := s.migrateToLatestVersion(ctx, sub)
+		if err := s.repo.UpdateStatus(ctx, migrated.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, p.ActorID); err != nil {
+			return fmt.Errorf("reassess submission %d: %w", sub.SubmissionID, err)
+		}
+		if migrated.SubjectType != constants.SubjectTypeKader {
+			if err := s.repo.ClearCurrentLevelResult(ctx, migrated.OrganizationID); err != nil {
+				return fmt.Errorf("clear level result submission %d: %w", sub.SubmissionID, err)
+			}
+		}
+		s.recordHistory(ctx, migrated.SubmissionID, sub.Status, constants.SubmissionStatusDraft, caller, "REASSESSMENT_REQUESTED (bulk - form version published)")
+	}
+	return nil
 }
 
 // ReinstateKader "memutihkan kembali" kader berstatus REJECTED atas permintaan

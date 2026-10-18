@@ -7,6 +7,7 @@ import (
 
 	"fsldk-api/base/dto"
 	"fsldk-api/modules/submission/submission_dto"
+	"fsldk-api/modules/submission_form/submission_form_service"
 )
 
 // CallerScope menampung identitas & scope organisasi pengguna pemanggil.
@@ -61,4 +62,14 @@ type Service interface {
 	ReactivateKader(ctx context.Context, kaderID int64, caller CallerScope) error
 	ReassessKader(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
 	ReinstateKader(ctx context.Context, kaderID int64, caller CallerScope) error
+
+	// CountAffectedByForm/EnqueueCascade memenuhi submission_form_service.
+	// SubmissionCascader — dipanggil submission_form_service saat publish
+	// version baru (lihat TechSpec §4.1).
+	CountAffectedByForm(ctx context.Context, formID int64) (int, error)
+	EnqueueCascade(ctx context.Context, in submission_form_service.CascadeInput) (int64, error)
+	// HandlePublishCascadeJob adalah handler jobqueue untuk
+	// constants.JobSubmissionFormPublishCascade, didaftarkan lewat
+	// jobqueueSvc.RegisterHandler di root router.go.
+	HandlePublishCascadeJob(ctx context.Context, payload string) error
 }
