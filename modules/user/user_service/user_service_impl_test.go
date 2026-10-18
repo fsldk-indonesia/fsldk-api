@@ -11,6 +11,7 @@ import (
 	"fsldk-api/constants"
 	"fsldk-api/modules/auth/auth_dto"
 	"fsldk-api/modules/auth/auth_service"
+	"fsldk-api/modules/role/role_model"
 	"fsldk-api/modules/user/user_dto"
 	"fsldk-api/modules/user/user_model"
 	"fsldk-api/pkg/auditlog"
@@ -122,6 +123,9 @@ func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua,
 }
 func (f *fakeUserRepository) TokenVersion(ctx context.Context, id int64) (int, error) { return 0, nil }
 func (f *fakeUserRepository) BumpTokenVersion(ctx context.Context, id int64) error    { return nil }
+func (f *fakeUserRepository) SetOrganizationID(ctx context.Context, id int64, organizationID int64) error {
+	return nil
+}
 
 // fakeOrgScope selalu mengizinkan — skenario uji di file ini tidak mengirim
 // OrganizationID pada request (lihat caller.OrganizationTypeCode =
@@ -131,6 +135,41 @@ type fakeOrgScope struct{}
 
 func (fakeOrgScope) IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error) {
 	return true, nil
+}
+
+// fakeRoleRepository adalah implementasi role_repository.Repository no-op —
+// skenario uji di file ini tidak pernah mengirim WildcardTierAccess pada
+// request, jadi validateWildcardAgainstRole short-circuit sebelum memanggil
+// FindByID; tetap diimplementasikan untuk memenuhi role_repository.Repository.
+type fakeRoleRepository struct{}
+
+func (fakeRoleRepository) IDByName(ctx context.Context, name string) (int64, error) { return 0, nil }
+func (fakeRoleRepository) FindByID(ctx context.Context, id int64) (role_model.Role, error) {
+	return role_model.Role{}, nil
+}
+func (fakeRoleRepository) ListWithUserCount(ctx context.Context, search string) ([]role_model.Role, error) {
+	return nil, nil
+}
+func (fakeRoleRepository) Create(ctx context.Context, name, desc string) (int64, error) { return 0, nil }
+func (fakeRoleRepository) Update(ctx context.Context, id int64, name, desc string, isActive bool) error {
+	return nil
+}
+func (fakeRoleRepository) Delete(ctx context.Context, id int64) error        { return nil }
+func (fakeRoleRepository) CountUsers(ctx context.Context, id int64) (int, error) { return 0, nil }
+func (fakeRoleRepository) PermissionIDs(ctx context.Context, roleID int64) ([]int64, error) {
+	return nil, nil
+}
+func (fakeRoleRepository) PermissionNames(ctx context.Context, roleID int64) ([]string, error) {
+	return nil, nil
+}
+func (fakeRoleRepository) SetPermissions(ctx context.Context, roleID int64, permissionIDs []int64) error {
+	return nil
+}
+func (fakeRoleRepository) UsersByRole(ctx context.Context, roleID int64) ([]role_model.RoleUser, error) {
+	return nil, nil
+}
+func (fakeRoleRepository) BumpTokenVersionForRole(ctx context.Context, roleID int64) error {
+	return nil
 }
 
 // fakeAuthService adalah implementasi auth_service.Service no-op — hanya
@@ -209,7 +248,7 @@ func newTestAuditLogger(t *testing.T) *auditlog.Logger {
 }
 
 func newTestService(t *testing.T, repo *fakeUserRepository, auth auth_service.Service) Service {
-	return NewService(repo, fakeOrgScope{}, newTestAuditLogger(t), auth)
+	return NewService(repo, fakeRoleRepository{}, fakeOrgScope{}, newTestAuditLogger(t), auth)
 }
 
 func freeCaller() CallerScope {
