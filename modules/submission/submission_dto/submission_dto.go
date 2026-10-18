@@ -120,6 +120,30 @@ type KaderResponse struct {
 	StatusChangedDate      *time.Time `json:"statusChangedDate,omitempty"`
 }
 
+// PengurusEntry adalah satu baris kader ACTIVE (apa pun role ms_user saat
+// ini) dalam scope organisasi caller — dipakai fitur Pengurus (promosi/
+// demosi role dalam organisasi sendiri, tanpa lewat Portal Admin).
+// HomeOrganizationID/HomeOrganizationName SELALU LDK asal (ms_kader.
+// organizationID, tidak pernah berubah) — BUKAN organizationID ms_user
+// saat ini, yang bisa berbeda setelah promosi ke Puskomda/Puskomnas
+// Verifikator (lihat setPengurusRole di submission_service_impl.go).
+type PengurusEntry struct {
+	UserID               int64  `json:"userID"`
+	FullName             string `json:"fullName"`
+	Email                string `json:"email"`
+	RoleName             string `json:"roleName"`
+	HomeOrganizationID   int64  `json:"homeOrganizationID"`
+	HomeOrganizationName string `json:"homeOrganizationName"`
+}
+
+// UpdatePengurusRoleRequest adalah body mengubah role pengurus. Tidak ada
+// validate:"oneof=..." dengan sengaja — daftar role yang valid bergantung
+// pada tier caller (LDK/Puskomda/Puskomnas), bukan daftar statis, jadi
+// validasi sesungguhnya ada di service (pengurusRolesByTier), bukan di sini.
+type UpdatePengurusRoleRequest struct {
+	RoleName string `json:"roleName" validate:"required"`
+}
+
 // ListFilter menampung parameter penyaringan daftar submission.
 type ListFilter struct {
 	OrganizationIDs   []int64
@@ -211,14 +235,14 @@ type ConsolidatedScoreResponse struct {
 // DetailResponse adalah submission beserta jawaban & riwayat statusnya.
 type DetailResponse struct {
 	Response
-	Answers          []AnswerResponse           `json:"answers"`
-	StatusHistory    []StatusHistoryResponse    `json:"statusHistory"`
-	LevelResult      *LevelResultResponse       `json:"levelResult,omitempty"`
+	Answers       []AnswerResponse        `json:"answers"`
+	StatusHistory []StatusHistoryResponse `json:"statusHistory"`
+	LevelResult   *LevelResultResponse    `json:"levelResult,omitempty"`
 	// LevelHistory adalah SELURUH tr_levelisasi_result organisasi ini
 	// (isCurrent maupun tidak — riwayat tidak pernah dihapus), terurut dari
 	// yang paling awal dicapai — dipakai kartu "Record Levelisasi" (tangga 4
 	// level Pra Mula/Mula/Madya/Mandiri) di Status Pendataan.
-	LevelHistory     []LevelResultResponse      `json:"levelHistory,omitempty"`
-	Kader            *KaderResponse             `json:"kader,omitempty"`
+	LevelHistory      []LevelResultResponse      `json:"levelHistory,omitempty"`
+	Kader             *KaderResponse             `json:"kader,omitempty"`
 	ConsolidatedScore *ConsolidatedScoreResponse `json:"consolidatedScore,omitempty"`
 }

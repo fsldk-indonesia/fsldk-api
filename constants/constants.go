@@ -124,6 +124,10 @@ const (
 	PermSubmissionReassess       = "submission.reassess"
 	PermKaderDeactivate          = "kader.deactivate"
 
+	PermPengurusLDKManage       = "pengurus.ldk.manage"
+	PermPengurusPuskomdaManage  = "pengurus.puskomda.manage"
+	PermPengurusPuskomnasManage = "pengurus.puskomnas.manage"
+
 	PermReportRegionView     = "report.region.view"
 	PermReportRegionExport   = "report.region.export"
 	PermReportNationalView   = "report.national.view"
