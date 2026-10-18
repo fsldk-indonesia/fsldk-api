@@ -414,20 +414,37 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req submis
 	var organizationID int64
 	switch subjectType {
 	case constants.SubjectTypeKader:
-		if req.OrganizationID == nil {
-			return submission_dto.Response{}, apperror.BadRequest("organizationID (LDK tujuan) wajib diisi")
-		}
-		org, err := s.orgRepo.FindByID(ctx, *req.OrganizationID)
+		// "LDK Tujuan" Kader kini SATU kolom dengan field LDK role lain
+		// (ms_user.organizationID) — terkunci seumur hidup begitu terisi
+		// (lihat SetOrganizationID), supaya kalau akun ini kelak dipromosikan
+		// jadi LDK Admin, LDK yang sama otomatis nempel tanpa admin perlu
+		// pilih ulang (resolveEffectiveOrg yang menentukan nilai ini TIDAK
+		// memengaruhi cakupan akses sebelum promosi — lihat auth_service_impl.go).
+		callerUser, err := s.userRepo.FindByID(ctx, caller.UserID)
 		if err != nil {
-			return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan tidak ditemukan")
+			return submission_dto.Response{}, apperror.Internal("")
 		}
-		if org.OrganizationTypeCode != constants.OrgTypeLDK {
-			return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan harus berupa LDK")
+		if callerUser.OrganizationID.Valid {
+			organizationID = callerUser.OrganizationID.Int64
+		} else {
+			if req.OrganizationID == nil {
+				return submission_dto.Response{}, apperror.BadRequest("organizationID (LDK tujuan) wajib diisi")
+			}
+			org, err := s.orgRepo.FindByID(ctx, *req.OrganizationID)
+			if err != nil {
+				return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan tidak ditemukan")
+			}
+			if org.OrganizationTypeCode != constants.OrgTypeLDK {
+				return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan harus berupa LDK")
+			}
+			if !org.IsActive {
+				return submission_dto.Response{}, apperror.Unprocessable("LDK tujuan sedang tidak aktif")
+			}
+			organizationID = org.OrganizationID
+			if err := s.userRepo.SetOrganizationID(ctx, caller.UserID, organizationID); err != nil {
+				return submission_dto.Response{}, apperror.Internal("")
+			}
 		}
-		if !org.IsActive {
-			return submission_dto.Response{}, apperror.Unprocessable("LDK tujuan sedang tidak aktif")
-		}
-		organizationID = org.OrganizationID
 	default:
 		switch {
 		case caller.RequestedOrganizationID != nil:
@@ -1446,6 +1463,38 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 		return apperror.InvalidStatusTransition("Hanya kader berstatus ACTIVE yang dapat dinonaktifkan")
 	}
 	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusInactive, sql.NullString{}, sql.NullTime{}); err != nil {
+		return apperror.Internal("")
+	}
+	return nil
+}
+
+// ReactivateKader membalikkan DeactivateKader — mengembalikan kader
+// berstatus INACTIVE menjadi ACTIVE lagi TANPA mereset submission (data yang
+// sudah lolos review sebelumnya tetap dipakai apa adanya, uniqueCode yang
+// sudah terbit juga tidak disentuh). Beda dari ReinstateKader (REJECTED→
+// PENDING, submission direset total ke DRAFT) — kader INACTIVE memang sudah
+// pernah disetujui, cuma dinonaktifkan sementara, jadi tidak perlu isi ulang
+// dari nol.
+func (s *ServiceImpl) ReactivateKader(ctx context.Context, kaderID int64, caller CallerScope) error {
+	k, err := s.repo.FindKaderByID(ctx, kaderID)
+	if err != nil {
+		return apperror.NotFound("Data kader tidak ditemukan")
+	}
+	if caller.WildcardTierAccess == "" && (caller.OrganizationID == nil || *caller.OrganizationID != k.OrganizationID) {
+		// Delegasi Puskomda/Puskomnas atas nama LDK di bawahnya, sama seperti
+		// DeactivateKader.
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, k.OrganizationID)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if !ok {
+			return apperror.Forbidden("Anda hanya dapat mengaktifkan kembali kader milik LDK Anda sendiri")
+		}
+	}
+	if k.Status != constants.KaderStatusInactive {
+		return apperror.InvalidStatusTransition("Hanya kader berstatus Nonaktif yang dapat diaktifkan kembali")
+	}
+	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusActive, sql.NullString{}, sql.NullTime{}); err != nil {
 		return apperror.Internal("")
 	}
 	return nil

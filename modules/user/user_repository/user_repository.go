@@ -29,6 +29,15 @@ type Repository interface {
 	// themselves).
 	SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error)
 	Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error
+	// SetOrganizationID mengisi "LDK Tujuan" Kader SEKALI SAJA (WHERE
+	// organizationID IS NULL, pola sama seperti MarkEmailVerified) saat
+	// submission Sensus Kader pertama mereka dibuat — dipakai
+	// submission_service.Create, BUKAN user_service.Update (yang mengganti
+	// seluruh kolom identitas sekaligus) karena di sini cukup 1 kolom & harus
+	// atomic terhadap percobaan ganda. Tidak melakukan apa-apa (bukan error)
+	// bila organizationID sudah terisi — nilai lama yang menang, konsisten
+	// dengan "LDK Tujuan Kader terkunci seumur hidup".
+	SetOrganizationID(ctx context.Context, id int64, organizationID int64) error
 	// UpdateContactInfo memperbarui kolom kontak swadaya (No Whatsapp/Alamat)
 	// yang dapat diubah pemilik akun sendiri lewat Profil Saya — terpisah dari
 	// Update() (dipakai admin Kelola Pengguna) supaya self-service tidak perlu

@@ -43,6 +43,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_handler.Handler, mw *middl
 		k.GET("", mw.RequirePermission(constants.PermSubmissionReviewLDK), h.ListKaders)
 		k.GET("/:id/code", h.GetKaderCode)
 		k.POST("/:id/deactivate", mw.RequirePermission(constants.PermKaderDeactivate), h.DeactivateKader)
+		k.POST("/:id/reactivate", mw.RequirePermission(constants.PermKaderDeactivate), h.ReactivateKader)
 		k.POST("/:id/reinstate", mw.RequirePermission(constants.PermKaderDeactivate), h.ReinstateKader)
 	}
 }

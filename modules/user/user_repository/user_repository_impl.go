@@ -162,6 +162,12 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email s
 	}).Error
 }
 
+func (r *RepositoryImpl) SetOrganizationID(ctx context.Context, id int64, organizationID int64) error {
+	return r.db.WithContext(ctx).Table("ms_user").
+		Where("userID = ? AND organizationID IS NULL", id).
+		Updates(map[string]interface{}{"organizationID": organizationID, "updatedDate": time.Now()}).Error
+}
+
 func (r *RepositoryImpl) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"phoneNumber": phoneNumber,

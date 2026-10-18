@@ -310,6 +310,18 @@ func (h *HandlerImpl) DeactivateKader(c *gin.Context) {
 	httphelper.Success(c, "Kader berhasil dinonaktifkan", nil)
 }
 
+func (h *HandlerImpl) ReactivateKader(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.ReactivateKader(c.Request.Context(), id, callerScope(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kader berhasil diaktifkan kembali", nil)
+}
+
 func (h *HandlerImpl) ReassessKader(c *gin.Context) {
 	id, ok := idParam(c)
 	if !ok {
