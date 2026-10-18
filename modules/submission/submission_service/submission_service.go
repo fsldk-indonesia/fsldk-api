@@ -63,6 +63,9 @@ type Service interface {
 	ReassessKader(ctx context.Context, id int64, caller CallerScope, req submission_dto.VersionedRequest) (submission_dto.Response, error)
 	ReinstateKader(ctx context.Context, kaderID int64, caller CallerScope) error
 
+	ListPengurus(ctx context.Context, caller CallerScope) ([]submission_dto.PengurusEntry, error)
+	UpdatePengurusRole(ctx context.Context, targetUserID int64, caller CallerScope, req submission_dto.UpdatePengurusRoleRequest) (submission_dto.PengurusEntry, error)
+
 	// CountAffectedByForm/EnqueueCascade memenuhi submission_form_service.
 	// SubmissionCascader — dipanggil submission_form_service saat publish
 	// version baru (lihat TechSpec §4.1).

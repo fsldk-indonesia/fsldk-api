@@ -37,6 +37,28 @@ const (
 	roleNameKader      = "Kader"
 )
 
+// pengurusRolesByTier memetakan organizationTypeCode caller ke daftar role
+// yang boleh ditetapkan lewat fitur Pengurus (promosi/demosi kader aktif
+// dalam scope organisasi caller sendiri) — index menaik = rank lebih
+// tinggi. Dipakai pengurusRoleAllowed (validasi UpdatePengurusRole) dan
+// TIDAK dipakai arah sebaliknya oleh DeactivateKader (yang selalu
+// menurunkan ke Kader tanpa pengecekan allow-list, karena itu aksi sistem
+// otomatis, bukan permintaan caller).
+var pengurusRolesByTier = map[string][]string{
+	constants.OrgTypeLDK:       {roleNameKader, constants.RoleLDKAdmin},
+	constants.OrgTypePuskomda:  {roleNameKader, constants.RoleLDKAdmin, constants.RolePuskomdaVerifikator},
+	constants.OrgTypePuskomnas: {roleNameKader, constants.RoleLDKAdmin, constants.RolePuskomdaVerifikator, constants.RolePuskomnasVerifikator},
+}
+
+func pengurusRoleAllowed(callerOrgType, roleName string) bool {
+	for _, r := range pengurusRolesByTier[callerOrgType] {
+		if r == roleName {
+			return true
+		}
+	}
+	return false
+}
+
 var sortColumns = map[string]string{
 	"createdDate":      "s.createdDate",
 	"submittedDate":    "s.submittedDate",
@@ -751,20 +773,8 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 		answerByField[a.FieldID] = a
 	}
 
-	for _, f := range fields {
-		if !f.IsRequired {
-			continue
-		}
-		if f.ConditionalOnFieldID.Valid {
-			triggerAnswer, ok := answerByField[f.ConditionalOnFieldID.Int64]
-			if !evaluateConditional(f.ConditionalRuleJSON, triggerAnswer, ok, optionValueByID) {
-				continue
-			}
-		}
-		a, ok := answerByField[f.FieldID]
-		if !ok || !hasValue(a) {
-			return submission_dto.Response{}, apperror.Unprocessable(fmt.Sprintf("Field \"%s\" wajib diisi", f.FieldLabel))
-		}
+	if missing := collectMissingRequiredFields(fields, answerByField, optionValueByID); len(missing) > 0 {
+		return submission_dto.Response{}, apperror.Validation("Beberapa field wajib diisi belum lengkap", missing)
 	}
 
 	now := time.Now()
@@ -1524,6 +1534,16 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusInactive, sql.NullString{}, sql.NullTime{}); err != nil {
 		return apperror.Internal("")
 	}
+	// Cascade: kalau kader ini sedang memegang role pengurus (LDK Admin/
+	// Puskomda/Puskomnas Verifikator), otomatis turunkan balik ke Kader +
+	// organizationID balik ke LDK asalnya — tidak masuk akal akun nonaktif
+	// tetap pegang akses admin. Best-effort seperti promoteToKaderRole:
+	// kegagalan di sini TIDAK membatalkan nonaktifkan kader-nya sendiri.
+	if u, err := s.userRepo.FindByID(ctx, k.UserID); err == nil {
+		if u.RoleName == constants.RoleLDKAdmin || u.RoleName == constants.RolePuskomdaVerifikator || u.RoleName == constants.RolePuskomnasVerifikator {
+			_ = s.setPengurusRole(ctx, k.UserID, k.OrganizationID, roleNameKader, caller.UserID)
+		}
+	}
 	return nil
 }
 
@@ -1557,6 +1577,123 @@ func (s *ServiceImpl) ReactivateKader(ctx context.Context, kaderID int64, caller
 		return apperror.Internal("")
 	}
 	return nil
+}
+
+// setPengurusRole adalah inti mutasi role pengurus, dipakai UpdatePengurusRole
+// (promosi/demosi manual lewat endpoint) MAUPUN cascade DeactivateKader
+// (revert otomatis ke Kader) — satu fungsi supaya kedua jalur itu tidak
+// pernah berbeda perilaku. organizationID BARU dihitung dari roleName
+// TUJUAN (bukan role asal): Kader/LDK Admin selalu balik ke
+// homeOrganizationID (ms_kader.organizationID, tidak pernah berubah);
+// Puskomda Verifikator pindah ke Puskomda induk LDK itu; Puskomnas
+// Verifikator pindah ke Puskomnas tunggal. Wajib begini karena
+// ms_user.organizationTypeCode SELALU di-join live dari organizationID
+// (lihat user_repository_impl.go selectCols) dan itulah yang menentukan
+// cakupan akses caller di seluruh backend — kalau organizationID tidak
+// ikut pindah, role Verifikator-nya tidak akan berfungsi penuh.
+func (s *ServiceImpl) setPengurusRole(ctx context.Context, userID, homeOrganizationID int64, roleName string, actorID int64) error {
+	var targetOrgID int64
+	switch roleName {
+	case roleNameKader, constants.RoleLDKAdmin:
+		targetOrgID = homeOrganizationID
+	case constants.RolePuskomdaVerifikator:
+		homeOrg, err := s.orgRepo.FindByID(ctx, homeOrganizationID)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if !homeOrg.ParentOrganizationID.Valid {
+			return apperror.Internal("LDK ini tidak memiliki Puskomda induk")
+		}
+		targetOrgID = homeOrg.ParentOrganizationID.Int64
+	case constants.RolePuskomnasVerifikator:
+		rootID, err := s.orgRepo.RootPuskomnasID(ctx)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		targetOrgID = rootID
+	default:
+		return apperror.BadRequest("Role tidak dikenali")
+	}
+	roleID, err := s.roleRepo.IDByName(ctx, roleName)
+	if err != nil {
+		return apperror.BadRequest("Role tidak ditemukan")
+	}
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	if err := s.userRepo.Update(ctx, userID, u.FullName, u.Email, roleID, u.IsActive, sql.NullInt64{Int64: targetOrgID, Valid: true}, u.WildcardTierAccess, actorID); err != nil {
+		return apperror.Internal("")
+	}
+	return s.userRepo.BumpTokenVersion(ctx, userID)
+}
+
+func (s *ServiceImpl) pengurusEntryFor(ctx context.Context, userID, homeOrganizationID int64) (submission_dto.PengurusEntry, error) {
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	org, err := s.orgRepo.FindByID(ctx, homeOrganizationID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	return submission_dto.PengurusEntry{
+		UserID: u.UserID, FullName: u.FullName, Email: u.Email, RoleName: u.RoleName,
+		HomeOrganizationID: homeOrganizationID, HomeOrganizationName: org.OrganizationName,
+	}, nil
+}
+
+func (s *ServiceImpl) ListPengurus(ctx context.Context, caller CallerScope) ([]submission_dto.PengurusEntry, error) {
+	orgIDs, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	out := make([]submission_dto.PengurusEntry, 0, len(kaders))
+	for _, k := range kaders {
+		entry, err := s.pengurusEntryFor(ctx, k.UserID, k.OrganizationID)
+		if err != nil {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64, caller CallerScope, req submission_dto.UpdatePengurusRoleRequest) (submission_dto.PengurusEntry, error) {
+	if targetUserID == caller.UserID {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role akun Anda sendiri")
+	}
+	if !pengurusRoleAllowed(caller.OrganizationTypeCode, req.RoleName) {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Role tersebut tidak dapat ditetapkan dari portal ini")
+	}
+	orgIDs, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	var homeOrgID int64
+	found := false
+	for _, k := range kaders {
+		if k.UserID == targetUserID {
+			homeOrgID = k.OrganizationID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return submission_dto.PengurusEntry{}, apperror.NotFound("Kader tidak ditemukan atau di luar jangkauan akses Anda")
+	}
+	if err := s.setPengurusRole(ctx, targetUserID, homeOrgID, req.RoleName, caller.UserID); err != nil {
+		return submission_dto.PengurusEntry{}, err
+	}
+	return s.pengurusEntryFor(ctx, targetUserID, homeOrgID)
 }
 
 // ReassessKader mengizinkan kader ACTIVE mengisi ulang data Sensus Kader-nya
