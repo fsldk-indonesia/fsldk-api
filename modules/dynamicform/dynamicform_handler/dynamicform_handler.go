@@ -40,5 +40,4 @@ type Handler interface {
 	// CMS — Google Sheets
 	GSheetConnect(c *gin.Context)
 	GSheetResync(c *gin.Context)
-	GSheetDisconnect(c *gin.Context)
 }

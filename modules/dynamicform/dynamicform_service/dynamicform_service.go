@@ -61,7 +61,6 @@ type Service interface {
 	// --- Google Sheets ---
 	GSheetConnect(ctx context.Context, formID int64, actorID int64, perms []string) (dynamicform_dto.GSheetStatus, error)
 	GSheetResync(ctx context.Context, formID int64, actorID int64, perms []string) (dynamicform_dto.GSheetStatus, error)
-	GSheetDisconnect(ctx context.Context, formID int64, actorID int64, perms []string) (dynamicform_dto.GSheetStatus, error)
 
 	// --- jobqueue handlers (registered on the "default" queue) ---
 	HandleGSheetAppendJob(ctx context.Context, payload string) error

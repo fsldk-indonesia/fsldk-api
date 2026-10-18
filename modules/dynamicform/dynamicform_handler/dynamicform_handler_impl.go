@@ -578,16 +578,3 @@ func (h *HandlerImpl) GSheetResync(c *gin.Context) {
 	}
 	httphelper.Success(c, "Sinkronisasi ulang dijadwalkan", data)
 }
-
-func (h *HandlerImpl) GSheetDisconnect(c *gin.Context) {
-	id, ok := idParam(c, "id")
-	if !ok {
-		return
-	}
-	data, err := h.svc.GSheetDisconnect(c.Request.Context(), id, appctx.UserID(c), permsOf(c))
-	if err != nil {
-		httphelper.Error(c, err)
-		return
-	}
-	httphelper.Success(c, "Google Sheet diputuskan", data)
-}
