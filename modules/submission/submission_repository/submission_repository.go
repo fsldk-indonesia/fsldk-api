@@ -88,4 +88,13 @@ type Repository interface {
 	// SubmittedByUserID/OrganizationIDs — dipakai job cascade publish yang
 	// memproses submission lintas organisasi.
 	ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error)
+	// ReassessSubmission mentransisikan submission ke DRAFT, mengosongkan
+	// hasil levelisasi current organisasinya (hanya untuk subjectType
+	// ORGANIZATION), dan menulis baris histori status — SATU transaksi.
+	// Dipakai HandlePublishCascadeJob: tanpa atomisitas ini, status bisa
+	// terlanjur DRAFT sementara efek lain (clear level result/histori) gagal
+	// di tengah jalan — dan karena DRAFT sudah dikeluarkan dari
+	// cascadeEligibleStatuses, retry job tidak akan pernah memprosesnya
+	// ulang, membuat kegagalan parsial itu permanen.
+	ReassessSubmission(ctx context.Context, sub submission_model.Submission, actorUserID int64, note string) error
 }

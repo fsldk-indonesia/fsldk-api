@@ -349,6 +349,39 @@ func (r *RepositoryImpl) ListByFormAndStatuses(ctx context.Context, formID int64
 	return out, err
 }
 
+// ReassessSubmission — lihat dokumentasi di submission_repository.go. Tiga
+// write (status, level result, histori) dibungkus SATU
+// r.db.Transaction(...) mengikuti pola yang sama dengan method transaksi
+// lain di file ini.
+func (r *RepositoryImpl) ReassessSubmission(ctx context.Context, sub submission_model.Submission, actorUserID int64, note string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("tr_submission").Where("submissionID = ?", sub.SubmissionID).Updates(map[string]interface{}{
+			"status":          "DRAFT",
+			"version":         gorm.Expr("version + 1"),
+			"lastUpdatedDate": time.Now(),
+			"updatedDate":     time.Now(),
+			"updatedBy":       actorUserID,
+		}).Error; err != nil {
+			return err
+		}
+		if sub.SubjectType != "KADER" {
+			if err := tx.Table("tr_levelisasi_result").
+				Where("organizationID = ? AND isCurrent = 1", sub.OrganizationID).
+				Update("isCurrent", false).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Table("tr_submission_status_history").Create(map[string]interface{}{
+			"submissionID": sub.SubmissionID,
+			"fromStatus":   sub.Status,
+			"toStatus":     "DRAFT",
+			"actorUserID":  actorUserID,
+			"note":         note,
+			"createdDate":  time.Now(),
+		}).Error
+	})
+}
+
 func (r *RepositoryImpl) CreateLevelResult(ctx context.Context, submissionID, organizationID int64, levelCode, justificationNote string, establishedByUserID int64) (int64, error) {
 	var newID int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

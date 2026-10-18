@@ -78,7 +78,7 @@ type ServiceImpl struct {
 }
 
 // NewService membuat Service submission. jobqueueSvc dipakai EnqueueCascade
-// memasukkan job reset/reassessment massal (lihat HandlePublishCascadeJob)
+// memasukkan job reassessment massal (lihat HandlePublishCascadeJob)
 // saat submission_form_service mem-publish version baru.
 func NewService(
 	repo submission_repository.Repository,
@@ -250,7 +250,7 @@ var editableStatuses = map[string]bool{
 }
 
 // cascadeEligibleStatuses adalah seluruh status yang ikut diproses saat
-// publish cascade (reset/reassessment massal, lihat HandlePublishCascadeJob)
+// publish cascade (reassessment massal, lihat HandlePublishCascadeJob)
 // — DRAFT/CANCELLED/REJECTED sengaja TIDAK disertakan (TechSpec DL-2).
 // Diekspresikan sebagai daftar INCLUDE, bukan exclude, supaya status baru
 // yang ditambah nanti tidak diam-diam ikut tercakup tanpa sengaja.
@@ -1783,18 +1783,11 @@ func (s *ServiceImpl) HandlePublishCascadeJob(ctx context.Context, payload strin
 	if err != nil {
 		return err
 	}
-	caller := CallerScope{UserID: p.ActorID}
 	for _, sub := range subs {
 		migrated := s.migrateToLatestVersion(ctx, sub)
-		if err := s.repo.UpdateStatus(ctx, migrated.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, p.ActorID); err != nil {
+		if err := s.repo.ReassessSubmission(ctx, migrated, p.ActorID, "REASSESSMENT_REQUESTED (bulk - form version published)"); err != nil {
 			return fmt.Errorf("reassess submission %d: %w", sub.SubmissionID, err)
 		}
-		if migrated.SubjectType != constants.SubjectTypeKader {
-			if err := s.repo.ClearCurrentLevelResult(ctx, migrated.OrganizationID); err != nil {
-				return fmt.Errorf("clear level result submission %d: %w", sub.SubmissionID, err)
-			}
-		}
-		s.recordHistory(ctx, migrated.SubmissionID, sub.Status, constants.SubmissionStatusDraft, caller, "REASSESSMENT_REQUESTED (bulk - form version published)")
 	}
 	return nil
 }

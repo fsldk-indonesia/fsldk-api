@@ -185,6 +185,9 @@ func (f *fakeSubmissionRepo) CountByFormAndStatuses(ctx context.Context, formID 
 func (f *fakeSubmissionRepo) ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error) {
 	return nil, nil
 }
+func (f *fakeSubmissionRepo) ReassessSubmission(ctx context.Context, sub submission_model.Submission, actorUserID int64, note string) error {
+	return nil
+}
 func (f *fakeSubmissionRepo) WipeSubmission(ctx context.Context, sub submission_model.Submission, newVersionID int64) error {
 	return nil
 }
