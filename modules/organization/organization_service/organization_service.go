@@ -42,7 +42,11 @@ type Service interface {
 	// lanjut ke organisasi dengan parentOrganizationID yang sama (default
 	// "sesama Puskomda/wilayah"); q (opsional, mengalahkan siblingOf bila
 	// keduanya diisi) mencari lintas seluruh accessible set caller pada tipe
-	// yang sama (efektif "nasional" untuk Puskomnas/wildcard).
+	// yang sama (efektif "nasional" untuk Puskomnas/wildcard). Caller
+	// ber-wildcardTierAccess TIDAK PERNAH ikut dipersempit oleh siblingOf
+	// (lihat AccessibleList impl) — accessible set-nya sudah dirancang
+	// lintas-Puskomda, beda dari Puskomda Verifikator yang jadi alasan
+	// filter sibling ini ada (TechSpec Section 19.6).
 	AccessibleList(ctx context.Context, caller CallerScope, organizationTypeCode string, siblingOf *int64, q string) ([]organization_dto.MeOrganization, error)
 	// Directory mengembalikan organisasi aktif bertipe typeCode tanpa
 	// dibatasi cakupan akses pemanggil (mis. Kader memilih LDK tujuan).
