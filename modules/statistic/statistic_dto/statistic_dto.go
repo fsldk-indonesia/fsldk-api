@@ -49,6 +49,7 @@ type DirectoryEntry struct {
 	OrganizationID         int64   `json:"organizationID"`
 	OrganizationTypeCode   string  `json:"organizationTypeCode"`
 	OrganizationName       string  `json:"organizationName"`
+	OrganizationCode       string  `json:"organizationCode"`
 	ProvinceName           string  `json:"provinceName,omitempty"`
 	CityName               string  `json:"cityName,omitempty"`
 	ContactEmail           string  `json:"contactEmail,omitempty"`

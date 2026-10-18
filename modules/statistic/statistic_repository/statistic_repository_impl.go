@@ -96,7 +96,7 @@ func (r *repositoryImpl) Directory(ctx context.Context, q dto.ListQuery, organiz
 	}
 
 	var rows []statistic_dto.DirectoryEntry
-	err := db.Select("o.organizationID, o.organizationTypeCode, o.organizationName, o.provinceName, o.cityName, " +
+	err := db.Select("o.organizationID, o.organizationTypeCode, o.organizationName, o.organizationCode, o.provinceName, o.cityName, " +
 		"o.contactEmail, o.contactPhone, o.websiteURL, o.photoURL, " +
 		"o.parentOrganizationID, p.organizationName AS parentOrganizationName, " +
 		"res.levelCode, l.levelLabel").
