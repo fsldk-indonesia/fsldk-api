@@ -1517,6 +1517,16 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 	if err != nil {
 		return apperror.NotFound("Data kader tidak ditemukan")
 	}
+	// Self-action tetap diblokir di sini, bukan hanya di UpdatePengurusRole
+	// (Scope decision #5 spec) -- siapa pun yang punya permission untuk
+	// memanggil endpoint ini (kader.deactivate) sudah pasti pemegang role
+	// pengurus (LDK Admin/Puskomda/Puskomnas Verifikator), jadi menonaktifkan
+	// Kader milik diri sendiri SELALU berarti memicu cascade setPengurusRole
+	// ke diri sendiri juga -- persis self-lockout yang ingin dicegah decision
+	// #5, meski jalur masuknya (Kader Persetujuan) bukan Pengurus itu sendiri.
+	if caller.UserID == k.UserID {
+		return apperror.Forbidden("Anda tidak dapat menonaktifkan kader diri sendiri")
+	}
 	if caller.WildcardTierAccess == "" && (caller.OrganizationID == nil || *caller.OrganizationID != k.OrganizationID) {
 		// Delegasi Puskomda/Puskomnas atas nama LDK di bawahnya (2026-08-18,
 		// sejalan callerHasTier/canEdit — lihat komentar callerHasTier).
@@ -1644,9 +1654,9 @@ func (s *ServiceImpl) pengurusEntryFor(ctx context.Context, userID, homeOrganiza
 }
 
 func (s *ServiceImpl) ListPengurus(ctx context.Context, caller CallerScope) ([]submission_dto.PengurusEntry, error) {
-	orgIDs, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	orgIDs, err := s.resolveScopedOrganizationIDs(ctx, caller)
 	if err != nil {
-		return nil, apperror.Internal("")
+		return nil, err
 	}
 	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
 	if err != nil {
@@ -1670,9 +1680,9 @@ func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64
 	if !pengurusRoleAllowed(caller.OrganizationTypeCode, req.RoleName) {
 		return submission_dto.PengurusEntry{}, apperror.Forbidden("Role tersebut tidak dapat ditetapkan dari portal ini")
 	}
-	orgIDs, err := s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+	orgIDs, err := s.resolveScopedOrganizationIDs(ctx, caller)
 	if err != nil {
-		return submission_dto.PengurusEntry{}, apperror.Internal("")
+		return submission_dto.PengurusEntry{}, err
 	}
 	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
 	if err != nil {
@@ -1689,6 +1699,21 @@ func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64
 	}
 	if !found {
 		return submission_dto.PengurusEntry{}, apperror.NotFound("Kader tidak ditemukan atau di luar jangkauan akses Anda")
+	}
+	// pengurusRoleAllowed di atas hanya memvalidasi role TUJUAN -- tanpa cek
+	// ini, caller tier rendah (mis. LDK Admin, allow-list {Kader, LDK Admin})
+	// bisa menurunkan siapa pun yang home LDK-nya LDK dia, TERMASUK seorang
+	// Puskomda/Puskomnas Verifikator yang home LDK-nya kebetulan LDK itu juga
+	// (ms_kader.organizationID tidak berubah walau sudah dipromosikan) --
+	// efektif mencopot role pengurus tier lebih tinggi dari wewenang caller.
+	// Role SAAT INI target juga wajib ada di allow-list caller, bukan cuma
+	// role tujuannya.
+	target, err := s.userRepo.FindByID(ctx, targetUserID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	if !pengurusRoleAllowed(caller.OrganizationTypeCode, target.RoleName) {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role pengguna ini")
 	}
 	if err := s.setPengurusRole(ctx, targetUserID, homeOrgID, req.RoleName, caller.UserID); err != nil {
 		return submission_dto.PengurusEntry{}, err

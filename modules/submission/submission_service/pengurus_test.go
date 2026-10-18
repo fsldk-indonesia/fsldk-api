@@ -486,8 +486,14 @@ func (f *fakeOrgScopeForPengurus) IsAccessible(ctx context.Context, callerOrgani
 func (f *fakeOrgScopeForPengurus) AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error) {
 	return f.accessibleIDs, nil
 }
+// AccessibleOrganizationIDsForTarget returns ONLY the target itself (not the
+// caller's full accessibleIDs) -- a real org-switcher narrowing would cascade
+// to the target's children too, but for these tests "narrower than the
+// caller's broad scope" is what matters: it must differ from
+// AccessibleOrganizationIDs so a test can prove resolveScopedOrganizationIDs
+// genuinely switches between the two based on caller.RequestedOrganizationID.
 func (f *fakeOrgScopeForPengurus) AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error) {
-	return f.accessibleIDs, nil
+	return []int64{targetOrganizationID}, nil
 }
 
 // fakeJobqueueServiceForPengurus is a no-op stub for jobqueue_service.Service
@@ -568,7 +574,90 @@ func ldkCaller() CallerScope {
 	return CallerScope{UserID: callerUserID, OrganizationID: &id, OrganizationTypeCode: constants.OrgTypeLDK}
 }
 
+// ---------- org-switcher (caller.RequestedOrganizationID) scenarios ----------
+// Regression tests for "switch org in the switcher, the table doesn't
+// change" -- ListPengurus/UpdatePengurusRole must route through
+// resolveScopedOrganizationIDs (already proven correct for submission
+// listing) instead of calling orgScope.AccessibleOrganizationIDs directly.
+
+func TestListPengurus_RequestedOrganizationID_NarrowsScope(t *testing.T) {
+	svc, _, _, _ := buildTestService()
+	caller := CallerScope{UserID: callerUserID, OrganizationID: func() *int64 { id := puskomnasOrgID; return &id }(), OrganizationTypeCode: constants.OrgTypePuskomnas}
+	target := puskomdaOrgID
+	caller.RequestedOrganizationID = &target
+
+	entries, err := svc.ListPengurus(context.Background(), caller)
+	if err != nil {
+		t.Fatalf("ListPengurus() error = %v", err)
+	}
+	// Without narrowing, this Puskomnas caller's broad scope [ldkOrgID,
+	// puskomdaOrgID, puskomnasOrgID] would include the fixture's only kader
+	// (home LDK = ldkOrgID), per TestListPengurus_ReturnsActiveKaderInScope.
+	// The fake's AccessibleOrganizationIDsForTarget(puskomdaOrgID) narrows to
+	// just {puskomdaOrgID}, which does NOT include ldkOrgID -- an empty
+	// result here proves the switcher's target was actually honored instead
+	// of the broad default being used regardless.
+	if len(entries) != 0 {
+		t.Errorf("ListPengurus() with RequestedOrganizationID=%d = %+v, want empty (org-switcher narrowing was not applied)", target, entries)
+	}
+}
+
+func TestListPengurus_RequestedOrganizationIDOutsideCallerScope_ReturnsForbidden(t *testing.T) {
+	svc, _, _, _ := buildTestService()
+	caller := ldkCaller()
+	outside := int64(999999)
+	caller.RequestedOrganizationID = &outside
+
+	if _, err := svc.ListPengurus(context.Background(), caller); err == nil {
+		t.Fatal("ListPengurus() error = nil, want Forbidden -- requested org is outside caller's own accessible scope (IDOR check)")
+	}
+}
+
+func TestUpdatePengurusRole_RequestedOrganizationID_NarrowsScope(t *testing.T) {
+	svc, _, _, _ := buildTestService()
+	caller := CallerScope{UserID: callerUserID, OrganizationID: func() *int64 { id := puskomnasOrgID; return &id }(), OrganizationTypeCode: constants.OrgTypePuskomnas}
+	target := puskomdaOrgID
+	caller.RequestedOrganizationID = &target
+
+	// Same reasoning as TestListPengurus_RequestedOrganizationID_NarrowsScope:
+	// narrowed to {puskomdaOrgID}, so the fixture's kader (home LDK=ldkOrgID)
+	// must be reported NotFound -- "outside the currently switched scope" --
+	// even though the caller's broad Puskomnas scope would normally reach it.
+	_, err := svc.UpdatePengurusRole(context.Background(), kaderUserID, caller, submission_dto.UpdatePengurusRoleRequest{RoleName: constants.RoleLDKAdmin})
+	if err == nil {
+		t.Fatal("UpdatePengurusRole() error = nil, want NotFound -- target's home LDK is outside the org-switcher's narrowed scope")
+	}
+}
+
 // ---------- UpdatePengurusRole scenarios ----------
+
+// TestUpdatePengurusRole_RejectsDemotingHigherTierCurrentRole guards against
+// a lower-tier caller demoting someone who already outranks their own tier.
+// pengurusRoleAllowed alone only validates the DESTINATION role -- without
+// also checking the target's CURRENT role, an LDK Admin (allow-list {Kader,
+// LDK Admin}) could set ANY user whose home LDK is theirs to "Kader",
+// including a Puskomda/Puskomnas Verifikator whose ms_kader.organizationID
+// still points at that same LDK (it never changes on promotion).
+func TestUpdatePengurusRole_RejectsDemotingHigherTierCurrentRole(t *testing.T) {
+	svc, _, userRepo, _ := buildTestService()
+	// kaderUserID's home LDK (ldkOrgID) is the caller's own LDK, but their
+	// CURRENT role is Puskomda Verifikator -- outranks an LDK Admin caller's
+	// allow-list ({Kader, LDK Admin}), even though "Kader" (the requested
+	// destination) is itself in that allow-list.
+	userRepo.byID[kaderUserID] = user_model.User{
+		UserID: kaderUserID, FullName: "Budi", Email: "budi@example.com",
+		RoleID: 3, RoleName: constants.RolePuskomdaVerifikator, IsActive: true,
+		OrganizationID: sql.NullInt64{Int64: ldkOrgID, Valid: true},
+	}
+
+	_, err := svc.UpdatePengurusRole(context.Background(), kaderUserID, ldkCaller(), submission_dto.UpdatePengurusRoleRequest{RoleName: roleNameKader})
+	if err == nil {
+		t.Fatal("UpdatePengurusRole() error = nil, want Forbidden — LDK Admin caller cannot demote a Puskomda Verifikator, even one whose home LDK is their own")
+	}
+	if len(userRepo.updates) != 0 {
+		t.Errorf("expected no userRepo.Update() calls, got %+v", userRepo.updates)
+	}
+}
 
 func TestUpdatePengurusRole_RejectsSelfAction(t *testing.T) {
 	svc, _, _, _ := buildTestService()
@@ -693,5 +782,26 @@ func TestDeactivateKader_PlainKader_NeverTouchesUserRecord(t *testing.T) {
 	}
 	if len(userRepo.updates) != 0 {
 		t.Errorf("expected no userRepo.Update() calls for a plain Kader, got %+v", userRepo.updates)
+	}
+}
+
+// TestDeactivateKader_RejectsSelfAction guards Scope decision #5 ("A caller
+// can never ... (via the existing cascade) deactivate their own account")
+// at the cascade's actual entry point, not just at UpdatePengurusRole.
+// Anyone who holds kader.deactivate (the permission guarding this endpoint)
+// already holds a promoted role, so self-targeting here always means
+// triggering the self-lockout cascade this decision forbids.
+func TestDeactivateKader_RejectsSelfAction(t *testing.T) {
+	svc, subRepo, userRepo, _ := buildTestService()
+	subRepo.kaders[2] = submission_model.Kader{KaderID: 2, UserID: callerUserID, OrganizationID: ldkOrgID, FullName: "Caller", Status: constants.KaderStatusActive}
+
+	if err := svc.DeactivateKader(context.Background(), 2, ldkCaller()); err == nil {
+		t.Fatal("DeactivateKader() error = nil, want Forbidden — caller cannot deactivate their own Kader record")
+	}
+	if subRepo.kaderStatusSet[2] != "" {
+		t.Errorf("expected kader status 2 to be untouched, got %q", subRepo.kaderStatusSet[2])
+	}
+	if len(userRepo.updates) != 0 {
+		t.Errorf("expected no userRepo.Update() calls, got %+v", userRepo.updates)
 	}
 }
