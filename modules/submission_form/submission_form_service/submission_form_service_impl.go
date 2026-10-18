@@ -453,7 +453,18 @@ func (s *ServiceImpl) PublishImpact(ctx context.Context, versionID int64) (submi
 	if err != nil {
 		return submission_form_dto.PublishImpactResponse{}, apperror.Internal("")
 	}
-	return submission_form_dto.PublishImpactResponse{AffectedCount: count}, nil
+	form, err := s.repo.FindFormByID(ctx, v.FormID)
+	if err != nil {
+		return submission_form_dto.PublishImpactResponse{}, apperror.Internal("")
+	}
+	// Sama persis mekanismenya dengan subjectTypeForForm di submission_service
+	// (satu-satunya tempat lain yang memetakan formCode->subjectType) — formCode
+	// Sensus Kader menghasilkan submission ber-subjek KADER, lainnya ORGANIZATION.
+	subjectLabel := "LDK"
+	if form.FormCode == constants.FormCodeSensusKader {
+		subjectLabel = "Kader"
+	}
+	return submission_form_dto.PublishImpactResponse{AffectedCount: count, SubjectLabel: subjectLabel}, nil
 }
 
 // ---------- Section ----------
