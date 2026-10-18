@@ -211,14 +211,17 @@ func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope, or
 	if err != nil {
 		return nil, err
 	}
-	// Akun ber-wildcardTierAccess (Super Admin dkk) TIDAK ikut dipersempit ke
-	// sibling — accessible set-nya memang dirancang besar/lintas-Puskomda
-	// (TechSpec Section 19.6), beda dari Puskomda Verifikator yang jadi
-	// alasan filter sibling ini dibuat (accessible set-nya sudah kecil
-	// secara alami). Tanpa pengecualian ini, switcher context lokal cuma
-	// menampilkan LDK di satu Puskomda yang sedang dibuka, padahal caller
-	// berwenang atas seluruh LDK nasional.
-	if q == "" && siblingOf != nil && caller.WildcardTierAccess == "" {
+	// Filter sibling ini HANYA berlaku untuk caller Puskomda Verifikator —
+	// accessible set mereka (ListSelfAndChildren) sudah mencakup banyak LDK
+	// sekaligus dari Puskomda yang sama, jadi perlu dipersempit ke LDK
+	// semilik `siblingOf` di context switcher lokal. Akun ber-wildcardTierAccess
+	// (Super Admin dkk) DAN caller Puskomnas Verifikator (resolveAccessible
+	// mengembalikan ListAll — seluruh LDK nasional lintas-Puskomda) TIDAK
+	// ikut dipersempit: sebelumnya syarat ini cuma mengecualikan wildcard,
+	// jadi Puskomnas Verifikator asli (non-wildcard) ikut kena filter ini
+	// dan switcher-nya cuma menampilkan LDK di satu Puskomda yang sedang
+	// dibuka, padahal caller berwenang atas seluruh LDK nasional.
+	if q == "" && siblingOf != nil && caller.WildcardTierAccess == "" && caller.OrganizationTypeCode == constants.OrgTypePuskomda {
 		sibling, err := s.repo.FindByID(ctx, *siblingOf)
 		if err == nil && sibling.ParentOrganizationID.Valid {
 			parentID := sibling.ParentOrganizationID.Int64

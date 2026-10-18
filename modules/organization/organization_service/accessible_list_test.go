@@ -32,6 +32,17 @@ func (f *fakeRepo) ListByTypes(ctx context.Context, types []string, filter organ
 	return f.filtered(filter), int64(len(f.orgs)), nil
 }
 
+func (f *fakeRepo) ListSelfAndChildren(ctx context.Context, id int64, filter organization_dto.ListFilter) ([]organization_model.Organization, int64, error) {
+	var scoped []organization_model.Organization
+	for _, o := range f.orgs {
+		if o.OrganizationID == id || (o.ParentOrganizationID.Valid && o.ParentOrganizationID.Int64 == id) {
+			scoped = append(scoped, o)
+		}
+	}
+	out := (&fakeRepo{orgs: scoped}).filtered(filter)
+	return out, int64(len(out)), nil
+}
+
 func (f *fakeRepo) filtered(filter organization_dto.ListFilter) []organization_model.Organization {
 	var out []organization_model.Organization
 	for _, o := range f.orgs {
@@ -72,10 +83,36 @@ func TestAccessibleList_WildcardCaller_IgnoresSiblingFilter(t *testing.T) {
 	}
 }
 
-func TestAccessibleList_NonWildcardCaller_StillFiltersToSiblings(t *testing.T) {
+// A genuine (non-wildcard) Puskomnas Verifikator's accessible set is already
+// national (resolveAccessible -> ListAll), so the sibling filter — designed
+// for Puskomda Verifikator's naturally-multi-LDK set, see the comment on
+// AccessibleList — must NOT narrow it down to one Puskomda's children. This
+// used to incorrectly narrow (bug: the switcher only showed LDKs under
+// whichever Puskomda the current org belonged to).
+func TestAccessibleList_PuskomnasCaller_NotFilteredBySibling(t *testing.T) {
 	svc := NewService(&fakeRepo{orgs: sampleOrgs()})
 	rootID := int64(1)
 	caller := CallerScope{OrganizationTypeCode: "PUSKOMNAS", OrganizationID: &rootID}
+	siblingOf := int64(10)
+
+	got, err := svc.AccessibleList(context.Background(), caller, "LDK", &siblingOf, "")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected all 3 LDKs nationally for a Puskomnas caller, got %d: %+v", len(got), got)
+	}
+}
+
+// A Puskomda Verifikator's accessible set (ListSelfAndChildren) already
+// spans every LDK under their own Puskomda — this is the actual case the
+// sibling filter exists for, narrowing the switcher's local context down to
+// just the LDKs sharing `siblingOf`'s parent.
+func TestAccessibleList_PuskomdaCaller_FiltersToSiblings(t *testing.T) {
+	svc := NewService(&fakeRepo{orgs: sampleOrgs()})
+	puskomdaID := int64(2)
+	caller := CallerScope{OrganizationTypeCode: "PUSKOMDA", OrganizationID: &puskomdaID}
 	siblingOf := int64(10)
 
 	got, err := svc.AccessibleList(context.Background(), caller, "LDK", &siblingOf, "")
