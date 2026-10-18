@@ -40,7 +40,11 @@ type NetworkStatsResponse struct {
 // list, mirroring ms_organization.parentOrganizationID. ContactEmail/
 // ContactPhone/WebsiteURL are shown on the public LDK card too — this was a
 // deliberate product decision (contact details are meant to be discoverable
-// for the public directory), not an oversight.
+// for the public directory), not an oversight. LevelCode/LevelLabel are only
+// populated for the organization's CURRENT, PUBLISHED Levelisasi result
+// (tr_levelisasi_result.isCurrent=1 AND isPublished=1) — unpublished or
+// non-LDK organizations simply get empty strings here, same rule as
+// statistic_repository.LevelDistribution().
 type DirectoryEntry struct {
 	OrganizationID         int64   `json:"organizationID"`
 	OrganizationTypeCode   string  `json:"organizationTypeCode"`
@@ -53,4 +57,6 @@ type DirectoryEntry struct {
 	PhotoURL               string  `json:"photoURL,omitempty"`
 	ParentOrganizationID   *int64  `json:"parentOrganizationID,omitempty"`
 	ParentOrganizationName *string `json:"parentOrganizationName,omitempty"`
+	LevelCode              string  `json:"levelCode,omitempty"`
+	LevelLabel             string  `json:"levelLabel,omitempty"`
 }

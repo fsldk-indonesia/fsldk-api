@@ -72,6 +72,13 @@ func (r *repositoryImpl) Directory(ctx context.Context, q dto.ListQuery, organiz
 	// tidak punya induk (parentOrganizationID NULL).
 	db := r.db.WithContext(ctx).Table(constants.TableOrganization+" o").
 		Joins("LEFT JOIN "+constants.TableOrganization+" p ON p.organizationID = o.parentOrganizationID").
+		// LEFT JOIN res/l hanya untuk level badge publik — isCurrent=1 AND
+		// isPublished=1 sengaja disaring di kondisi JOIN (bukan WHERE) supaya
+		// organisasi tanpa hasil levelisasi published (Puskomda/Puskomnas,
+		// atau LDK yang belum publish) tetap ikut, cuma levelCode/levelLabel-
+		// nya NULL — sama aturannya dengan LevelDistribution() di atas.
+		Joins("LEFT JOIN "+constants.TableLevelisasiResult+" res ON res.organizationID = o.organizationID AND res.isCurrent = 1 AND res.isPublished = 1").
+		Joins("LEFT JOIN "+constants.TableLevel+" l ON l.levelCode = res.levelCode").
 		Where("o.isActive = 1")
 	if organizationTypeCode != "" {
 		db = db.Where("o.organizationTypeCode = ?", organizationTypeCode)
@@ -91,7 +98,8 @@ func (r *repositoryImpl) Directory(ctx context.Context, q dto.ListQuery, organiz
 	var rows []statistic_dto.DirectoryEntry
 	err := db.Select("o.organizationID, o.organizationTypeCode, o.organizationName, o.provinceName, o.cityName, " +
 		"o.contactEmail, o.contactPhone, o.websiteURL, o.photoURL, " +
-		"o.parentOrganizationID, p.organizationName AS parentOrganizationName").
+		"o.parentOrganizationID, p.organizationName AS parentOrganizationName, " +
+		"res.levelCode, l.levelLabel").
 		Order("o.organizationTypeCode ASC, o.organizationName ASC").
 		Limit(q.Limit).Offset(q.Offset()).
 		Find(&rows).Error
