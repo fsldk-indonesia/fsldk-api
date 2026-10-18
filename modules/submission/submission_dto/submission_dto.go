@@ -133,6 +133,7 @@ type PengurusEntry struct {
 	RoleName             string `json:"roleName"`
 	HomeOrganizationID   int64  `json:"homeOrganizationID"`
 	HomeOrganizationName string `json:"homeOrganizationName"`
+	PuskomdaName         string `json:"puskomdaName"`
 }
 
 // UpdatePengurusRoleRequest adalah body mengubah role pengurus. Tidak ada

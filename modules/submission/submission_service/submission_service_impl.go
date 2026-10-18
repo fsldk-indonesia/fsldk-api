@@ -1650,6 +1650,7 @@ func (s *ServiceImpl) pengurusEntryFor(ctx context.Context, userID, homeOrganiza
 	return submission_dto.PengurusEntry{
 		UserID: u.UserID, FullName: u.FullName, Email: u.Email, RoleName: u.RoleName,
 		HomeOrganizationID: homeOrganizationID, HomeOrganizationName: org.OrganizationName,
+		PuskomdaName: org.ParentOrganizationName.String,
 	}, nil
 }
 
