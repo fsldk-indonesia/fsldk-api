@@ -78,4 +78,20 @@ type Repository interface {
 	UpdateLevelResult(ctx context.Context, resultID int64, levelCode, justificationNote string, establishedByUserID int64) error
 	PublishLevelResult(ctx context.Context, resultID int64) error
 	LevelLabel(ctx context.Context, levelCode string) (string, error)
+
+	// CountByFormAndStatuses menghitung submission LINTAS ORGANISASI (admin-
+	// wide, tidak terikat scope organisasi pemanggil seperti List()) untuk
+	// sebuah form dengan salah satu status yang diberikan — dipakai preview
+	// dampak publish (PublishImpact).
+	CountByFormAndStatuses(ctx context.Context, formID int64, statuses []string) (int, error)
+	// ListByFormAndStatuses adalah versi List() admin-wide tanpa syarat
+	// SubmittedByUserID/OrganizationIDs — dipakai job cascade publish yang
+	// memproses submission lintas organisasi.
+	ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error)
+	// WipeSubmission mengosongkan TOTAL data submission (jawaban, skor,
+	// review, histori status, kode kader/hasil levelisasi — tanpa jejak
+	// audit) lalu memindahkannya ke newVersionID berstatus DRAFT. Dipakai
+	// mode RESET cascade publish (TechSpec DL-1) — SATU transaksi, bukan
+	// insert baris histori apapun (itulah yang membedakannya dari REASSESS).
+	WipeSubmission(ctx context.Context, sub submission_model.Submission, newVersionID int64) error
 }

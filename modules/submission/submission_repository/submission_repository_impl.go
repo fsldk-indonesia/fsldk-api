@@ -335,6 +335,52 @@ func (r *RepositoryImpl) ClearCurrentLevelResult(ctx context.Context, organizati
 		Update("isCurrent", false).Error
 }
 
+func (r *RepositoryImpl) CountByFormAndStatuses(ctx context.Context, formID int64, statuses []string) (int, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Table("tr_submission").
+		Where("formID = ? AND status IN ?", formID, statuses).Count(&count).Error
+	return int(count), err
+}
+
+func (r *RepositoryImpl) ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error) {
+	var out []submission_model.Submission
+	err := r.db.WithContext(ctx).Table("tr_submission").
+		Where("formID = ? AND status IN ?", formID, statuses).Find(&out).Error
+	return out, err
+}
+
+// WipeSubmission — lihat dokumentasi method di submission_repository.go.
+// subjectType dicek via sub.SubjectType == "KADER" (literal, bukan
+// constants.SubjectTypeKader, mengikuti konvensi file ini yang sudah
+// memakai literal 'ORGANIZATION'/'ARCHIVED' di method lain, bukan
+// mengimpor package constants).
+func (r *RepositoryImpl) WipeSubmission(ctx context.Context, sub submission_model.Submission, newVersionID int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM tr_submission_answer WHERE submissionID = ?", sub.SubmissionID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM tr_submission_field_score WHERE submissionID = ?", sub.SubmissionID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM tr_submission_review WHERE submissionID = ?", sub.SubmissionID).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM tr_submission_status_history WHERE submissionID = ?", sub.SubmissionID).Error; err != nil {
+			return err
+		}
+		if sub.SubjectType == "KADER" {
+			if err := tx.Exec("UPDATE ms_kader SET status = 'PENDING', uniqueCode = NULL, issuedDate = NULL WHERE submissionID = ?", sub.SubmissionID).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Exec("DELETE FROM tr_levelisasi_result WHERE organizationID = ?", sub.OrganizationID).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Exec("UPDATE tr_submission SET formVersionID = ?, status = 'DRAFT' WHERE submissionID = ?", newVersionID, sub.SubmissionID).Error
+	})
+}
+
 func (r *RepositoryImpl) CreateLevelResult(ctx context.Context, submissionID, organizationID int64, levelCode, justificationNote string, establishedByUserID int64) (int64, error) {
 	var newID int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
