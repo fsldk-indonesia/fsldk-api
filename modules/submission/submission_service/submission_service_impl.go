@@ -1386,6 +1386,18 @@ func (s *ServiceImpl) Reassess(ctx context.Context, id int64, caller CallerScope
 	if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, caller.UserID); err != nil {
 		return submission_dto.Response{}, apperror.Internal("")
 	}
+	// Level resmi (isCurrent=1) sengaja langsung dicabut di sini, BUKAN
+	// ditunda sampai EstablishLevel() siklus berikutnya — per keputusan
+	// produk terbaru, LDK yang mengajukan reassessment tidak lagi
+	// menampilkan level lama ke publik/agregat selama siklus baru berjalan
+	// (membalik DL-15/OQ-11 yang sebelumnya sengaja mempertahankannya).
+	// Baris lama TIDAK dihapus (riwayat tetap ada untuk audit), hanya
+	// isCurrent di-set 0 — EstablishLevel() berikutnya otomatis membuat
+	// baris isCurrent=1 baru lewat CreateLevelResult() saat tidak
+	// menemukan baris current (lihat FindCurrentLevelResult/ErrNotFound).
+	if err := s.repo.ClearCurrentLevelResult(ctx, sub.OrganizationID); err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
 	s.recordHistory(ctx, sub.SubmissionID, sub.Status, constants.SubmissionStatusDraft, caller, "REASSESSMENT_REQUESTED")
 
 	sub, err = s.repo.FindByID(ctx, sub.SubmissionID)
