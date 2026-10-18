@@ -24,10 +24,11 @@ type Response struct {
 // MeOrganization adalah entri ringkas untuk daftar organisasi yang dapat
 // diakses pengguna (dashboard switcher).
 type MeOrganization struct {
-	OrganizationID       int64  `json:"organizationID"`
-	OrganizationTypeCode string `json:"organizationTypeCode"`
-	OrganizationName     string `json:"organizationName"`
-	ParentOrganizationID *int64 `json:"parentOrganizationID"`
+	OrganizationID         int64  `json:"organizationID"`
+	OrganizationTypeCode   string `json:"organizationTypeCode"`
+	OrganizationName       string `json:"organizationName"`
+	ParentOrganizationID   *int64 `json:"parentOrganizationID"`
+	ParentOrganizationName string `json:"parentOrganizationName,omitempty"`
 }
 
 // DirectoryEntry adalah entri ringkas organisasi aktif untuk kebutuhan

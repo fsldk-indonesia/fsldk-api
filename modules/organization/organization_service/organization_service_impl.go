@@ -232,10 +232,11 @@ func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope, or
 			parentID = &v
 		}
 		out = append(out, organization_dto.MeOrganization{
-			OrganizationID:       o.OrganizationID,
-			OrganizationTypeCode: o.OrganizationTypeCode,
-			OrganizationName:     o.OrganizationName,
-			ParentOrganizationID: parentID,
+			OrganizationID:         o.OrganizationID,
+			OrganizationTypeCode:   o.OrganizationTypeCode,
+			OrganizationName:       o.OrganizationName,
+			ParentOrganizationID:   parentID,
+			ParentOrganizationName: o.ParentOrganizationName.String,
 		})
 	}
 	return out, nil
