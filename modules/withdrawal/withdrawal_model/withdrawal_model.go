@@ -29,11 +29,16 @@ type Withdrawal struct {
 	IdempotencyKey           string         `gorm:"column:idempotencyKey"`
 	GatewayStatusID          sql.NullInt64  `gorm:"column:gatewayStatusID"`
 	GatewayResponseJSON      sql.NullString `gorm:"column:gatewayResponseJSON"`
-	ExecutedDate             sql.NullTime   `gorm:"column:executedDate"`
-	CompletedDate            sql.NullTime   `gorm:"column:completedDate"`
-	ReceiptURL               sql.NullString `gorm:"column:receiptUrl"`
-	CreatedDate              time.Time      `gorm:"column:createdDate"`
-	UpdatedDate              sql.NullTime   `gorm:"column:updatedDate"`
+	// GatewayMessage adalah pesan asli BisaTopup/Bisabiller saat gateway
+	// menolak disbursement secara langsung (lihat extractGatewayRejectionMessage
+	// di withdrawal_service) — tidak terisi untuk kegagalan lewat callback
+	// async (webhook tidak pernah membawa pesan, lihat DisbursementCallbackRequest).
+	GatewayMessage sql.NullString `gorm:"column:gatewayMessage"`
+	ExecutedDate   sql.NullTime   `gorm:"column:executedDate"`
+	CompletedDate  sql.NullTime   `gorm:"column:completedDate"`
+	ReceiptURL     sql.NullString `gorm:"column:receiptUrl"`
+	CreatedDate    time.Time      `gorm:"column:createdDate"`
+	UpdatedDate    sql.NullTime   `gorm:"column:updatedDate"`
 }
 
 // CreateParams menampung data untuk membuat withdrawal baru (status selalu
@@ -61,6 +66,7 @@ type StatusUpdateParams struct {
 	RejectionReason        *string
 	GatewayStatusID        *int
 	GatewayResponseJSON    *string
+	GatewayMessage         *string
 	SecurityVerifiedMethod *string
 	// ReceiptURL diisi dari field "receipt" callback disbursement Bisabiller
 	// (lihat DisbursementCallbackRequest) — URL bukti transfer, ditampilkan

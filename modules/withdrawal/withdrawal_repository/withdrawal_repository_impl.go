@@ -29,7 +29,7 @@ const withdrawalSelectCols = "w.withdrawalID, w.withdrawalRef, w.campaignID, c.t
 	"w.requestedByUserID, w.amount, w.fee, w.netAmount, w.beneficiaryBankCode, w.beneficiaryAccountNumber, " +
 	"w.beneficiaryAccountHolder, w.status, w.securityVerifiedDate, w.securityVerifiedMethod, " +
 	"w.approvedByUserID, w.approvedDate, w.rejectionReason, " +
-	"w.idempotencyKey, w.gatewayStatusID, w.gatewayResponseJSON, w.executedDate, w.completedDate, w.receiptUrl, " +
+	"w.idempotencyKey, w.gatewayStatusID, w.gatewayResponseJSON, w.gatewayMessage, w.executedDate, w.completedDate, w.receiptUrl, " +
 	"w.createdDate, w.updatedDate"
 
 // RepositoryImpl adalah implementasi Repository berbasis GORM.
@@ -159,6 +159,9 @@ func (r *RepositoryImpl) UpdateStatus(tx *gorm.DB, id int64, status string, p wi
 	}
 	if p.GatewayResponseJSON != nil {
 		values["gatewayResponseJSON"] = *p.GatewayResponseJSON
+	}
+	if p.GatewayMessage != nil {
+		values["gatewayMessage"] = *p.GatewayMessage
 	}
 	if p.SecurityVerifiedMethod != nil {
 		values["securityVerifiedMethod"] = *p.SecurityVerifiedMethod

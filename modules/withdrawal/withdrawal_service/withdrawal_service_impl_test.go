@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -283,7 +284,7 @@ func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua,
 	return nil
 }
 func (f *fakeUserRepository) TokenVersion(ctx context.Context, id int64) (int, error) { return 0, nil }
-func (f *fakeUserRepository) BumpTokenVersion(ctx context.Context, id int64) error     { return nil }
+func (f *fakeUserRepository) BumpTokenVersion(ctx context.Context, id int64) error    { return nil }
 func (f *fakeUserRepository) SetOrganizationID(ctx context.Context, id int64, organizationID int64) error {
 	return nil
 }
@@ -359,7 +360,7 @@ func (f *fakeJobEnqueuer) Enqueue(ctx context.Context, in jobqueue_dto.EnqueueIn
 // fakeMailer adalah implementasi Mailer no-op — SendOtpEmail selalu sukses
 // kecuali sengaja diset sendErr, dipakai TestRequestSecurityOtp_*.
 type fakeMailer struct {
-	sendErr  error
+	sendErr   error
 	sendCalls int
 }
 
@@ -539,6 +540,28 @@ func TestMapDisbursementStatus(t *testing.T) {
 	for statusID, want := range cases {
 		if got := mapDisbursementStatus(statusID); got != want {
 			t.Errorf("mapDisbursementStatus(%d) = %q, want %q", statusID, got, want)
+		}
+	}
+}
+
+// TestExtractGatewayRejectionMessage mendokumentasikan kontrak helper yang
+// mengambil pesan asli Bisabiller dari balik wrapper bisatopup.ErrGatewayRejected
+// (format "<ErrGatewayRejected>: <pesan>") — dipakai Process() agar admin CMS
+// melihat alasan sungguhan penolakan gateway, bukan cuma pesan generik (beda
+// dari donation_service yang sengaja menyembunyikan alasan ini dari donatur publik).
+func TestExtractGatewayRejectionMessage(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"wrapped message", fmt.Errorf("%w: %s", bisatopup.ErrGatewayRejected, "saldo rekening gateway tidak cukup"), "saldo rekening gateway tidak cukup"},
+		{"wrapped empty message", fmt.Errorf("%w: %s", bisatopup.ErrGatewayRejected, ""), ""},
+		{"unwrapped error falls back to full text", errors.New("some other error"), "some other error"},
+	}
+	for _, c := range cases {
+		if got := extractGatewayRejectionMessage(c.err); got != c.want {
+			t.Errorf("%s: extractGatewayRejectionMessage() = %q, want %q", c.name, got, c.want)
 		}
 	}
 }

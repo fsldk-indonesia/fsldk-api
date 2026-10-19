@@ -631,6 +631,10 @@ Saldo & buku besar (ledger) internal per campaign — read-only dari CMS, dituli
 | POST | `/withdrawals/:id/security-verify` | `kantong_amal.withdrawal.request` | Verifikasi OTP (rate limit 1/5 menit) |
 | POST | `/withdrawals/:id/process` | `kantong_amal.withdrawal.process` | Proses pencairan ke bank tujuan |
 
+Response withdrawal (`GET /withdrawals/:id` dan lain-lain yang mengembalikan `withdrawal_dto.Response`) menyertakan dua field hasil gateway, keduanya `omitempty` — terisi sesuai sumbernya, tidak selalu ada:
+- `gatewayMessage` — pesan asli BisaTopup saat gateway menolak disbursement **langsung** (sinkron, respons `POST /withdrawals/:id/process`). Kosong untuk kegagalan lewat callback async (webhook Bisabiller tidak pernah membawa pesan).
+- `gatewayResponseJSON` — raw JSON respons gateway terakhir (hasil `Disburse()` saat proses awal, ditimpa payload callback webhook begitu datang) — dipakai Detail Penarikan untuk menampilkan "Raw Callback Response" collapsible, kebutuhan debug/support tanpa buka database.
+
 ## 8h. Kantong Amal — Laporan Keuangan (`/reports/*`) — ✅🔒
 
 Bagian dari modul Go `report` yang sama dengan §12 (Laporan Pendataan), tapi prefix/permission terpisah (`kantong_amal.report.*`/`kantong_amal.audit.*`) karena domainnya finansial, bukan submission.

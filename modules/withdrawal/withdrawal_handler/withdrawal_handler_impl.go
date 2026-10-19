@@ -144,7 +144,7 @@ func (h *HandlerImpl) Process(c *gin.Context) {
 // field signature untuk callback transfer, lihat withdrawal_service.ProcessCallback).
 func (h *HandlerImpl) Callback(c *gin.Context) {
 	var req withdrawal_dto.DisbursementCallbackRequest
-	isPing, err := httphelper.BindCallbackJSON(c, &req)
+	rawBody, isPing, err := httphelper.BindCallbackJSON(c, &req)
 	if err != nil {
 		httphelper.Error(c, apperror.BadRequest("Format callback tidak valid"))
 		return
@@ -158,7 +158,7 @@ func (h *HandlerImpl) Callback(c *gin.Context) {
 		httphelper.Success(c, "OK", nil)
 		return
 	}
-	if err := h.svc.ProcessCallback(c.Request.Context(), req, c.Param("secret")); err != nil {
+	if err := h.svc.ProcessCallback(c.Request.Context(), req, string(rawBody), c.Param("secret")); err != nil {
 		httphelper.Error(c, err)
 		return
 	}
