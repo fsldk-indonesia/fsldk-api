@@ -175,3 +175,20 @@ type UpdateOptionRequest struct {
 	IsActive    bool     `json:"isActive"`
 	Score       *float64 `json:"score"`
 }
+
+// PublishImpactResponse adalah jumlah submission yang akan terdampak bila
+// version ini dipublish — ditampilkan FE sebagai info sebelum konfirmasi publish.
+// SubjectLabel adalah "LDK" (form ber-subjek ORGANIZATION, mis. Levelisasi
+// LDK) atau "Kader" (form ber-subjek KADER, mis. Sensus Kader) — dipakai FE
+// menyesuaikan kalimat konfirmasi alih-alih memakai frasa generik "LDK/Kader".
+type PublishImpactResponse struct {
+	AffectedCount int    `json:"affectedCount"`
+	SubjectLabel  string `json:"subjectLabel"`
+}
+
+// PublishVersionResult adalah hasil publish — struktur version terbaru plus
+// ID job cascade (0 bila tidak ada version lama/submission terdampak).
+type PublishVersionResult struct {
+	VersionDetailResponse
+	CascadeJobID int64 `json:"cascadeJobID,omitempty"`
+}

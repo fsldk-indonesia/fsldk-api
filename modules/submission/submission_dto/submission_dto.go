@@ -64,6 +64,15 @@ type ReopenRequest struct {
 	Version int    `json:"version" validate:"required"`
 }
 
+// CascadeJobPayload adalah payload constants.JobSubmissionFormPublishCascade —
+// diisi submission_service.EnqueueCascade, dibaca HandlePublishCascadeJob.
+type CascadeJobPayload struct {
+	FormID       int64 `json:"formID"`
+	OldVersionID int64 `json:"oldVersionID"`
+	NewVersionID int64 `json:"newVersionID"`
+	ActorID      int64 `json:"actorID"`
+}
+
 // FieldScoreInput adalah satu skor manual (Puskomnas) untuk satu field pada
 // body PUT /submissions/:id/scores. RawScore sengaja tidak diberi tag
 // `required` — 0 adalah nilai skor yang sah pada skala tertentu (mis. skala
@@ -93,8 +102,10 @@ type LevelResultResponse struct {
 }
 
 // KaderResponse adalah representasi data kader untuk API. OrganizationName/
-// ParentOrganizationName hanya diisi saat status ACTIVE (disetujui) — dipakai
-// Profil Saya Portal Kader menampilkan Nama LDK & Nama Puskomda pembina.
+// ParentOrganizationName hanya diisi saat status ACTIVE/INACTIVE (pernah
+// disetujui) — dipakai Profil Saya Portal Kader menampilkan Nama LDK & Nama
+// Puskomda pembina. StatusChangedDate = kapan status SAAT INI mulai berlaku
+// (mis. "Nonaktif sejak" selama status-nya masih INACTIVE).
 type KaderResponse struct {
 	KaderID                int64      `json:"kaderID"`
 	SubmissionID           int64      `json:"submissionID"`
@@ -105,6 +116,32 @@ type KaderResponse struct {
 	FullName               string     `json:"fullName"`
 	Status                 string     `json:"status"`
 	IssuedDate             *time.Time `json:"issuedDate,omitempty"`
+	StatusChangedDate      *time.Time `json:"statusChangedDate,omitempty"`
+}
+
+// PengurusEntry adalah satu baris kader ACTIVE (apa pun role ms_user saat
+// ini) dalam scope organisasi caller — dipakai fitur Pengurus (promosi/
+// demosi role dalam organisasi sendiri, tanpa lewat Portal Admin).
+// HomeOrganizationID/HomeOrganizationName SELALU LDK asal (ms_kader.
+// organizationID, tidak pernah berubah) — BUKAN organizationID ms_user
+// saat ini, yang bisa berbeda setelah promosi ke Puskomda/Puskomnas
+// Verifikator (lihat setPengurusRole di submission_service_impl.go).
+type PengurusEntry struct {
+	UserID               int64  `json:"userID"`
+	FullName             string `json:"fullName"`
+	Email                string `json:"email"`
+	RoleName             string `json:"roleName"`
+	HomeOrganizationID   int64  `json:"homeOrganizationID"`
+	HomeOrganizationName string `json:"homeOrganizationName"`
+	PuskomdaName         string `json:"puskomdaName"`
+}
+
+// UpdatePengurusRoleRequest adalah body mengubah role pengurus. Tidak ada
+// validate:"oneof=..." dengan sengaja — daftar role yang valid bergantung
+// pada tier caller (LDK/Puskomda/Puskomnas), bukan daftar statis, jadi
+// validasi sesungguhnya ada di service (pengurusRolesByTier), bukan di sini.
+type UpdatePengurusRoleRequest struct {
+	RoleName string `json:"roleName" validate:"required"`
 }
 
 // ListFilter menampung parameter penyaringan daftar submission.
@@ -198,9 +235,14 @@ type ConsolidatedScoreResponse struct {
 // DetailResponse adalah submission beserta jawaban & riwayat statusnya.
 type DetailResponse struct {
 	Response
-	Answers          []AnswerResponse           `json:"answers"`
-	StatusHistory    []StatusHistoryResponse    `json:"statusHistory"`
-	LevelResult      *LevelResultResponse       `json:"levelResult,omitempty"`
-	Kader            *KaderResponse             `json:"kader,omitempty"`
+	Answers       []AnswerResponse        `json:"answers"`
+	StatusHistory []StatusHistoryResponse `json:"statusHistory"`
+	LevelResult   *LevelResultResponse    `json:"levelResult,omitempty"`
+	// LevelHistory adalah SELURUH tr_levelisasi_result organisasi ini
+	// (isCurrent maupun tidak — riwayat tidak pernah dihapus), terurut dari
+	// yang paling awal dicapai — dipakai kartu "Record Levelisasi" (tangga 4
+	// level Pra Mula/Mula/Madya/Mandiri) di Status Pendataan.
+	LevelHistory      []LevelResultResponse      `json:"levelHistory,omitempty"`
+	Kader             *KaderResponse             `json:"kader,omitempty"`
 	ConsolidatedScore *ConsolidatedScoreResponse `json:"consolidatedScore,omitempty"`
 }

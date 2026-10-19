@@ -66,6 +66,11 @@ type Repository interface {
 	// isCurrent=1 milik sebuah organisasi (hasil resmi yang berlaku saat ini).
 	FindCurrentLevelResult(ctx context.Context, organizationID int64) (submission_model.LevelisasiResult, error)
 	FindLevelResultBySubmission(ctx context.Context, submissionID int64) (submission_model.LevelisasiResult, error)
+	// FindLevelResultHistory mengembalikan SELURUH baris milik organisasi ini
+	// (isCurrent maupun tidak — ClearCurrentLevelResult tidak pernah
+	// menghapus, cuma menandai isCurrent=0 untuk audit), terurut dari yang
+	// paling awal dicapai.
+	FindLevelResultHistory(ctx context.Context, organizationID int64) ([]submission_model.LevelisasiResult, error)
 	// ClearCurrentLevelResult menandai baris isCurrent=1 milik organisasi
 	// (bila ada) menjadi isCurrent=0 — dipanggil sebelum insert siklus baru.
 	ClearCurrentLevelResult(ctx context.Context, organizationID int64) error
@@ -73,4 +78,23 @@ type Repository interface {
 	UpdateLevelResult(ctx context.Context, resultID int64, levelCode, justificationNote string, establishedByUserID int64) error
 	PublishLevelResult(ctx context.Context, resultID int64) error
 	LevelLabel(ctx context.Context, levelCode string) (string, error)
+
+	// CountByFormAndStatuses menghitung submission LINTAS ORGANISASI (admin-
+	// wide, tidak terikat scope organisasi pemanggil seperti List()) untuk
+	// sebuah form dengan salah satu status yang diberikan — dipakai preview
+	// dampak publish (PublishImpact).
+	CountByFormAndStatuses(ctx context.Context, formID int64, statuses []string) (int, error)
+	// ListByFormAndStatuses adalah versi List() admin-wide tanpa syarat
+	// SubmittedByUserID/OrganizationIDs — dipakai job cascade publish yang
+	// memproses submission lintas organisasi.
+	ListByFormAndStatuses(ctx context.Context, formID int64, statuses []string) ([]submission_model.Submission, error)
+	// ReassessSubmission mentransisikan submission ke DRAFT, mengosongkan
+	// hasil levelisasi current organisasinya (hanya untuk subjectType
+	// ORGANIZATION), dan menulis baris histori status — SATU transaksi.
+	// Dipakai HandlePublishCascadeJob: tanpa atomisitas ini, status bisa
+	// terlanjur DRAFT sementara efek lain (clear level result/histori) gagal
+	// di tengah jalan — dan karena DRAFT sudah dikeluarkan dari
+	// cascadeEligibleStatuses, retry job tidak akan pernah memprosesnya
+	// ulang, membuat kegagalan parsial itu permanen.
+	ReassessSubmission(ctx context.Context, sub submission_model.Submission, actorUserID int64, note string) error
 }

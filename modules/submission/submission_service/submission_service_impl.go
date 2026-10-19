@@ -14,6 +14,9 @@ import (
 	"fsldk-api/base/apperror"
 	"fsldk-api/base/dto"
 	"fsldk-api/constants"
+	"fsldk-api/modules/jobqueue/jobqueue_dto"
+	"fsldk-api/modules/jobqueue/jobqueue_model"
+	"fsldk-api/modules/jobqueue/jobqueue_service"
 	"fsldk-api/modules/organization/organization_repository"
 	"fsldk-api/modules/role/role_repository"
 	"fsldk-api/modules/submission/submission_dto"
@@ -21,6 +24,7 @@ import (
 	"fsldk-api/modules/submission/submission_repository"
 	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
+	"fsldk-api/modules/submission_form/submission_form_service"
 	"fsldk-api/modules/user/user_repository"
 )
 
@@ -33,6 +37,28 @@ const (
 	roleNameKader      = "Kader"
 )
 
+// pengurusRolesByTier memetakan organizationTypeCode caller ke daftar role
+// yang boleh ditetapkan lewat fitur Pengurus (promosi/demosi kader aktif
+// dalam scope organisasi caller sendiri) — index menaik = rank lebih
+// tinggi. Dipakai pengurusRoleAllowed (validasi UpdatePengurusRole) dan
+// TIDAK dipakai arah sebaliknya oleh DeactivateKader (yang selalu
+// menurunkan ke Kader tanpa pengecekan allow-list, karena itu aksi sistem
+// otomatis, bukan permintaan caller).
+var pengurusRolesByTier = map[string][]string{
+	constants.OrgTypeLDK:       {roleNameKader, constants.RoleLDKAdmin},
+	constants.OrgTypePuskomda:  {roleNameKader, constants.RoleLDKAdmin, constants.RolePuskomdaVerifikator},
+	constants.OrgTypePuskomnas: {roleNameKader, constants.RoleLDKAdmin, constants.RolePuskomdaVerifikator, constants.RolePuskomnasVerifikator},
+}
+
+func pengurusRoleAllowed(callerOrgType, roleName string) bool {
+	for _, r := range pengurusRolesByTier[callerOrgType] {
+		if r == roleName {
+			return true
+		}
+	}
+	return false
+}
+
 var sortColumns = map[string]string{
 	"createdDate":      "s.createdDate",
 	"submittedDate":    "s.submittedDate",
@@ -42,15 +68,18 @@ var sortColumns = map[string]string{
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
-	repo     submission_repository.Repository
-	formRepo submission_form_repository.Repository
-	orgRepo  organization_repository.Repository
-	userRepo user_repository.Repository
-	roleRepo role_repository.Repository
-	orgScope OrgScopeResolver
+	repo        submission_repository.Repository
+	formRepo    submission_form_repository.Repository
+	orgRepo     organization_repository.Repository
+	userRepo    user_repository.Repository
+	roleRepo    role_repository.Repository
+	orgScope    OrgScopeResolver
+	jobqueueSvc jobqueue_service.Service
 }
 
-// NewService membuat Service submission.
+// NewService membuat Service submission. jobqueueSvc dipakai EnqueueCascade
+// memasukkan job reassessment massal (lihat HandlePublishCascadeJob)
+// saat submission_form_service mem-publish version baru.
 func NewService(
 	repo submission_repository.Repository,
 	formRepo submission_form_repository.Repository,
@@ -58,8 +87,9 @@ func NewService(
 	userRepo user_repository.Repository,
 	roleRepo role_repository.Repository,
 	orgScope OrgScopeResolver,
+	jobqueueSvc jobqueue_service.Service,
 ) Service {
-	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, roleRepo: roleRepo, orgScope: orgScope}
+	return &ServiceImpl{repo: repo, formRepo: formRepo, orgRepo: orgRepo, userRepo: userRepo, roleRepo: roleRepo, orgScope: orgScope, jobqueueSvc: jobqueueSvc}
 }
 
 // promoteToKaderRole mengubah role akun pendaftar Sensus Kader dari
@@ -219,6 +249,20 @@ var editableStatuses = map[string]bool{
 	constants.SubmissionStatusRevisionRequestedLDK:       true,
 }
 
+// cascadeEligibleStatuses adalah seluruh status yang ikut diproses saat
+// publish cascade (reassessment massal, lihat HandlePublishCascadeJob)
+// — DRAFT/CANCELLED/REJECTED sengaja TIDAK disertakan (TechSpec DL-2).
+// Diekspresikan sebagai daftar INCLUDE, bukan exclude, supaya status baru
+// yang ditambah nanti tidak diam-diam ikut tercakup tanpa sengaja.
+var cascadeEligibleStatuses = []string{
+	constants.SubmissionStatusSubmitted,
+	constants.SubmissionStatusPuskomdaReview, constants.SubmissionStatusRevisionRequestedPuskomda, constants.SubmissionStatusApprovedPuskomda,
+	constants.SubmissionStatusPuskomnasReview, constants.SubmissionStatusRevisionRequestedPuskomnas, constants.SubmissionStatusApprovedPuskomnas,
+	constants.SubmissionStatusLevelEstablished, constants.SubmissionStatusPublished,
+	constants.SubmissionStatusLDKReview, constants.SubmissionStatusRevisionRequestedLDK, constants.SubmissionStatusApprovedLDK,
+	constants.SubmissionStatusCodeIssued, constants.SubmissionStatusActive,
+}
+
 // callerHasTier menentukan apakah pemanggil dapat bertindak sebagai tier
 // tertentu — baik lewat organizationTypeCode home org, maupun wildcardTierAccess
 // (mis. Super Admin dapat bertindak sebagai tier manapun sesuai kebutuhan
@@ -289,6 +333,22 @@ func checkVersion(sub submission_model.Submission, clientVersion int) error {
 	return nil
 }
 
+func (s *ServiceImpl) toLevelResultResponse(ctx context.Context, res submission_model.LevelisasiResult) submission_dto.LevelResultResponse {
+	label, _ := s.repo.LevelLabel(ctx, res.LevelCode)
+	lr := submission_dto.LevelResultResponse{
+		ResultID:          res.ResultID,
+		LevelCode:         res.LevelCode,
+		LevelLabel:        label,
+		JustificationNote: res.JustificationNote.String,
+		EstablishedDate:   res.EstablishedDate,
+		IsPublished:       res.IsPublished,
+	}
+	if res.PublishedDate.Valid {
+		lr.PublishedDate = &res.PublishedDate.Time
+	}
+	return lr
+}
+
 func toKaderResponse(k submission_model.Kader) submission_dto.KaderResponse {
 	out := submission_dto.KaderResponse{
 		KaderID:        k.KaderID,
@@ -300,6 +360,9 @@ func toKaderResponse(k submission_model.Kader) submission_dto.KaderResponse {
 	}
 	if k.IssuedDate.Valid {
 		out.IssuedDate = &k.IssuedDate.Time
+	}
+	if k.UpdatedDate.Valid {
+		out.StatusChangedDate = &k.UpdatedDate.Time
 	}
 	return out
 }
@@ -414,20 +477,37 @@ func (s *ServiceImpl) Create(ctx context.Context, caller CallerScope, req submis
 	var organizationID int64
 	switch subjectType {
 	case constants.SubjectTypeKader:
-		if req.OrganizationID == nil {
-			return submission_dto.Response{}, apperror.BadRequest("organizationID (LDK tujuan) wajib diisi")
-		}
-		org, err := s.orgRepo.FindByID(ctx, *req.OrganizationID)
+		// "LDK Tujuan" Kader kini SATU kolom dengan field LDK role lain
+		// (ms_user.organizationID) — terkunci seumur hidup begitu terisi
+		// (lihat SetOrganizationID), supaya kalau akun ini kelak dipromosikan
+		// jadi LDK Admin, LDK yang sama otomatis nempel tanpa admin perlu
+		// pilih ulang (resolveEffectiveOrg yang menentukan nilai ini TIDAK
+		// memengaruhi cakupan akses sebelum promosi — lihat auth_service_impl.go).
+		callerUser, err := s.userRepo.FindByID(ctx, caller.UserID)
 		if err != nil {
-			return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan tidak ditemukan")
+			return submission_dto.Response{}, apperror.Internal("")
 		}
-		if org.OrganizationTypeCode != constants.OrgTypeLDK {
-			return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan harus berupa LDK")
+		if callerUser.OrganizationID.Valid {
+			organizationID = callerUser.OrganizationID.Int64
+		} else {
+			if req.OrganizationID == nil {
+				return submission_dto.Response{}, apperror.BadRequest("organizationID (LDK tujuan) wajib diisi")
+			}
+			org, err := s.orgRepo.FindByID(ctx, *req.OrganizationID)
+			if err != nil {
+				return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan tidak ditemukan")
+			}
+			if org.OrganizationTypeCode != constants.OrgTypeLDK {
+				return submission_dto.Response{}, apperror.BadRequest("Organisasi tujuan harus berupa LDK")
+			}
+			if !org.IsActive {
+				return submission_dto.Response{}, apperror.Unprocessable("LDK tujuan sedang tidak aktif")
+			}
+			organizationID = org.OrganizationID
+			if err := s.userRepo.SetOrganizationID(ctx, caller.UserID, organizationID); err != nil {
+				return submission_dto.Response{}, apperror.Internal("")
+			}
 		}
-		if !org.IsActive {
-			return submission_dto.Response{}, apperror.Unprocessable("LDK tujuan sedang tidak aktif")
-		}
-		organizationID = org.OrganizationID
 	default:
 		switch {
 		case caller.RequestedOrganizationID != nil:
@@ -693,20 +773,8 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 		answerByField[a.FieldID] = a
 	}
 
-	for _, f := range fields {
-		if !f.IsRequired {
-			continue
-		}
-		if f.ConditionalOnFieldID.Valid {
-			triggerAnswer, ok := answerByField[f.ConditionalOnFieldID.Int64]
-			if !evaluateConditional(f.ConditionalRuleJSON, triggerAnswer, ok, optionValueByID) {
-				continue
-			}
-		}
-		a, ok := answerByField[f.FieldID]
-		if !ok || !hasValue(a) {
-			return submission_dto.Response{}, apperror.Unprocessable(fmt.Sprintf("Field \"%s\" wajib diisi", f.FieldLabel))
-		}
+	if missing := collectMissingRequiredFields(fields, answerByField, optionValueByID); len(missing) > 0 {
+		return submission_dto.Response{}, apperror.Validation("Beberapa field wajib diisi belum lengkap", missing)
 	}
 
 	now := time.Now()
@@ -911,25 +979,30 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 
 	var levelResult *submission_dto.LevelResultResponse
 	if res, err := s.repo.FindLevelResultBySubmission(ctx, sub.SubmissionID); err == nil {
-		label, _ := s.repo.LevelLabel(ctx, res.LevelCode)
-		lr := submission_dto.LevelResultResponse{
-			ResultID:          res.ResultID,
-			LevelCode:         res.LevelCode,
-			LevelLabel:        label,
-			JustificationNote: res.JustificationNote.String,
-			EstablishedDate:   res.EstablishedDate,
-			IsPublished:       res.IsPublished,
-		}
-		if res.PublishedDate.Valid {
-			lr.PublishedDate = &res.PublishedDate.Time
-		}
+		lr := s.toLevelResultResponse(ctx, res)
 		levelResult = &lr
+	}
+
+	// Dibatasi subjek Organisasi (Levelisasi) — subjek Kader tidak relevan
+	// dengan tangga level LDK, sama seperti consolidatedScore di bawah.
+	var levelHistory []submission_dto.LevelResultResponse
+	if sub.SubjectType == constants.SubjectTypeOrganization {
+		if rows, err := s.repo.FindLevelResultHistory(ctx, sub.OrganizationID); err == nil {
+			levelHistory = make([]submission_dto.LevelResultResponse, 0, len(rows))
+			for _, res := range rows {
+				levelHistory = append(levelHistory, s.toLevelResultResponse(ctx, res))
+			}
+		}
 	}
 
 	var kaderResp *submission_dto.KaderResponse
 	if k, err := s.repo.FindKaderBySubmission(ctx, sub.SubmissionID); err == nil {
 		kr := toKaderResponse(k)
-		if k.Status == constants.KaderStatusActive {
+		// Nama LDK/Puskomda dibutuhkan kartu "Info Kekaderan" di Profil Saya,
+		// yang tampil untuk ACTIVE maupun INACTIVE (lihat
+		// user.my-profile.page.html) — kader yang dinonaktifkan tetap pernah
+		// disetujui & terikat ke LDK itu, bukan cuma ACTIVE yang relevan.
+		if k.Status == constants.KaderStatusActive || k.Status == constants.KaderStatusInactive {
 			if org, err := s.orgRepo.FindByID(ctx, k.OrganizationID); err == nil {
 				kr.OrganizationName = org.OrganizationName
 				kr.ParentOrganizationName = org.ParentOrganizationName.String
@@ -971,6 +1044,7 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 		Answers:           answerResponses,
 		StatusHistory:     historyResponses,
 		LevelResult:       levelResult,
+		LevelHistory:      levelHistory,
 		Kader:             kaderResp,
 		ConsolidatedScore: consolidatedScore,
 	}, nil
@@ -1369,6 +1443,18 @@ func (s *ServiceImpl) Reassess(ctx context.Context, id int64, caller CallerScope
 	if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusDraft, sql.NullTime{}, caller.UserID); err != nil {
 		return submission_dto.Response{}, apperror.Internal("")
 	}
+	// Level resmi (isCurrent=1) sengaja langsung dicabut di sini, BUKAN
+	// ditunda sampai EstablishLevel() siklus berikutnya — per keputusan
+	// produk terbaru, LDK yang mengajukan reassessment tidak lagi
+	// menampilkan level lama ke publik/agregat selama siklus baru berjalan
+	// (membalik DL-15/OQ-11 yang sebelumnya sengaja mempertahankannya).
+	// Baris lama TIDAK dihapus (riwayat tetap ada untuk audit), hanya
+	// isCurrent di-set 0 — EstablishLevel() berikutnya otomatis membuat
+	// baris isCurrent=1 baru lewat CreateLevelResult() saat tidak
+	// menemukan baris current (lihat FindCurrentLevelResult/ErrNotFound).
+	if err := s.repo.ClearCurrentLevelResult(ctx, sub.OrganizationID); err != nil {
+		return submission_dto.Response{}, apperror.Internal("")
+	}
 	s.recordHistory(ctx, sub.SubmissionID, sub.Status, constants.SubmissionStatusDraft, caller, "REASSESSMENT_REQUESTED")
 
 	sub, err = s.repo.FindByID(ctx, sub.SubmissionID)
@@ -1431,6 +1517,16 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 	if err != nil {
 		return apperror.NotFound("Data kader tidak ditemukan")
 	}
+	// Self-action tetap diblokir di sini, bukan hanya di UpdatePengurusRole
+	// (Scope decision #5 spec) -- siapa pun yang punya permission untuk
+	// memanggil endpoint ini (kader.deactivate) sudah pasti pemegang role
+	// pengurus (LDK Admin/Puskomda/Puskomnas Verifikator), jadi menonaktifkan
+	// Kader milik diri sendiri SELALU berarti memicu cascade setPengurusRole
+	// ke diri sendiri juga -- persis self-lockout yang ingin dicegah decision
+	// #5, meski jalur masuknya (Kader Persetujuan) bukan Pengurus itu sendiri.
+	if caller.UserID == k.UserID {
+		return apperror.Forbidden("Anda tidak dapat menonaktifkan kader diri sendiri")
+	}
 	if caller.WildcardTierAccess == "" && (caller.OrganizationID == nil || *caller.OrganizationID != k.OrganizationID) {
 		// Delegasi Puskomda/Puskomnas atas nama LDK di bawahnya (2026-08-18,
 		// sejalan callerHasTier/canEdit — lihat komentar callerHasTier).
@@ -1448,7 +1544,182 @@ func (s *ServiceImpl) DeactivateKader(ctx context.Context, kaderID int64, caller
 	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusInactive, sql.NullString{}, sql.NullTime{}); err != nil {
 		return apperror.Internal("")
 	}
+	// Cascade: kalau kader ini sedang memegang role pengurus (LDK Admin/
+	// Puskomda/Puskomnas Verifikator), otomatis turunkan balik ke Kader +
+	// organizationID balik ke LDK asalnya — tidak masuk akal akun nonaktif
+	// tetap pegang akses admin. Best-effort seperti promoteToKaderRole:
+	// kegagalan di sini TIDAK membatalkan nonaktifkan kader-nya sendiri.
+	if u, err := s.userRepo.FindByID(ctx, k.UserID); err == nil {
+		if u.RoleName == constants.RoleLDKAdmin || u.RoleName == constants.RolePuskomdaVerifikator || u.RoleName == constants.RolePuskomnasVerifikator {
+			_ = s.setPengurusRole(ctx, k.UserID, k.OrganizationID, roleNameKader, caller.UserID)
+		}
+	}
 	return nil
+}
+
+// ReactivateKader membalikkan DeactivateKader — mengembalikan kader
+// berstatus INACTIVE menjadi ACTIVE lagi TANPA mereset submission (data yang
+// sudah lolos review sebelumnya tetap dipakai apa adanya, uniqueCode yang
+// sudah terbit juga tidak disentuh). Beda dari ReinstateKader (REJECTED→
+// PENDING, submission direset total ke DRAFT) — kader INACTIVE memang sudah
+// pernah disetujui, cuma dinonaktifkan sementara, jadi tidak perlu isi ulang
+// dari nol.
+func (s *ServiceImpl) ReactivateKader(ctx context.Context, kaderID int64, caller CallerScope) error {
+	k, err := s.repo.FindKaderByID(ctx, kaderID)
+	if err != nil {
+		return apperror.NotFound("Data kader tidak ditemukan")
+	}
+	if caller.WildcardTierAccess == "" && (caller.OrganizationID == nil || *caller.OrganizationID != k.OrganizationID) {
+		// Delegasi Puskomda/Puskomnas atas nama LDK di bawahnya, sama seperti
+		// DeactivateKader.
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, k.OrganizationID)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if !ok {
+			return apperror.Forbidden("Anda hanya dapat mengaktifkan kembali kader milik LDK Anda sendiri")
+		}
+	}
+	if k.Status != constants.KaderStatusInactive {
+		return apperror.InvalidStatusTransition("Hanya kader berstatus Nonaktif yang dapat diaktifkan kembali")
+	}
+	if err := s.repo.UpdateKaderStatus(ctx, kaderID, constants.KaderStatusActive, sql.NullString{}, sql.NullTime{}); err != nil {
+		return apperror.Internal("")
+	}
+	return nil
+}
+
+// setPengurusRole adalah inti mutasi role pengurus, dipakai UpdatePengurusRole
+// (promosi/demosi manual lewat endpoint) MAUPUN cascade DeactivateKader
+// (revert otomatis ke Kader) — satu fungsi supaya kedua jalur itu tidak
+// pernah berbeda perilaku. organizationID BARU dihitung dari roleName
+// TUJUAN (bukan role asal): Kader/LDK Admin selalu balik ke
+// homeOrganizationID (ms_kader.organizationID, tidak pernah berubah);
+// Puskomda Verifikator pindah ke Puskomda induk LDK itu; Puskomnas
+// Verifikator pindah ke Puskomnas tunggal. Wajib begini karena
+// ms_user.organizationTypeCode SELALU di-join live dari organizationID
+// (lihat user_repository_impl.go selectCols) dan itulah yang menentukan
+// cakupan akses caller di seluruh backend — kalau organizationID tidak
+// ikut pindah, role Verifikator-nya tidak akan berfungsi penuh.
+func (s *ServiceImpl) setPengurusRole(ctx context.Context, userID, homeOrganizationID int64, roleName string, actorID int64) error {
+	var targetOrgID int64
+	switch roleName {
+	case roleNameKader, constants.RoleLDKAdmin:
+		targetOrgID = homeOrganizationID
+	case constants.RolePuskomdaVerifikator:
+		homeOrg, err := s.orgRepo.FindByID(ctx, homeOrganizationID)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		if !homeOrg.ParentOrganizationID.Valid {
+			return apperror.Internal("LDK ini tidak memiliki Puskomda induk")
+		}
+		targetOrgID = homeOrg.ParentOrganizationID.Int64
+	case constants.RolePuskomnasVerifikator:
+		rootID, err := s.orgRepo.RootPuskomnasID(ctx)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		targetOrgID = rootID
+	default:
+		return apperror.BadRequest("Role tidak dikenali")
+	}
+	roleID, err := s.roleRepo.IDByName(ctx, roleName)
+	if err != nil {
+		return apperror.BadRequest("Role tidak ditemukan")
+	}
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	if err := s.userRepo.Update(ctx, userID, u.FullName, u.Email, roleID, u.IsActive, sql.NullInt64{Int64: targetOrgID, Valid: true}, u.WildcardTierAccess, actorID); err != nil {
+		return apperror.Internal("")
+	}
+	return s.userRepo.BumpTokenVersion(ctx, userID)
+}
+
+func (s *ServiceImpl) pengurusEntryFor(ctx context.Context, userID, homeOrganizationID int64) (submission_dto.PengurusEntry, error) {
+	u, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	org, err := s.orgRepo.FindByID(ctx, homeOrganizationID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	return submission_dto.PengurusEntry{
+		UserID: u.UserID, FullName: u.FullName, Email: u.Email, RoleName: u.RoleName,
+		HomeOrganizationID: homeOrganizationID, HomeOrganizationName: org.OrganizationName,
+		PuskomdaName: org.ParentOrganizationName.String,
+	}, nil
+}
+
+func (s *ServiceImpl) ListPengurus(ctx context.Context, caller CallerScope) ([]submission_dto.PengurusEntry, error) {
+	orgIDs, err := s.resolveScopedOrganizationIDs(ctx, caller)
+	if err != nil {
+		return nil, err
+	}
+	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	out := make([]submission_dto.PengurusEntry, 0, len(kaders))
+	for _, k := range kaders {
+		entry, err := s.pengurusEntryFor(ctx, k.UserID, k.OrganizationID)
+		if err != nil {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64, caller CallerScope, req submission_dto.UpdatePengurusRoleRequest) (submission_dto.PengurusEntry, error) {
+	if targetUserID == caller.UserID {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role akun Anda sendiri")
+	}
+	if !pengurusRoleAllowed(caller.OrganizationTypeCode, req.RoleName) {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Role tersebut tidak dapat ditetapkan dari portal ini")
+	}
+	orgIDs, err := s.resolveScopedOrganizationIDs(ctx, caller)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, err
+	}
+	kaders, err := s.repo.ListKadersByOrganizations(ctx, orgIDs, constants.KaderStatusActive)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.Internal("")
+	}
+	var homeOrgID int64
+	found := false
+	for _, k := range kaders {
+		if k.UserID == targetUserID {
+			homeOrgID = k.OrganizationID
+			found = true
+			break
+		}
+	}
+	if !found {
+		return submission_dto.PengurusEntry{}, apperror.NotFound("Kader tidak ditemukan atau di luar jangkauan akses Anda")
+	}
+	// pengurusRoleAllowed di atas hanya memvalidasi role TUJUAN -- tanpa cek
+	// ini, caller tier rendah (mis. LDK Admin, allow-list {Kader, LDK Admin})
+	// bisa menurunkan siapa pun yang home LDK-nya LDK dia, TERMASUK seorang
+	// Puskomda/Puskomnas Verifikator yang home LDK-nya kebetulan LDK itu juga
+	// (ms_kader.organizationID tidak berubah walau sudah dipromosikan) --
+	// efektif mencopot role pengurus tier lebih tinggi dari wewenang caller.
+	// Role SAAT INI target juga wajib ada di allow-list caller, bukan cuma
+	// role tujuannya.
+	target, err := s.userRepo.FindByID(ctx, targetUserID)
+	if err != nil {
+		return submission_dto.PengurusEntry{}, apperror.NotFound("Pengguna tidak ditemukan")
+	}
+	if !pengurusRoleAllowed(caller.OrganizationTypeCode, target.RoleName) {
+		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role pengguna ini")
+	}
+	if err := s.setPengurusRole(ctx, targetUserID, homeOrgID, req.RoleName, caller.UserID); err != nil {
+		return submission_dto.PengurusEntry{}, err
+	}
+	return s.pengurusEntryFor(ctx, targetUserID, homeOrgID)
 }
 
 // ReassessKader mengizinkan kader ACTIVE mengisi ulang data Sensus Kader-nya
@@ -1498,6 +1769,53 @@ func (s *ServiceImpl) ReassessKader(ctx context.Context, id int64, caller Caller
 		return submission_dto.Response{}, apperror.Internal("")
 	}
 	return s.toResponse(sub, form.FormCode), nil
+}
+
+// CountAffectedByForm menghitung submission (lintas organisasi) yang akan
+// terdampak cascade publish — memenuhi submission_form_service.SubmissionCascader.
+func (s *ServiceImpl) CountAffectedByForm(ctx context.Context, formID int64) (int, error) {
+	return s.repo.CountByFormAndStatuses(ctx, formID, cascadeEligibleStatuses)
+}
+
+// EnqueueCascade memasukkan job reassessment massal ke jobqueue — memenuhi
+// submission_form_service.SubmissionCascader. Dipanggil
+// submission_form_service.PublishVersion setelah version baru berhasil dipublish.
+func (s *ServiceImpl) EnqueueCascade(ctx context.Context, in submission_form_service.CascadeInput) (int64, error) {
+	payload := submission_dto.CascadeJobPayload{
+		FormID: in.FormID, OldVersionID: in.OldVersionID, NewVersionID: in.NewVersionID, ActorID: in.ActorID,
+	}
+	return s.jobqueueSvc.Enqueue(ctx, jobqueue_dto.EnqueueInput{
+		Queue: jobqueue_model.QueueDefault, JobType: constants.JobSubmissionFormPublishCascade, Payload: payload,
+	})
+}
+
+// HandlePublishCascadeJob adalah handler jobqueue untuk
+// constants.JobSubmissionFormPublishCascade (didaftarkan lewat
+// jobqueueSvc.RegisterHandler di root router.go) — memproses seluruh
+// submission yang mengacu ke version lama form ini (status apa pun kecuali
+// DRAFT/CANCELLED/REJECTED, lihat cascadeEligibleStatuses) lewat reassessment
+// massal: jawaban lama di-remap ke version baru by fieldCode (mekanisme sama
+// dengan migrateToLatestVersion yang sudah dipakai ReassessKader), lalu
+// direset ke DRAFT dengan histori tetap tercatat. Query ulang dari
+// ListByFormAndStatuses di setiap retry otomatis idempotent: submission yang
+// sudah diproses sudah berstatus DRAFT, jadi tidak akan muncul lagi di hasil
+// query (lihat TechSpec §6).
+func (s *ServiceImpl) HandlePublishCascadeJob(ctx context.Context, payload string) error {
+	var p submission_dto.CascadeJobPayload
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		return err
+	}
+	subs, err := s.repo.ListByFormAndStatuses(ctx, p.FormID, cascadeEligibleStatuses)
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		migrated := s.migrateToLatestVersion(ctx, sub)
+		if err := s.repo.ReassessSubmission(ctx, migrated, p.ActorID, "REASSESSMENT_REQUESTED (bulk - form version published)"); err != nil {
+			return fmt.Errorf("reassess submission %d: %w", sub.SubmissionID, err)
+		}
+	}
+	return nil
 }
 
 // ReinstateKader "memutihkan kembali" kader berstatus REJECTED atas permintaan

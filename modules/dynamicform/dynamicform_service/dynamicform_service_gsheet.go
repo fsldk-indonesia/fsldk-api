@@ -287,17 +287,6 @@ func (s *ServiceImpl) GSheetResync(ctx context.Context, formID int64, actorID in
 	return s.gsheetStatus(form), nil
 }
 
-func (s *ServiceImpl) GSheetDisconnect(ctx context.Context, formID int64, actorID int64, perms []string) (dynamicform_dto.GSheetStatus, error) {
-	form, err := s.getOwnedForm(ctx, formID, actorID, perms)
-	if err != nil {
-		return dynamicform_dto.GSheetStatus{}, err
-	}
-	if err := s.repo.UpdateForm(ctx, formID, map[string]any{"gsheetEnabled": 0}); err != nil {
-		return dynamicform_dto.GSheetStatus{}, apperror.Internal("")
-	}
-	form.GsheetEnabled = false
-	return s.gsheetStatus(form), nil
-}
 
 // ---------------------------------------------------------------------------
 // jobqueue handlers (registered on the "default" queue)

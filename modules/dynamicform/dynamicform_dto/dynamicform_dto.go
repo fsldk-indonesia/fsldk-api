@@ -257,7 +257,7 @@ type SubmitResult struct {
 	IsMultipleSubmit    bool   `json:"isMultipleSubmit"`
 }
 
-// GSheetStatus is the reply of the gsheet connect/resync/disconnect endpoints.
+// GSheetStatus is the reply of the gsheet connect/resync endpoints.
 type GSheetStatus struct {
 	Enabled        bool   `json:"enabled"`
 	SpreadsheetURL string `json:"spreadsheetUrl"`

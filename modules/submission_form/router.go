@@ -31,6 +31,7 @@ func RegisterRoutes(rg *gin.RouterGroup, h submission_form_handler.Handler, mw *
 
 		g.GET("/versions/:versionID", view, h.GetVersion)
 		g.POST("/versions/:versionID/publish", manage, h.PublishVersion)
+		g.GET("/versions/:versionID/publish-impact", view, h.PublishImpact)
 		g.POST("/versions/:versionID/sections", manage, h.CreateSection)
 
 		g.PUT("/sections/:sectionID", manage, h.UpdateSection)

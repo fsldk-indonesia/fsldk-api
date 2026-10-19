@@ -79,6 +79,13 @@ type UserProfile struct {
 	OrganizationID       *int64   `json:"organizationID,omitempty"`
 	OrganizationTypeCode string   `json:"organizationTypeCode,omitempty"`
 	WildcardTierAccess   []string `json:"wildcardTierAccess,omitempty"`
+	// LdkTujuanOrganizationID adalah nilai MENTAH ms_user.organizationID,
+	// BUKAN versi efektif di atas (yang sengaja dikosongkan untuk Kader/
+	// Pengunjung, lihat resolveEffectiveOrg di auth_service_impl.go) — murni
+	// informasi "LDK Tujuan sudah dipilih atau belum" untuk Kader, TIDAK
+	// pernah dipakai cakupan akses. Dipakai halaman Pendataan supaya tidak
+	// minta pilih LDK lagi kalau sudah terkunci dari submission sebelumnya.
+	LdkTujuanOrganizationID *int64 `json:"ldkTujuanOrganizationID,omitempty"`
 }
 
 // AuthResponse adalah hasil login/google/refresh.

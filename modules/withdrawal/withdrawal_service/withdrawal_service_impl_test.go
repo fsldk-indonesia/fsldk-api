@@ -273,6 +273,9 @@ func (f *fakeUserRepository) UpdateCustomPhoto(ctx context.Context, id int64, ph
 	return nil
 }
 func (f *fakeUserRepository) MarkEmailVerified(ctx context.Context, id int64) error { return nil }
+func (f *fakeUserRepository) SetEmailVerified(ctx context.Context, id int64, verified bool) error {
+	return nil
+}
 func (f *fakeUserRepository) SoftDelete(ctx context.Context, id int64, updatedBy int64) error {
 	return nil
 }
@@ -281,6 +284,9 @@ func (f *fakeUserRepository) LogLogin(ctx context.Context, userID int64, ip, ua,
 }
 func (f *fakeUserRepository) TokenVersion(ctx context.Context, id int64) (int, error) { return 0, nil }
 func (f *fakeUserRepository) BumpTokenVersion(ctx context.Context, id int64) error     { return nil }
+func (f *fakeUserRepository) SetOrganizationID(ctx context.Context, id int64, organizationID int64) error {
+	return nil
+}
 
 type fakeWalletService struct{}
 

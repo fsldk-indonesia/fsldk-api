@@ -716,6 +716,59 @@ Approve/Reject menolak (`409 Conflict`) bila `status != pending`. Response menye
 
 ---
 
+## 8k. Welcome Popup (`/welcome-popup`)
+
+Modul singleton (satu baris `id=1`, `ms_welcome_popup`) — popup selamat datang di halaman Beranda publik. Super Admin mengelola HTML/JS/CSS **mentah** lewat CMS; backend tidak melakukan sanitasi apa pun (disuntikkan apa adanya ke publik, lihat migration `0040_welcomepopup.up.sql`). Mengosongkan field konten adalah state sah (mematikan popup tanpa menghapus histori) — tidak ada `validate:"required"` pada field kontennya.
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate Limit | Deskripsi |
+|---|---|---|---|
+| GET | `/public/welcome-popup` | 30x / menit / IP (burst 10) | `{ isEnabled, htmlContent, jsContent, cssContent }` — **tanpa** `updatedDate`/`updatedBy`. Dipanggil langsung dari halaman Beranda publik |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/welcome-popup` | `welcomepopup.view` | Baris singleton lengkap + `updatedDate` |
+| PUT | `/welcome-popup` | `welcomepopup.update` | Perbarui `{ isEnabled, htmlContent, jsContent, cssContent }` — tidak ada body lain, selalu menimpa baris `id=1` |
+
+---
+
+## 8l. Rapimnas Setup (`/rapimnas-setup`, `/rapimnas`)
+
+Modul singleton + 6 koleksi anak ber-`sortOrder` (`ms_rapimnas_setting` + `_gallery_image`/`_home_card`/`_rundown_day`+`_rundown_event`/`_resource`/`_pickup_location`/`_contact`) yang menggerakkan microsite **RAPIMNAS 1 FSLDK Indonesia 2026** (6 halaman publik `/rapimnas`, `/rapimnas/tentang`, `/jadwal`, `/arsip`, `/pendaftaran/panitia`, `/pendaftaran/peserta` — lihat `fsldk-web` ARCHITECTURE.md §6, shell `RapimnasLayoutComponent` sendiri di luar pola public/cms/kader). Super Admin only — konfigurasi event nasional, bukan untuk LDK/Puskomda/Puskomnas admin. Konten teks diseed dari repo referensi `rapimnas26` (Next.js) agar porting identik di hari pertama; field gambar diseed `NULL` (diunggah manual via CMS).
+
+### Publik (tanpa auth)
+
+| Method | Endpoint | Rate Limit | Deskripsi |
+|---|---|---|---|
+| GET | `/public/rapimnas` | 30x / menit / IP (burst 10) | Payload lengkap untuk seluruh 6 halaman publik sekali panggil (hero, countdown, feature cards, cta, footer, tentang, peserta, panitia) + 6 koleksi anak, rundown bernested events-nya. `resources` HANYA entri `isVisible=true` |
+
+### CMS — ✅🔒 + permission
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/rapimnas-setup` | `rapimnas.view` | Sama seperti respons publik ditambah `updatedDate`/`updatedBy`, dan `resources` membawa **seluruh** baris termasuk `isVisible=false` (supaya admin bisa mengaktifkan kembali arsip yang disembunyikan) |
+| PUT | `/rapimnas-setup` | `rapimnas.update` | Payload nested utuh (seluruh pengaturan + 6 koleksi anak), disubmit sekali lewat satu tombol Simpan. `sortOrder` pada tiap item child **diabaikan** — urutan final ditentukan oleh urutan array yang dikirim, bukan nilai integer field ini |
+
+**`PUT /rapimnas-setup`** (bentuk ringkas — field lengkap jauh lebih banyak, lihat `rapimnas_dto.UpdateRequest`)
+```json
+{
+  "heroBadgeText": "RAPIMNAS 1 FSLDK INDONESIA 2026",
+  "heroTitle": "Rapat Pimpinan Nasional FSLDK Indonesia 2026",
+  "countdownTargetDate": "2026-11-12T08:00:00Z",
+  "galleryImages": [{ "imageUrl": "...", "sortOrder": 0 }],
+  "rundownDays": [{ "dayLabel": "Hari Pertama", "dateText": "Kamis, 12 November 2026", "events": [{ "title": "Kedatangan Peserta", "description": "...", "venue": "", "time": "" }] }],
+  "resources": [{ "title": "...", "url": "...", "isVisible": true }],
+  "pickupLocations": [{ "name": "Stasiun Tawang", "type": "Stasiun Kereta", "mapLink": "..." }],
+  "contacts": [{ "contactType": "peserta_cp", "name": "Fakhri", "phoneNumber": "0895-3842-52700" }]
+}
+```
+`contactType` pada `contacts` wajib salah satu dari `peserta_cp` (CP Pendaftaran Peserta) atau `footer_wa` (kontak WA footer) — dua jenis ditampung satu tabel, dibedakan kolom ini.
+
+---
+
 ## 9. Organization (`/organizations`, `/me/organizations`) — ✅🔒
 
 Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") caller diresolusi server-side dari `organizationID`/`organizationTypeCode` (cascade: LDK→diri sendiri, Puskomda→diri+LDK di bawahnya, Puskomnas→seluruh organisasi) **atau** `wildcardTierAccess` (mem-bypass cascade untuk akun seperti Super Admin) — **tidak pernah** dipercaya dari input klien. Endpoint bertanda `RequireOrganizationScope` menolak (`403`) permintaan ke `:id` di luar cakupan caller, terlepas dari apa yang ditampilkan UI.
@@ -947,12 +1000,13 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `dynamicform.view/create/update/delete/publish/manage.all` | Formulir Dinamis | `kantong_amal.campaign.view/create/update/delete/publish/moderate` | Kantong Amal — Campaign |
 | `kantong_amal.donation.view/create/update/delete` | Kantong Amal — Donasi | `kantong_amal.wallet.view` | Kantong Amal — Wallet |
 | `kantong_amal.withdrawal.request/approve/process` | Kantong Amal — Penarikan Dana | `kantong_amal.report.view/export`, `kantong_amal.audit.view` | Kantong Amal — Laporan & Audit |
+| `welcomepopup.view/update` | Welcome Popup (Super Admin only) | `rapimnas.view/update` | Rapimnas Setup (Super Admin only) |
 
 `comment.*` beda pola dari modul lain: **tidak ada** `comment.create` (siapa pun yang login+verified boleh berkomentar, tanpa permission apa pun). `comment.view` membuka menu sidebar "Komentar" (moderasi/listing); `comment.update` dan `comment.delete` *action-only* (tanpa menu) dan hanya jadi jalur **tambahan** di atas hak pemilik komentar yang selalu ada — lihat [Arsitektur §12](./ARCHITECTURE.md#12-komentar-kedalaman-balasan-moderasi-dan-mention).
 
-`shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `qrcode.approve` mengikuti pola persis yang sama (§8j) — permission terpisah dari `qrcode.create/update/delete`, dipegang Super Admin & Editor. `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§14a/§14b) — keduanya modul operasional platform, bukan konten editorial.
+`shortlink.approve` adalah permission terpisah dari `shortlink.create/update/delete` — dipegang **Super Admin & Editor**, bukan Kontributor (§8a). `qrcode.approve` mengikuti pola persis yang sama (§8j) — permission terpisah dari `qrcode.create/update/delete`, dipegang Super Admin & Editor. `setting.*` dan `jobqueue.*` **hanya** Super Admin — Editor/Kontributor tidak dapat akses App Settings maupun Job Queue sama sekali (§14a/§14b) — keduanya modul operasional platform, bukan konten editorial. `welcomepopup.*` dan `rapimnas.*` **juga hanya** Super Admin (§8k/§8l) — konten HTML/JS/CSS mentah tanpa sanitasi dan konfigurasi event nasional, keduanya terlalu sensitif untuk Editor/Kontributor.
 
-Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/qrcode/event/financeformat penuh termasuk `shortlink.approve`/`qrcode.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/qrcode/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql), [`0037_qrcode.up.sql`](../migrations/0037_qrcode.up.sql), dan [`0038_qrcode_request.up.sql`](../migrations/0038_qrcode_request.up.sql).
+Role bawaan pra-proyek: **Super Admin** (semua permission), **Editor** (news/article/shortlink/qrcode/event/financeformat penuh termasuk `shortlink.approve`/`qrcode.approve` + moderasi komentar `comment.view/update/delete`, tanpa `setting.*`/`jobqueue.*`/`welcomepopup.*`/`rapimnas.*`), **Kontributor** (news/article tanpa publish/delete, tanpa shortlink/qrcode/event/komentar/setting/jobqueue), **Member** (pendaftar publik — bisa berkomentar, tanpa akses CMS apa pun). Detail lengkap lihat [`migrations/0002_seed.up.sql`](../migrations/0002_seed.up.sql), [`0004_shortlink.up.sql`](../migrations/0004_shortlink.up.sql), [`0005_comment.up.sql`](../migrations/0005_comment.up.sql), [`0005_event.up.sql`](../migrations/0005_event.up.sql), [`0006_comment_update_permission.up.sql`](../migrations/0006_comment_update_permission.up.sql), [`0008_setting.up.sql`](../migrations/0008_setting.up.sql), [`0009_shortlink_request.up.sql`](../migrations/0009_shortlink_request.up.sql), [`0010_job_queue.up.sql`](../migrations/0010_job_queue.up.sql), [`0011_shortlink_request_whatsapp_reply.up.sql`](../migrations/0011_shortlink_request_whatsapp_reply.up.sql), [`0037_qrcode.up.sql`](../migrations/0037_qrcode.up.sql), [`0038_qrcode_request.up.sql`](../migrations/0038_qrcode_request.up.sql), [`0040_welcomepopup.up.sql`](../migrations/0040_welcomepopup.up.sql), dan [`0046_rapimnas.up.sql`](../migrations/0046_rapimnas.up.sql).
 
 Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per akun, tanpa multi-role:
 

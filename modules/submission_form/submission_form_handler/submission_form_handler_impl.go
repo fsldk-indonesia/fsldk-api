@@ -127,6 +127,19 @@ func (h *HandlerImpl) PublishVersion(c *gin.Context) {
 	httphelper.Success(c, "Version berhasil dipublish", data)
 }
 
+func (h *HandlerImpl) PublishImpact(c *gin.Context) {
+	id, ok := idFromParam(c, "versionID")
+	if !ok {
+		return
+	}
+	data, err := h.svc.PublishImpact(c.Request.Context(), id)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
 func (h *HandlerImpl) CreateSection(c *gin.Context) {
 	versionID, ok := idFromParam(c, "versionID")
 	if !ok {

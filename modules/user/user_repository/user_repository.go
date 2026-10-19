@@ -29,6 +29,15 @@ type Repository interface {
 	// themselves).
 	SearchActive(ctx context.Context, search string, limit int) ([]user_model.User, error)
 	Update(ctx context.Context, id int64, fullName, email string, roleID int64, isActive bool, organizationID sql.NullInt64, wildcardTierAccess sql.NullString, updatedBy int64) error
+	// SetOrganizationID mengisi "LDK Tujuan" Kader SEKALI SAJA (WHERE
+	// organizationID IS NULL, pola sama seperti MarkEmailVerified) saat
+	// submission Sensus Kader pertama mereka dibuat — dipakai
+	// submission_service.Create, BUKAN user_service.Update (yang mengganti
+	// seluruh kolom identitas sekaligus) karena di sini cukup 1 kolom & harus
+	// atomic terhadap percobaan ganda. Tidak melakukan apa-apa (bukan error)
+	// bila organizationID sudah terisi — nilai lama yang menang, konsisten
+	// dengan "LDK Tujuan Kader terkunci seumur hidup".
+	SetOrganizationID(ctx context.Context, id int64, organizationID int64) error
 	// UpdateContactInfo memperbarui kolom kontak swadaya (No Whatsapp/Alamat)
 	// yang dapat diubah pemilik akun sendiri lewat Profil Saya — terpisah dari
 	// Update() (dipakai admin Kelola Pengguna) supaya self-service tidak perlu
@@ -45,6 +54,12 @@ type Repository interface {
 	// resolvedPhotoURL): customPhotoURL > photoURL > inisial huruf di FE.
 	UpdateCustomPhoto(ctx context.Context, id int64, photoURL string) error
 	MarkEmailVerified(ctx context.Context, id int64) error
+	// SetEmailVerified lets an admin directly force-verify or un-verify an
+	// account (Kelola Pengguna Update), unlike MarkEmailVerified (self-verify
+	// only, guarded by `WHERE emailVerifiedDate IS NULL`). Verifying preserves
+	// an already-set timestamp instead of overwriting it; un-verifying clears
+	// it to NULL.
+	SetEmailVerified(ctx context.Context, id int64, verified bool) error
 	SoftDelete(ctx context.Context, id int64, updatedBy int64) error
 	LogLogin(ctx context.Context, userID int64, ip, ua, status string) error
 	// TokenVersion mengembalikan versi token aktif akun (lihat migrations

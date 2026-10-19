@@ -28,6 +28,13 @@ import (
 const (
 	roleNamePuskomdaVerifikator  = "Puskomda Verifikator"
 	roleNamePuskomnasVerifikator = "Puskomnas Verifikator"
+	// roleNamePengunjung dibutuhkan resolveEffectiveOrg di bawah — Pengunjung
+	// yang baru mendaftar Sensus Kader bisa saja sudah punya
+	// ms_user.organizationID terisi (LDK Tujuan, lihat
+	// submission_service_impl.go) SEBELUM dipromosikan jadi Kader (promosi
+	// baru terjadi setelah LDK menyetujui, lihat promoteToKaderRole) — tanpa
+	// pengecualian ini, Pengunjung kena bug yang sama persis dengan Kader.
+	roleNamePengunjung = "Pengunjung"
 )
 
 // emailVerified & hasPassword adalah helper murni fungsi (bukan method pada
@@ -79,16 +86,29 @@ func NewService(
 // BUKAN organisasi bertipe LDK/PUSKOMDA/PUSKOMNAS campur seperti sebelumnya.
 // Cakupan akses tier PUSKOMDA/PUSKOMNAS diturunkan dari LDK yang di-assign
 // lewat rantai parentOrganizationID, ditentukan oleh ROLE:
-//   - LDK Admin/Kader (& role lain): organizationID mentah apa adanya (sudah
-//     benar type-nya, LDK, tidak perlu diturunkan).
+//   - LDK Admin (& role lain): organizationID mentah apa adanya (sudah benar
+//     type-nya, LDK, tidak perlu diturunkan).
 //   - Puskomda Verifikator: Puskomda induk langsung dari LDK yang di-assign.
 //   - Puskomnas Verifikator: root Puskomnas nasional — LDK yang di-assign
 //     tidak memengaruhi cakupan sama sekali (Puskomnas selalu tunggal), field
 //     Organisasi tetap wajib diisi di form cuma untuk konsistensi UI.
+//   - Kader & Pengunjung: SELALU nil/kosong di sini TERLEPAS dari apa yang
+//     tersimpan di ms_user.organizationID (lihat ARCHITECTURE.md §11 —
+//     "Tidak ada cakupan organisasi"). Kolom itu dipakai Kader (dan Pengunjung
+//     yang belum sempat dipromosikan — lihat promoteToKaderRole di
+//     submission_service_impl.go) murni sebagai "LDK Tujuan" (identik dengan
+//     field LDK role lain, supaya nilainya nempel otomatis kalau akun ini
+//     dipromosikan jadi Kader lalu LDK Admin — lihat resolveProvisioning &
+//     submission_service.Create), BUKAN sinyal cakupan akses — makanya
+//     diputus di titik pusat ini, bukan di organizationID mentahnya sendiri,
+//     supaya GET/List pengguna (toResponse di user_service) tetap bisa
+//     menampilkan nilainya apa adanya ke form admin.
 func (s *ServiceImpl) resolveEffectiveOrg(ctx context.Context, u user_model.User) (*int64, string, error) {
 	assigned := organizationID(u)
 	assignedType := u.OrganizationTypeCode.String
 	switch u.RoleName {
+	case constants.RoleKader, roleNamePengunjung:
+		return nil, "", nil
 	case roleNamePuskomdaVerifikator:
 		if assigned == nil {
 			return nil, "", nil
@@ -171,7 +191,7 @@ func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest
 		return auth_dto.RegisterResponse{}, apperror.Internal("Gagal membuat akun")
 	}
 
-	if err := s.sendVerification(ctx, userID, req.FullName, email); err != nil {
+	if err := s.SendVerificationEmail(ctx, userID, req.FullName, email); err != nil {
 		return auth_dto.RegisterResponse{}, apperror.Internal("Akun dibuat namun email verifikasi gagal dikirim. Silakan gunakan kirim ulang.")
 	}
 
@@ -183,7 +203,7 @@ func (s *ServiceImpl) Register(ctx context.Context, req auth_dto.RegisterRequest
 	}, nil
 }
 
-func (s *ServiceImpl) sendVerification(ctx context.Context, userID int64, name, email string) error {
+func (s *ServiceImpl) SendVerificationEmail(ctx context.Context, userID int64, name, email string) error {
 	_ = s.store.InvalidateAll(ctx, userID, constants.EmailTokenVerification)
 
 	tokenStr, err := security.RandomToken(32)
@@ -219,7 +239,7 @@ func (s *ServiceImpl) ResendVerification(ctx context.Context, userID int64) erro
 	if emailVerified(u) {
 		return apperror.Unprocessable("Email Anda sudah terverifikasi")
 	}
-	if err := s.sendVerification(ctx, u.UserID, u.FullName, u.Email); err != nil {
+	if err := s.SendVerificationEmail(ctx, u.UserID, u.FullName, u.Email); err != nil {
 		return apperror.Internal("Gagal mengirim email verifikasi")
 	}
 	return nil
@@ -485,6 +505,9 @@ func (s *ServiceImpl) profileFor(ctx context.Context, u user_model.User) (auth_d
 		Address:              u.Address.String,
 		OrganizationID:       effectiveOrgID,
 		OrganizationTypeCode: effectiveOrgType,
+	}
+	if raw := organizationID(u); raw != nil {
+		profile.LdkTujuanOrganizationID = raw
 	}
 	if w := effectiveWildcardTierAccess(u); w != "" {
 		profile.WildcardTierAccess = strings.Split(w, ",")

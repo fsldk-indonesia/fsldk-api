@@ -236,10 +236,8 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	permSvc := permission_service.NewService(permRepo)
 	orgSvc := organization_service.NewService(orgRepo)
 	walletSvc := wallet_service.NewService(walletRepo, audit, db)
-	formSvc := submission_form_service.NewService(formRepo, audit)
-	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc)
 	authSvc := auth_service.NewService(userRepo, roleRepo, permSvc, orgRepo, tm, tokenStore, mail, gverify, cfg)
-	userSvc := user_service.NewService(userRepo, orgSvc, audit)
+	userSvc := user_service.NewService(userRepo, roleRepo, orgSvc, audit, authSvc)
 	roleSvc := role_service.NewService(roleRepo)
 	settingSvc := setting_service.NewService(settingRepo)
 	// dashSvc butuh settingSvc untuk menghitung banner peringatan deadline
@@ -270,6 +268,15 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	}
 	// Workers are started later (see below) so every RegisterHandler call —
 	// e.g. the dynamicform Google Sheets mirror — is in place first.
+
+	// subSvc di-inject jobqueueSvc untuk Enqueue job cascade reset/reassessment
+	// massal saat formSvc mem-publish version baru (lihat EnqueueCascade) —
+	// makanya baru dibuat di sini, setelah jobqueueSvc siap, mengikuti pola
+	// campaignSvc/donationSvc/withdrawalSvc di bawah. subSvc memenuhi
+	// submission_form_service.SubmissionCascader lewat dua method barunya
+	// (CountAffectedByForm/EnqueueCascade).
+	subSvc := submission_service.NewService(subRepo, formRepo, orgRepo, userRepo, roleRepo, orgSvc, jobqueueSvc)
+	formSvc := submission_form_service.NewService(formRepo, audit, subSvc)
 
 	// campaignSvc/donationSvc/withdrawalSvc di-inject jobqueueSvc sebagai
 	// JobEnqueuer untuk notifikasi WhatsApp async (Phase 8, §14 techspec) —
@@ -326,6 +333,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetDelete, dynamicFormSvc.HandleGSheetDeleteJob)
 	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetHeader, dynamicFormSvc.HandleGSheetHeaderJob)
 	jobqueueSvc.RegisterHandler(constants.JobDynamicFormGSheetRebuild, dynamicFormSvc.HandleGSheetRebuildJob)
+	jobqueueSvc.RegisterHandler(constants.JobSubmissionFormPublishCascade, subSvc.HandlePublishCascadeJob)
 
 	// Now that every job handler is registered, start the queue workers.
 	for i := 0; i < workerCount; i++ {

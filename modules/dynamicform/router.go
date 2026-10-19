@@ -63,6 +63,5 @@ func RegisterCMSRoutes(rg *gin.RouterGroup, h dynamicform_handler.Handler, mw *m
 
 		g.POST("/:id/gsheet/connect", mw.RequirePermission(constants.PermDynamicFormUpdate), h.GSheetConnect)
 		g.POST("/:id/gsheet/resync", mw.RequirePermission(constants.PermDynamicFormUpdate), h.GSheetResync)
-		g.DELETE("/:id/gsheet", mw.RequirePermission(constants.PermDynamicFormUpdate), h.GSheetDisconnect)
 	}
 }

@@ -162,6 +162,12 @@ func (r *RepositoryImpl) Update(ctx context.Context, id int64, fullName, email s
 	}).Error
 }
 
+func (r *RepositoryImpl) SetOrganizationID(ctx context.Context, id int64, organizationID int64) error {
+	return r.db.WithContext(ctx).Table("ms_user").
+		Where("userID = ? AND organizationID IS NULL", id).
+		Updates(map[string]interface{}{"organizationID": organizationID, "updatedDate": time.Now()}).Error
+}
+
 func (r *RepositoryImpl) UpdateContactInfo(ctx context.Context, id int64, phoneNumber, address sql.NullString) error {
 	return r.db.WithContext(ctx).Table("ms_user").Where("userID = ?", id).Updates(map[string]interface{}{
 		"phoneNumber": phoneNumber,
@@ -218,6 +224,23 @@ func (r *RepositoryImpl) MarkEmailVerified(ctx context.Context, id int64) error 
 	return r.db.WithContext(ctx).Table("ms_user").
 		Where("userID = ? AND emailVerifiedDate IS NULL", id).
 		Updates(map[string]interface{}{"emailVerifiedDate": time.Now(), "updatedDate": time.Now()}).Error
+}
+
+// SetEmailVerified lets an admin directly force-verify or un-verify an
+// account from the Update form. COALESCE keeps an already-set
+// emailVerifiedDate unchanged (so re-verifying doesn't lose the original
+// timestamp) — the Go-side time.Now() argument (rather than SQL NOW()) keeps
+// this portable between MySQL (production) and SQLite (tests).
+func (r *RepositoryImpl) SetEmailVerified(ctx context.Context, id int64, verified bool) error {
+	now := time.Now()
+	if verified {
+		return r.db.WithContext(ctx).Exec(
+			"UPDATE ms_user SET emailVerifiedDate = COALESCE(emailVerifiedDate, ?), updatedDate = ? WHERE userID = ?",
+			now, now, id).Error
+	}
+	return r.db.WithContext(ctx).Exec(
+		"UPDATE ms_user SET emailVerifiedDate = NULL, updatedDate = ? WHERE userID = ?",
+		now, id).Error
 }
 
 func (r *RepositoryImpl) SoftDelete(ctx context.Context, id int64, updatedBy int64) error {

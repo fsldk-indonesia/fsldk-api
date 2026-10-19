@@ -29,6 +29,15 @@ func idParam(c *gin.Context) (int64, bool) {
 	return id, true
 }
 
+func userIDParam(c *gin.Context) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param("userID"), 10, 64)
+	if err != nil || id <= 0 {
+		httphelper.Error(c, apperror.BadRequest("ID pengguna tidak valid"))
+		return 0, false
+	}
+	return id, true
+}
+
 func callerScope(c *gin.Context) submission_service.CallerScope {
 	return submission_service.CallerScope{
 		UserID:                  appctx.UserID(c),
@@ -308,6 +317,49 @@ func (h *HandlerImpl) DeactivateKader(c *gin.Context) {
 		return
 	}
 	httphelper.Success(c, "Kader berhasil dinonaktifkan", nil)
+}
+
+func (h *HandlerImpl) ReactivateKader(c *gin.Context) {
+	id, ok := idParam(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.ReactivateKader(c.Request.Context(), id, callerScope(c)); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Kader berhasil diaktifkan kembali", nil)
+}
+
+func (h *HandlerImpl) ListPengurus(c *gin.Context) {
+	data, err := h.svc.ListPengurus(c.Request.Context(), callerScope(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", data)
+}
+
+func (h *HandlerImpl) UpdatePengurusRole(c *gin.Context) {
+	userID, ok := userIDParam(c)
+	if !ok {
+		return
+	}
+	var req submission_dto.UpdatePengurusRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httphelper.Error(c, apperror.BadRequest("Format permintaan tidak valid"))
+		return
+	}
+	if err := validation.Struct(req); err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	data, err := h.svc.UpdatePengurusRole(c.Request.Context(), userID, callerScope(c), req)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "Role pengurus berhasil diperbarui", data)
 }
 
 func (h *HandlerImpl) ReassessKader(c *gin.Context) {

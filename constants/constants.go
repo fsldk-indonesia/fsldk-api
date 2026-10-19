@@ -124,6 +124,10 @@ const (
 	PermSubmissionReassess       = "submission.reassess"
 	PermKaderDeactivate          = "kader.deactivate"
 
+	PermPengurusLDKManage       = "pengurus.ldk.manage"
+	PermPengurusPuskomdaManage  = "pengurus.puskomda.manage"
+	PermPengurusPuskomnasManage = "pengurus.puskomnas.manage"
+
 	PermReportRegionView     = "report.region.view"
 	PermReportRegionExport   = "report.region.export"
 	PermReportNationalView   = "report.national.view"
@@ -420,6 +424,13 @@ const (
 	JobDynamicFormGSheetDelete  = "dynamicform.gsheet.delete"  // payload: {formID, submissionID, gsheetRowIndex}
 	JobDynamicFormGSheetHeader  = "dynamicform.gsheet.header"  // payload: {formID}
 	JobDynamicFormGSheetRebuild = "dynamicform.gsheet.rebuild" // payload: {formID}
+)
+
+// JobSubmissionFormPublishCascade memproses reassessment massal submission
+// saat sebuah submission_form version baru dipublish (lihat
+// submission_service.HandlePublishCascadeJob). Payload: submission_dto.CascadeJobPayload.
+const (
+	JobSubmissionFormPublishCascade = "submission_form.publish_cascade"
 )
 
 // Tipe entry tr_wallet_ledger (Kantong Amal).

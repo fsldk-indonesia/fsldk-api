@@ -211,7 +211,17 @@ func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope, or
 	if err != nil {
 		return nil, err
 	}
-	if q == "" && siblingOf != nil {
+	// Filter sibling ini HANYA berlaku untuk caller Puskomda Verifikator —
+	// accessible set mereka (ListSelfAndChildren) sudah mencakup banyak LDK
+	// sekaligus dari Puskomda yang sama, jadi perlu dipersempit ke LDK
+	// semilik `siblingOf` di context switcher lokal. Akun ber-wildcardTierAccess
+	// (Super Admin dkk) DAN caller Puskomnas Verifikator (resolveAccessible
+	// mengembalikan ListAll — seluruh LDK nasional lintas-Puskomda) TIDAK
+	// ikut dipersempit: sebelumnya syarat ini cuma mengecualikan wildcard,
+	// jadi Puskomnas Verifikator asli (non-wildcard) ikut kena filter ini
+	// dan switcher-nya cuma menampilkan LDK di satu Puskomda yang sedang
+	// dibuka, padahal caller berwenang atas seluruh LDK nasional.
+	if q == "" && siblingOf != nil && caller.WildcardTierAccess == "" && caller.OrganizationTypeCode == constants.OrgTypePuskomda {
 		sibling, err := s.repo.FindByID(ctx, *siblingOf)
 		if err == nil && sibling.ParentOrganizationID.Valid {
 			parentID := sibling.ParentOrganizationID.Int64
@@ -232,10 +242,11 @@ func (s *ServiceImpl) AccessibleList(ctx context.Context, caller CallerScope, or
 			parentID = &v
 		}
 		out = append(out, organization_dto.MeOrganization{
-			OrganizationID:       o.OrganizationID,
-			OrganizationTypeCode: o.OrganizationTypeCode,
-			OrganizationName:     o.OrganizationName,
-			ParentOrganizationID: parentID,
+			OrganizationID:         o.OrganizationID,
+			OrganizationTypeCode:   o.OrganizationTypeCode,
+			OrganizationName:       o.OrganizationName,
+			ParentOrganizationID:   parentID,
+			ParentOrganizationName: o.ParentOrganizationName.String,
 		})
 	}
 	return out, nil
@@ -249,10 +260,11 @@ func (s *ServiceImpl) Directory(ctx context.Context, typeCode string) ([]organiz
 	out := make([]organization_dto.DirectoryEntry, 0, len(orgs))
 	for _, o := range orgs {
 		out = append(out, organization_dto.DirectoryEntry{
-			OrganizationID:   o.OrganizationID,
-			OrganizationName: o.OrganizationName,
-			ProvinceName:     o.ProvinceName.String,
-			CityName:         o.CityName.String,
+			OrganizationID:         o.OrganizationID,
+			OrganizationName:       o.OrganizationName,
+			ParentOrganizationName: o.ParentOrganizationName.String,
+			ProvinceName:           o.ProvinceName.String,
+			CityName:               o.CityName.String,
 		})
 	}
 	return out, nil

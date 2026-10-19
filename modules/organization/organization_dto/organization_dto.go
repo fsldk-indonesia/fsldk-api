@@ -24,10 +24,11 @@ type Response struct {
 // MeOrganization adalah entri ringkas untuk daftar organisasi yang dapat
 // diakses pengguna (dashboard switcher).
 type MeOrganization struct {
-	OrganizationID       int64  `json:"organizationID"`
-	OrganizationTypeCode string `json:"organizationTypeCode"`
-	OrganizationName     string `json:"organizationName"`
-	ParentOrganizationID *int64 `json:"parentOrganizationID"`
+	OrganizationID         int64  `json:"organizationID"`
+	OrganizationTypeCode   string `json:"organizationTypeCode"`
+	OrganizationName       string `json:"organizationName"`
+	ParentOrganizationID   *int64 `json:"parentOrganizationID"`
+	ParentOrganizationName string `json:"parentOrganizationName,omitempty"`
 }
 
 // DirectoryEntry adalah entri ringkas organisasi aktif untuk kebutuhan
@@ -35,10 +36,11 @@ type MeOrganization struct {
 // pendaftaran) — tidak memuat data kontak, tidak dibatasi cakupan akses
 // pemanggil, karena nama/wilayah organisasi bukan data sensitif.
 type DirectoryEntry struct {
-	OrganizationID   int64  `json:"organizationID"`
-	OrganizationName string `json:"organizationName"`
-	ProvinceName     string `json:"provinceName,omitempty"`
-	CityName         string `json:"cityName,omitempty"`
+	OrganizationID         int64  `json:"organizationID"`
+	OrganizationName       string `json:"organizationName"`
+	ParentOrganizationName string `json:"parentOrganizationName,omitempty"`
+	ProvinceName           string `json:"provinceName,omitempty"`
+	CityName               string `json:"cityName,omitempty"`
 }
 
 // CreateRequest adalah body membuat organisasi baru. ParentOrganizationID

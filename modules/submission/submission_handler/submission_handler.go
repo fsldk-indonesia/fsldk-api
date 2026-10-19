@@ -22,6 +22,10 @@ type Handler interface {
 	ListKaders(c *gin.Context)
 	GetKaderCode(c *gin.Context)
 	DeactivateKader(c *gin.Context)
+	ReactivateKader(c *gin.Context)
 	ReassessKader(c *gin.Context)
 	ReinstateKader(c *gin.Context)
+
+	ListPengurus(c *gin.Context)
+	UpdatePengurusRole(c *gin.Context)
 }
