@@ -25,23 +25,33 @@ type CreateRequest struct {
 
 // Response adalah representasi withdrawal untuk pengaju/pemilik campaign & CMS.
 type Response struct {
-	WithdrawalID             int64      `json:"withdrawalID"`
-	WithdrawalRef            string     `json:"withdrawalRef"`
-	CampaignID               int64      `json:"campaignID"`
-	CampaignTitle            string     `json:"campaignTitle"`
-	Amount                   float64    `json:"amount"`
-	Fee                      float64    `json:"fee"`
-	NetAmount                float64    `json:"netAmount"`
-	BeneficiaryBankCode      string     `json:"beneficiaryBankCode"`
-	BeneficiaryAccountNumber string     `json:"beneficiaryAccountNumber"`
-	BeneficiaryAccountHolder string     `json:"beneficiaryAccountHolder"`
-	Status                   string     `json:"status"`
-	RejectionReason          string     `json:"rejectionReason,omitempty"`
-	ApprovedDate             *time.Time `json:"approvedDate,omitempty"`
-	ExecutedDate             *time.Time `json:"executedDate,omitempty"`
-	CompletedDate            *time.Time `json:"completedDate,omitempty"`
-	ReceiptURL               string     `json:"receiptUrl,omitempty"`
-	CreatedDate              time.Time  `json:"createdDate"`
+	WithdrawalID             int64   `json:"withdrawalID"`
+	WithdrawalRef            string  `json:"withdrawalRef"`
+	CampaignID               int64   `json:"campaignID"`
+	CampaignTitle            string  `json:"campaignTitle"`
+	Amount                   float64 `json:"amount"`
+	Fee                      float64 `json:"fee"`
+	NetAmount                float64 `json:"netAmount"`
+	BeneficiaryBankCode      string  `json:"beneficiaryBankCode"`
+	BeneficiaryAccountNumber string  `json:"beneficiaryAccountNumber"`
+	BeneficiaryAccountHolder string  `json:"beneficiaryAccountHolder"`
+	Status                   string  `json:"status"`
+	RejectionReason          string  `json:"rejectionReason,omitempty"`
+	// GatewayMessage adalah pesan asli BisaTopup saat gateway menolak
+	// disbursement langsung (lihat withdrawal_model.GatewayMessage) — kosong
+	// bila penolakan datang lewat callback async (tidak pernah ada pesan).
+	GatewayMessage string `json:"gatewayMessage,omitempty"`
+	// GatewayResponseJSON adalah raw JSON respons/callback gateway terakhir
+	// (hasil Disburse() saat proses awal, ditimpa payload callback webhook
+	// begitu datang) — ditampilkan sebagai "Raw Callback Response"
+	// collapsible di Detail Penarikan untuk kebutuhan debug/support tanpa
+	// perlu buka database, pola sama ldksyahid-app.
+	GatewayResponseJSON string     `json:"gatewayResponseJSON,omitempty"`
+	ApprovedDate        *time.Time `json:"approvedDate,omitempty"`
+	ExecutedDate        *time.Time `json:"executedDate,omitempty"`
+	CompletedDate       *time.Time `json:"completedDate,omitempty"`
+	ReceiptURL          string     `json:"receiptUrl,omitempty"`
+	CreatedDate         time.Time  `json:"createdDate"`
 }
 
 // InquiryRequest adalah body verifikasi rekening tujuan sebelum submit.

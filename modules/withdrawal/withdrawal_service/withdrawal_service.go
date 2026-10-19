@@ -47,7 +47,10 @@ type Service interface {
 	Process(ctx context.Context, withdrawalID, actorUserID int64) (withdrawal_dto.Response, error)
 	// ProcessCallback menangani webhook disbursement — diamankan URL path
 	// secret (bukan signature, Bisabiller tidak mengirimkannya untuk transfer).
-	ProcessCallback(ctx context.Context, req withdrawal_dto.DisbursementCallbackRequest, urlSecret string) error
+	// rawBody (payload JSON mentah webhook) dipersist ke GatewayResponseJSON
+	// untuk kebutuhan debug/support ("Raw Callback Response" di Detail
+	// Penarikan), menimpa hasil Disburse() sinkron yang kurang lengkap.
+	ProcessCallback(ctx context.Context, req withdrawal_dto.DisbursementCallbackRequest, rawBody, urlSecret string) error
 
 	Inquiry(ctx context.Context, req withdrawal_dto.InquiryRequest) (withdrawal_dto.InquiryResponse, error)
 	ListBanks(ctx context.Context) ([]withdrawal_dto.BankListItem, error)

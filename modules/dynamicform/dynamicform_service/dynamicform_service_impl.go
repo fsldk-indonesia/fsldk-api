@@ -210,9 +210,6 @@ func (s *ServiceImpl) toFormResponse(form dynamicform_model.Form, fields []dynam
 	if id := strOr(form.GdriveAttachmentsFolderID); id != "" {
 		fr.GdriveAttachmentsURL = "https://drive.google.com/drive/folders/" + id
 	}
-	if id := strOr(form.GdriveAssetsFolderID); id != "" {
-		fr.GdriveAssetsURL = "https://drive.google.com/drive/folders/" + id
-	}
 	for _, f := range fields {
 		fr.Fields = append(fr.Fields, toFieldResponse(f))
 	}

@@ -27,13 +27,18 @@ const maxLoggedCallbackBodyBytes = 1000
 // Body yang berisi sesuatu tapi BUKAN JSON valid tetap dianggap error
 // seperti biasa (isPing=false, err != nil) — toleransi ini murni untuk body
 // kosong, bukan untuk payload yang salah format.
-func BindCallbackJSON(c *gin.Context, obj interface{}) (isPing bool, err error) {
+//
+// rawBody dikembalikan apa adanya (nil bila ping/error) supaya caller yang
+// perlu menyimpan payload mentah gateway untuk kebutuhan debug/audit (lihat
+// withdrawal_service.processCallbackTx) tidak perlu membaca ulang body —
+// stream request sudah sekali-habis dibaca di sini.
+func BindCallbackJSON(c *gin.Context, obj interface{}) (rawBody []byte, isPing bool, err error) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if len(bytes.TrimSpace(body)) == 0 {
-		return true, nil
+		return nil, true, nil
 	}
 	if err := json.Unmarshal(body, obj); err != nil {
 		// Body non-kosong tapi gagal di-parse — kemungkinan gateway pihak
@@ -47,7 +52,7 @@ func BindCallbackJSON(c *gin.Context, obj interface{}) (isPing bool, err error) 
 		}
 		log.Printf("[CALLBACK] gagal parse body dari %s %s: %v — body mentah (maks %d byte): %s",
 			c.Request.Method, c.Request.URL.Path, err, maxLoggedCallbackBodyBytes, string(logged))
-		return false, err
+		return nil, false, err
 	}
-	return false, nil
+	return body, false, nil
 }

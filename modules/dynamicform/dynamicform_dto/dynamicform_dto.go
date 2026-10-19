@@ -166,7 +166,6 @@ type FormResponse struct {
 	GsheetLastSyncDate     string          `json:"gsheetLastSyncDate"`
 	GsheetLastSyncError    string          `json:"gsheetLastSyncError"`
 	GdriveAttachmentsURL   string          `json:"gdriveAttachmentsUrl"` // Drive folder for respondent uploads
-	GdriveAssetsURL        string          `json:"gdriveAssetsUrl"`      // Drive folder for builder images
 	TotalSubmission        int             `json:"totalSubmission"`
 	IsActive               bool            `json:"isActive"`
 	CreatedDate            string          `json:"createdDate"`

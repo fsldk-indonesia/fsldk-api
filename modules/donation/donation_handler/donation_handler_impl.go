@@ -76,7 +76,7 @@ func (h *HandlerImpl) DownloadReceipt(c *gin.Context) {
 // standar seperti endpoint lain, cukup HTTP 200 untuk menandakan sukses.
 func (h *HandlerImpl) Callback(c *gin.Context) {
 	var req donation_dto.CallbackRequest
-	isPing, err := httphelper.BindCallbackJSON(c, &req)
+	_, isPing, err := httphelper.BindCallbackJSON(c, &req)
 	if err != nil {
 		httphelper.Error(c, apperror.BadRequest("Format callback tidak valid"))
 		return

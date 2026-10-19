@@ -487,9 +487,17 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 	if gerr != nil && errors.Is(gerr, bisatopup.ErrGatewayRejected) {
 		// Penolakan eksplisit gateway — beda dari timeout/tidak pasti, aman
 		// untuk langsung FAILED + release reservasi segera (§11.7).
+		// Pesan asli Bisabiller ikut dipersist & dikembalikan ke admin CMS
+		// (beda dari donation_service yang sengaja menyembunyikannya dari
+		// donatur publik) — withdrawal murni halaman admin, bukan donor-facing.
+		gatewayMsg := extractGatewayRejectionMessage(gerr)
+		statusParams := withdrawal_model.StatusUpdateParams{}
+		if gatewayMsg != "" {
+			statusParams.GatewayMessage = &gatewayMsg
+		}
 		_ = dbretry.Do(func() error {
 			return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-				if err := s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusFailed, withdrawal_model.StatusUpdateParams{}); err != nil {
+				if err := s.repo.UpdateStatus(tx, withdrawalID, constants.WithdrawalStatusFailed, statusParams); err != nil {
 					return err
 				}
 				return s.walletSvc.ReleaseWithdrawal(tx, w.CampaignID, withdrawalID, w.Amount, "")
@@ -504,7 +512,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 			ActorUserID: actorUserID, Action: "withdrawal.gateway_rejected", Entity: "withdrawal", EntityID: withdrawalID,
 			Before: map[string]string{"status": w.Status}, After: map[string]string{"status": constants.WithdrawalStatusFailed},
 		})
-		return withdrawal_dto.Response{}, apperror.WithdrawalFailed("")
+		return withdrawal_dto.Response{}, apperror.WithdrawalFailed(gatewayMsg)
 	}
 
 	// Sukses ATAU kegagalan jaringan/timeout (bukan penolakan eksplisit) —
@@ -537,7 +545,7 @@ func (s *ServiceImpl) Process(ctx context.Context, withdrawalID, actorUserID int
 	return s.getResponse(ctx, withdrawalID)
 }
 
-func (s *ServiceImpl) ProcessCallback(ctx context.Context, req withdrawal_dto.DisbursementCallbackRequest, urlSecret string) error {
+func (s *ServiceImpl) ProcessCallback(ctx context.Context, req withdrawal_dto.DisbursementCallbackRequest, rawBody, urlSecret string) error {
 	expected := s.cfg.BisatopupCallbackDisbursementSecretCrowdfunding
 	if expected == "" || !hmac.Equal([]byte(expected), []byte(urlSecret)) {
 		log.Printf("[BISATOPUP:WITHDRAWAL_CALLBACK] invalid URL secret, reffID=%s", req.ReffID)
@@ -552,11 +560,11 @@ func (s *ServiceImpl) ProcessCallback(ctx context.Context, req withdrawal_dto.Di
 	}
 
 	return dbretry.Do(func() error {
-		return s.processCallbackTx(ctx, req.ReffID, req.StatusID, newStatus, req.Receipt)
+		return s.processCallbackTx(ctx, req.ReffID, req.StatusID, newStatus, req.Receipt, rawBody)
 	})
 }
 
-func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, statusID int, newStatus string, receipt string) error {
+func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, statusID int, newStatus string, receipt string, rawBody string) error {
 	var notifyWithdrawal withdrawal_model.Withdrawal
 	shouldNotify := false
 
@@ -582,6 +590,13 @@ func (s *ServiceImpl) processCallbackTx(ctx context.Context, reffID string, stat
 		params := withdrawal_model.StatusUpdateParams{GatewayStatusID: &sID, SetCompletedNow: newStatus == constants.WithdrawalStatusSuccess}
 		if receipt != "" {
 			params.ReceiptURL = &receipt
+		}
+		if rawBody != "" {
+			// Timpa GatewayResponseJSON yang diisi Process() (hasil Disburse()
+			// sinkron, kurang lengkap) dengan payload webhook callback —
+			// authoritative & lebih kaya field (lihat "Raw Callback Response"
+			// di Detail Penarikan).
+			params.GatewayResponseJSON = &rawBody
 		}
 		if err := s.repo.UpdateStatus(tx, w.WithdrawalID, newStatus, params); err != nil {
 			return err
@@ -744,6 +759,12 @@ func toResponse(w withdrawal_model.Withdrawal) withdrawal_dto.Response {
 	if w.RejectionReason.Valid {
 		resp.RejectionReason = w.RejectionReason.String
 	}
+	if w.GatewayMessage.Valid {
+		resp.GatewayMessage = w.GatewayMessage.String
+	}
+	if w.GatewayResponseJSON.Valid {
+		resp.GatewayResponseJSON = w.GatewayResponseJSON.String
+	}
 	if w.ApprovedDate.Valid {
 		t := w.ApprovedDate.Time
 		resp.ApprovedDate = &t
@@ -781,6 +802,16 @@ func isFinalWithdrawalStatus(status string) bool {
 		return true
 	}
 	return false
+}
+
+// extractGatewayRejectionMessage mengambil pesan asli di balik wrapper
+// bisatopup.ErrGatewayRejected (format "<ErrGatewayRejected>: <pesan>") tanpa
+// prefix wrapper-nya. Jika err tidak berformat demikian (seharusnya tidak
+// terjadi — caller hanya memanggil ini setelah errors.Is mengonfirmasi
+// wrapping), mengembalikan teks error apa adanya sebagai fallback.
+func extractGatewayRejectionMessage(gerr error) string {
+	msg := strings.TrimPrefix(gerr.Error(), bisatopup.ErrGatewayRejected.Error()+": ")
+	return strings.TrimSpace(msg)
 }
 
 // mapDisbursementStatus memetakan status_id Bisabiller ke status internal
