@@ -73,11 +73,12 @@ Daftar lengkap seluruh endpoint REST API, disusun langsung dari kode routing (`m
 
 **`POST /users`**
 ```json
-{ "fullName": "Siti Nurhaliza", "email": "siti@fsldk.id", "roleID": 3, "password": "••••••••", "isActive": true }
+{ "fullName": "Siti Nurhaliza", "email": "siti@fsldk.id", "roleID": 3, "password": "••••••••", "isActive": true, "emailVerified": true }
 ```
+`emailVerified: true` (default form CMS) — perilaku lama, langsung menandai akun terverifikasi tanpa mengirim email. `false` mengirim email verifikasi asli (pola sama seperti `POST /auth/register`) — pengguna baru harus memverifikasi sendiri lewat tautan di emailnya.
 
-**`PUT /users/:id`** → `{ "fullName": "...", "email": "...", "roleID": 2, "isActive": true, "password": "" }`
-`password` bersifat opsional — kosongkan (string kosong) untuk mempertahankan password saat ini; isi (min. 8 karakter) untuk menggantinya. Tidak ada lagi endpoint reset-password terpisah.
+**`PUT /users/:id`** → `{ "fullName": "...", "email": "...", "roleID": 2, "isActive": true, "password": "", "emailVerified": true }`
+`password` bersifat opsional — kosongkan (string kosong) untuk mempertahankan password saat ini; isi untuk menggantinya (tidak ada lagi batas minimum 8 karakter). `emailVerified` di jalur Update bersifat dua arah: mencentang memverifikasi langsung (override admin, tanpa email); meng-uncheck akun yang SEBELUMNYA terverifikasi mengirim ulang email verifikasi asli (mencabut status secara sengaja) — meng-uncheck akun yang memang sudah tidak terverifikasi tidak memicu kiriman berulang. Tidak ada lagi endpoint reset-password terpisah.
 **`PATCH /users/:id/status`** → `{ "isActive": false }`
 
 ---
@@ -775,8 +776,8 @@ Hierarki 3 tingkat LDK → Puskomda → Puskomnas. Cakupan akses ("scope") calle
 
 | Method | Endpoint | Permission | Deskripsi |
 |---|---|---|---|
-| GET | `/me/organizations` | — (cukup login+terverifikasi) | Daftar organisasi yang dapat diakses caller (dashboard switcher) |
-| GET | `/organizations/directory` | — (cukup login+terverifikasi) | Direktori organisasi **aktif** bertipe tertentu (query wajib `organizationTypeCode`), lintas cakupan akses — dipakai skenario pemilihan bebas (mis. Kader memilih LDK tujuan pendaftaran) |
+| GET | `/me/organizations` | — (cukup login+terverifikasi) | Daftar organisasi yang dapat diakses caller (dashboard switcher) — query opsional `organizationTypeCode` (wajib untuk context switcher lokal shell cms-ldk/cms-puskomda/cms-puskomnas, membatasi hasil ke satu tipe), `siblingOf` (ID organisasi acuan — default mempersempit ke organisasi semilik parent yang sama, HANYA berlaku untuk caller Puskomda Verifikator, lihat Arsitektur §11), `q` (cari lintas seluruh accessible set caller pada tipe yang sama, mengalahkan `siblingOf`). Tiap entri menyertakan `parentOrganizationName` (label "LDK X — Puskomda Y" di switcher), dibaca dari kolom yang sudah ter-join, tanpa query tambahan |
+| GET | `/organizations/directory` | — (cukup login+terverifikasi) | Direktori organisasi **aktif** bertipe tertentu (query wajib `organizationTypeCode`), lintas cakupan akses — dipakai skenario pemilihan bebas (mis. Kader memilih LDK tujuan pendaftaran). Entri LDK menyertakan `parentOrganizationName` (Puskomda induk — lebih akurat untuk label dropdown daripada `provinceName` bebas-teks) |
 | GET | `/organizations` | `organization.profile.manage` / `organization.ldk.list` / `organization.ldk.list.national` / `organization.puskomda.list` (salah satu) | Daftar organisasi (query: `page`, `limit`, `search`, `organizationTypeCode`) — hasil sudah tersaring cascade/wildcard caller |
 | GET | `/organizations/:id` | sama seperti di atas + `RequireOrganizationScope` | Detail organisasi |
 | GET | `/organizations/:id/children` | sama seperti di atas + `RequireOrganizationScope` | Daftar anak organisasi langsung |
@@ -835,7 +836,7 @@ Sepenuhnya publik, tanpa permission/menu CMS — dipakai landing page untuk mena
 | Method | Endpoint | Deskripsi |
 |---|---|---|
 | GET | `/public/network-stats` | Ringkasan jumlah LDK/Puskomda/Puskomnas aktif secara nasional |
-| GET | `/public/network-stats/directory` | Direktori sebaran organisasi (untuk peta/daftar publik) |
+| GET | `/public/network-stats/directory` | Direktori sebaran organisasi (untuk peta/daftar publik) — tiap entri menyertakan `organizationCode`; entri LDK juga menyertakan `levelCode`/`levelLabel` dari hasil Levelisasi `isCurrent=1 AND isPublished=1` (kosong bila belum ada/non-LDK, aturan sama dengan Distribusi Level LDK) |
 
 ---
 
@@ -851,7 +852,8 @@ Mesin form metadata-driven yang dipakai dua form konkret (`LEVELISASI_LDK`, `SEN
 | GET | `/submission-forms/:formID` | `submission_form.view` | Detail form + ringkasan seluruh version |
 | POST | `/submission-forms/:formID/versions` | `submission_form.manage` | Buat version baru (opsional `cloneFromVersionID`) |
 | GET | `/submission-forms/versions/:versionID` | `submission_form.view` | Struktur lengkap satu version (section/field/option) |
-| POST | `/submission-forms/versions/:versionID/publish` | `submission_form.manage` | Publikasikan version (mengunci struktur) |
+| POST | `/submission-forms/versions/:versionID/publish` | `submission_form.manage` | Publikasikan version (mengunci struktur) — otomatis mencascade (reassessment massal, asinkron lewat job queue, lihat Arsitektur §15) setiap submission yang masih mengacu version PUBLISHED sebelumnya. Response menyertakan `cascadeJobID` (`0` bila tidak ada version lama/submission terdampak) |
+| GET | `/submission-forms/versions/:versionID/publish-impact` | `submission_form.view` | `{ affectedCount, subjectLabel }` — jumlah submission yang akan terdampak cascade bila version ini dipublish, `subjectLabel` "LDK" atau "Kader" sesuai tipe form — ditampilkan FE sebagai peringatan sebelum admin konfirmasi publish |
 | POST | `/submission-forms/versions/:versionID/sections` | `submission_form.manage` | Tambah section |
 | PUT/DELETE | `/submission-forms/sections/:sectionID` | `submission_form.manage` | Ubah/hapus section |
 | POST | `/submission-forms/sections/:sectionID/fields` | `submission_form.manage` | Tambah field |
@@ -871,7 +873,7 @@ Alur Levelisasi LDK (2 tier: Puskomda → Puskomnas) dan Sensus Kader (1 tier: L
 |---|---|---|---|
 | POST | `/submissions` | `submission.create` | Buat submission `DRAFT` baru (idempotent per organisasi/form — `409` bila sudah ada & bukan draft) |
 | PUT | `/submissions/:id/answers` | `submission.update` | Simpan jawaban (dapat dipanggil berulang, draft) |
-| POST | `/submissions/:id/submit` | `submission.create` | Kirim (validasi required/format/conditional di service layer) → `SUBMITTED` |
+| POST | `/submissions/:id/submit` | `submission.create` | Kirim (validasi required/format/conditional di service layer — SELURUH field wajib yang masih kosong dikumpulkan sekaligus dalam satu response `errors`, bukan berhenti di field pertama) → `SUBMITTED` |
 | POST | `/submissions/:id/cancel` | `submission.cancel` | Batalkan (hanya status `DRAFT`) |
 | GET | `/submissions` | `submission.view` | Daftar (query: `formCode`, `status`, `page`, `limit`) — tersaring cakupan akses caller otomatis |
 | GET | `/submissions/:id` | `submission.view` | Detail + jawaban + riwayat status + hasil levelisasi/kader bila ada |
@@ -882,7 +884,8 @@ Alur Levelisasi LDK (2 tier: Puskomda → Puskomnas) dan Sensus Kader (1 tier: L
 | POST | `/submissions/:id/reassess` | `submission.reassess` | LDK **atau** Puskomnas mengajukan **siklus reassessment baru** (`{version}`, hanya dari `PUBLISHED`) → reset ke `DRAFT`, LDK isi ulang dari awal |
 | GET | `/kaders` | `submission.review.ldk` | Daftar kader (query: `status`) — tersaring cakupan akses (DL-11: Puskomda/Puskomnas tidak punya akses sama sekali ke data ini) |
 | GET | `/kaders/:id/code` | — (kader pemilik atau org access) | Kartu digital kader (`uniqueCode`, `issuedDate`) |
-| POST | `/kaders/:id/deactivate` | `kader.deactivate` | Nonaktifkan kader `ACTIVE` (hanya LDK pemilik, tidak ada cascade meski untuk Puskomda/Puskomnas — kecuali wildcard) |
+| POST | `/kaders/:id/deactivate` | `kader.deactivate` | Nonaktifkan kader `ACTIVE` (hanya LDK pemilik, tidak ada cascade meski untuk Puskomda/Puskomnas — kecuali wildcard). Menolak (`403`) bila target adalah diri sendiri. Bila kader ini sedang pegang role pengurus (LDK Admin/Puskomda/Puskomnas Verifikator — lihat §11a), role tersebut otomatis diturunkan balik ke Kader (best-effort) |
+| POST | `/kaders/:id/reactivate` | `kader.deactivate` | Kebalikan dari deactivate — kembalikan kader `INACTIVE` menjadi `ACTIVE` TANPA mereset submission/`uniqueCode` (beda dari `/reinstate`, yang mereset `REJECTED` ke `DRAFT` untuk diisi ulang dari nol) |
 
 **`POST /submissions/:id/review`**
 ```json
@@ -891,6 +894,27 @@ Alur Levelisasi LDK (2 tier: Puskomda → Puskomnas) dan Sensus Kader (1 tier: L
 `checklist` bersifat freeform JSON (tidak divalidasi bentuknya oleh backend) — konvensi frontend: `{sectionCode: boolean}` mengikuti section form yang sedang direview.
 
 Status Levelisasi LDK: `DRAFT → SUBMITTED → PUSKOMDA_REVIEW → APPROVED_PUSKOMDA → APPROVED_PUSKOMNAS → LEVEL_ESTABLISHED → PUBLISHED` (dengan cabang `REVISION_REQUESTED_*` kembali ke `SUBMITTED` setelah diedit). `APPROVED_PUSKOMNAS` hanya dicapai lewat keputusan "Setujui" pada Verifikasi Akhir (tier Puskomnas) — Penetapan Levelisasi (`EstablishLevel`) mensyaratkan status ini, bukan `APPROVED_PUSKOMDA` langsung, supaya kedua tahap berurutan (bukan gerbang yang sama). Status Sensus Kader: `DRAFT → SUBMITTED → APPROVED_LDK` (otomatis lanjut ke `ACTIVE` + kode kader terbit) `/ REVISION_REQUESTED_LDK / REJECTED`.
+
+`POST /submissions/:id/reassess` langsung mencabut level resmi (`tr_levelisasi_result.isCurrent`) organisasi ini begitu dipanggil, bukan menunggu siklus `EstablishLevel` berikutnya — level lama tidak lagi tampil publik (Jaringan, Distribusi Level LDK, Status Pendataan sendiri) selama reassessment berjalan; riwayatnya tetap tersimpan (baris tidak dihapus, hanya ditandai non-current), dan `EstablishLevel` berikutnya otomatis membuat baris current baru.
+
+`GET /submissions/:id` (`DetailResponse`) menyertakan `levelHistory` — SELURUH riwayat `tr_levelisasi_result` organisasi ini (current maupun tidak, terurut dari paling awal), berbeda dari `levelResult` yang hanya hasil current — dipakai kartu "Record Levelisasi" (tangga Pra Mula/Mula/Madya/Mandiri). `KaderResponse` menyertakan `statusChangedDate` (kapan status SAAT INI mulai berlaku, mis. "Nonaktif sejak") dan mengisi `organizationName`/`parentOrganizationName` untuk kader `ACTIVE` **maupun** `INACTIVE` (sebelumnya hanya `ACTIVE`).
+
+---
+
+## 11a. Pengurus — Promosi/Demosi Role (`/pengurus`) — ✅🔒
+
+Hidup di dalam modul Go yang sama dengan Submission (§11) — bukan modul terpisah, lihat [Arsitektur §2](./ARCHITECTURE.md#2-struktur-modul-subfolder--interfaceimpl) & [§14](./ARCHITECTURE.md#14-pengurus-promosidemosi-role-dalam-organisasi-sendiri). Mengizinkan LDK Admin/Puskomda Verifikator/Puskomnas Verifikator mempromosikan atau menurunkan role kader **ACTIVE** dalam cakupan organisasi mereka sendiri, tanpa lewat Portal Admin → Kelola Pengguna.
+
+| Method | Endpoint | Permission | Deskripsi |
+|---|---|---|---|
+| GET | `/pengurus` | `pengurus.ldk.manage` / `.puskomda.manage` / `.puskomnas.manage` (salah satu) | Daftar kader ACTIVE (apa pun role `ms_user` saat ini) dalam cakupan akses caller — query `organizationID` opsional (org-switcher, sama perilakunya dengan `GET /submissions`) |
+| PATCH | `/pengurus/:userID/role` | sama seperti di atas | Ubah role target |
+
+**`PATCH /pengurus/:userID/role`**
+```json
+{ "roleName": "LDK Admin" }
+```
+Role TUJUAN **dan** role SAAT INI target harus sama-sama ada di allow-list tier caller (LDK Admin → {Kader, LDK Admin}; Puskomda Verifikator → {+Puskomda Verifikator}; Puskomnas Verifikator → keempat role) — mencegah caller tier rendah mencopot role pengurus tier lebih tinggi yang kebetulan home LDK-nya sama (lihat Arsitektur §14). Tidak bisa menargetkan diri sendiri (`403`). Response `PengurusEntry`: `{ userID, fullName, email, roleName, homeOrganizationID, homeOrganizationName, puskomdaName }` — `homeOrganizationID`/`homeOrganizationName` selalu LDK asal (`ms_kader.organizationID`, tidak pernah berubah oleh promosi); `puskomdaName` adalah Puskomda induk LDK itu.
 
 ---
 
@@ -994,6 +1018,7 @@ Retry/Delete menolak (`409 Conflict`) bila job tidak dalam status yang sesuai.
 | `submission.review.tier1/approve.tier1` | Verifikasi/Persetujuan Wilayah (Puskomda) | `submission.review.tier2` | Verifikasi Akhir (Puskomnas) |
 | `submission.level.establish/publish/reopen/reassess` | Penetapan Level/Publikasi/Koreksi (Puskomnas) | `kader.deactivate` | Nonaktifkan Kader (LDK) |
 | `report.region.view/export` | Laporan Wilayah (Puskomda) | `report.national.view/export` | Laporan Nasional (Puskomnas) |
+| `pengurus.ldk.manage/puskomda.manage/puskomnas.manage` | Pengurus — promosi/demosi role (§11a, any-match ke satu endpoint backend) | `organization.profile.manage.puskomda/puskomnas` | Menu "Profil Puskomda"/"Profil Puskomnas" (identitas menu saja — aksi simpan tetap digerbang `organization.profile.manage`) |
 | `catalogbook.view/create/update/delete/publish` | Perpustakaan / Katalog Buku | `schedule.view/create/update/delete/publish` | Jadwal Kegiatan |
 | `structure.view/create/update/delete` | Struktur Organisasi (kepengurusan per periode) | `gallery.view/create/update/delete` | Galeri |
 | `contact.view/delete` | Kontak (pesan masuk) | `subscription.view/create/delete` | Newsletter / Subscriber |
@@ -1012,12 +1037,14 @@ Role tambahan modul Submission Dashboard (hierarki organisasi) — satu role per
 
 | Role | Cakupan | Permission utama |
 |---|---|---|
-| **LDK Admin** | Organisasi sendiri | `submission.create/update/cancel/view`, `submission.review.ldk`, `submission.reassess`, `kader.deactivate`, `organization.profile.manage` (diri sendiri) |
-| **Puskomda Verifikator** | Diri + LDK di wilayahnya | `submission.review.tier1/approve.tier1`, `organization.ldk.list`, `report.region.view/export` |
-| **Puskomnas Verifikator** | Seluruh organisasi | `submission.review.tier2/level.establish/publish/reopen/reassess`, `organization.ldk.list.national/puskomda.list`, `report.national.view/export` |
+| **LDK Admin** | Organisasi sendiri | `submission.create/update/cancel/view`, `submission.review.ldk`, `submission.reassess`, `kader.deactivate`, `organization.profile.manage` (diri sendiri), `pengurus.ldk.manage` |
+| **Puskomda Verifikator** | Diri + LDK di wilayahnya | `submission.review.tier1/approve.tier1`, `organization.ldk.list`, `report.region.view/export`, `organization.profile.manage.puskomda`, `pengurus.ldk.manage/puskomda.manage` |
+| **Puskomnas Verifikator** | Seluruh organisasi | `submission.review.tier2/level.establish/publish/reopen/reassess`, `organization.ldk.list.national/puskomda.list`, `report.national.view/export`, `organization.profile.manage.puskomda/puskomnas`, `pengurus.ldk.manage/puskomda.manage/puskomnas.manage` |
 | **Kader** | Diri sendiri (bukan cascade organisasi) | `submission.create/update/cancel/view` (form Sensus Kader saja) |
 
-`wildcardTierAccess` (kolom `SET('LDK','PUSKOMDA','PUSKOMNAS')` di `ms_user`) mem-bypass cascade organisasi untuk akun sepert Super Admin — lihat [Arsitektur §11](./ARCHITECTURE.md#11-organization-scope--cascade-access). Detail lengkap seed role/permission modul ini: [`migrations/0005_organization_access.up.sql`](../migrations/0005_organization_access.up.sql) s.d. [`0009_audit_reporting.up.sql`](../migrations/0009_audit_reporting.up.sql).
+Puskomda/Puskomnas Verifikator sengaja memegang permission `pengurus.*`/`organization.profile.manage.*` milik tier **di bawah** mereka juga (bukan cuma tier sendiri) — begitu masuk ke konteks tier itu lewat org-switcher (mis. Puskomnas Verifikator membuka sebuah LDK), menu Pengurus/Profil tier tersebut tetap muncul, bukan hilang karena permission aslinya hanya tier sendiri (lihat migration `0054`/`0055`, mengikuti filosofi `0014_puskomda_puskomnas_full_ldk_menu.up.sql`). Cakupan organisasi aktual tetap dibatasi `resolveScopedOrganizationIDs`/cascade §11 — ini murni izin menu.
+
+`wildcardTierAccess` (kolom `SET('LDK','PUSKOMDA','PUSKOMNAS')` di `ms_user`) mem-bypass cascade organisasi untuk akun sepert Super Admin — lihat [Arsitektur §11](./ARCHITECTURE.md#11-organization-scope--cascade-access). Permission suatu role harus mencakup SELURUH permission role kanonik tier itu dan tier di bawahnya secara kumulatif sebelum `wildcardTierAccess` setingkat itu boleh disimpan ke akun bertipe role tersebut (`user_service.validateWildcardAgainstRole`) — lihat Arsitektur §11. Detail lengkap seed role/permission modul ini: [`migrations/0005_organization_access.up.sql`](../migrations/0005_organization_access.up.sql) s.d. [`0009_audit_reporting.up.sql`](../migrations/0009_audit_reporting.up.sql), serta Pengurus: [`0051_pengurus_menu.up.sql`](../migrations/0051_pengurus_menu.up.sql) s.d. [`0055_puskomnas_puskomda_profile_menu.up.sql`](../migrations/0055_puskomnas_puskomda_profile_menu.up.sql).
 
 > Section "Tentang" (visi/misi) & "Kontak" (alamat/media sosial) pada Beranda tetap teks tetap (hardcoded) langsung di frontend `fsldk-web`, **tidak** dikelola via API/database — jangan disamakan dengan modul `structure` (§6e, arsip kepengurusan per periode) atau `contact` (§9a, kotak masuk pesan form "Hubungi Kami"), yang meski namanya mirip adalah fitur CMS asli dan berbeda tujuan.
 
