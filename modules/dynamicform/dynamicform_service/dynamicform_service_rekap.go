@@ -35,9 +35,13 @@ func dataFields(fields []dynamicform_model.Field) []dynamicform_model.Field {
 	return out
 }
 
-// buildHeader is the single header builder shared by CSV and Sheets.
+// buildHeader is the single header builder shared by CSV and Sheets. Email
+// and Nama are not hardcoded here — every form already carries a mandatory
+// system "Alamat Email" field, and a "Nama"-labeled field when the builder
+// has one, so both surface through dataFields() under their own label
+// without a redundant fixed column.
 func buildHeader(fields []dynamicform_model.Field) []string {
-	head := []string{"Timestamp", "Submission ID", "Email", "Nama"}
+	head := []string{"Timestamp", "Submission ID"}
 	for _, f := range dataFields(fields) {
 		head = append(head, f.Label)
 	}
@@ -49,8 +53,6 @@ func buildRow(sub dynamicform_model.Submission, answers map[int64]string, fields
 	row := []string{
 		sub.SubmittedDate.Format(timeLayout),
 		strconv.FormatInt(sub.SubmissionID, 10),
-		sub.RespondentEmail,
-		strDeref(sub.RespondentName),
 	}
 	for _, f := range dataFields(fields) {
 		row = append(row, displayValue(answers[f.FieldID]))

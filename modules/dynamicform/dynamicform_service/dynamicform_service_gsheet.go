@@ -87,33 +87,30 @@ func (s *ServiceImpl) ensureSheet(ctx context.Context, form dynamicform_model.Fo
 			return fail(err)
 		}
 	}
-	// 3. attachments/ + assets/
+	// 3. attachments/ (respondent-uploaded files only — builder "image" blocks
+	//    stay on local storage, see ensureFieldFolder, so there's no "assets/"
+	//    counterpart to create here)
 	attachID, _, err := s.gsheet.CreateFolder(ctx, "attachments", formFolderID)
-	if err != nil {
-		return fail(err)
-	}
-	assetsID, _, err := s.gsheet.CreateFolder(ctx, "assets", formFolderID)
 	if err != nil {
 		return fail(err)
 	}
 
 	if err := s.repo.UpdateForm(ctx, form.FormID, map[string]any{
 		"gsheetSpreadsheetID": sheetID, "gsheetSpreadsheetURL": sheetURL, "gsheetTabName": tab,
-		"gdriveFormFolderID": formFolderID, "gdriveAttachmentsFolderID": attachID, "gdriveAssetsFolderID": assetsID,
+		"gdriveFormFolderID": formFolderID, "gdriveAttachmentsFolderID": attachID,
 	}); err != nil {
 		return err
 	}
 	form.GsheetSpreadsheetID = &sheetID
 	form.GdriveFormFolderID = &formFolderID
 	form.GdriveAttachmentsFolderID = &attachID
-	form.GdriveAssetsFolderID = &assetsID
 
 	// 4. header row
 	fields, _ := s.repo.ListFields(ctx, form.FormID, true)
 	if hErr := s.gsheet.SetHeaderRow(ctx, sheetID, tab, buildHeader(fields)); hErr != nil {
 		return fail(hErr)
 	}
-	// 5. per-field subfolders for existing file/image fields
+	// 5. per-field subfolders for existing file fields
 	for _, f := range fields {
 		s.ensureFieldFolder(ctx, form, f)
 	}
@@ -125,23 +122,26 @@ func (s *ServiceImpl) ensureSheet(ctx context.Context, form dynamicform_model.Fo
 	return nil
 }
 
-// ensureFieldFolder creates the Drive subfolder for one file/image field
-// (attachments/<label>/ or assets/<label>/) when the form's tree exists and the
-// field has no folder yet. Best-effort — a failure only logs.
+// ensureFieldFolder creates the Drive subfolder for one file field
+// (attachments/<label>/) when the form's tree exists and the field has no
+// folder yet. Best-effort — a failure only logs.
+//
+// Builder "image" blocks (display-only content, not a respondent-uploaded
+// file) are deliberately excluded: they keep their LOCAL helpText URL — a
+// public respondent must be able to render <img src=…>, and Drive files in
+// the restricted form folder are not publicly fetchable — so they never had
+// any Drive folder to put them in.
 func (s *ServiceImpl) ensureFieldFolder(ctx context.Context, form dynamicform_model.Form, field dynamicform_model.Field) {
 	if !s.gsheet.Enabled() {
 		return
 	}
-	if field.FieldType != "file" && field.FieldType != "image" {
+	if field.FieldType != "file" {
 		return
 	}
 	if field.GdriveFolderID != nil && *field.GdriveFolderID != "" {
 		return
 	}
 	parent := form.GdriveAttachmentsFolderID
-	if field.FieldType == "image" {
-		parent = form.GdriveAssetsFolderID
-	}
 	if parent == nil || *parent == "" {
 		return
 	}
@@ -151,10 +151,6 @@ func (s *ServiceImpl) ensureFieldFolder(ctx context.Context, form dynamicform_mo
 		return
 	}
 	_ = s.repo.UpdateField(ctx, form.FormID, field.FieldID, map[string]any{"gdriveFolderID": subID})
-	// NOTE: builder images (fieldType "image") keep their LOCAL helpText URL — a
-	// public respondent must be able to render <img src=…>, and Drive files in
-	// the restricted form folder are not publicly fetchable. The assets/<label>/
-	// subfolder is created for structural parity with the reference only.
 }
 
 // relocateSubmissionFiles uploads each locally-stored file of a submission into
