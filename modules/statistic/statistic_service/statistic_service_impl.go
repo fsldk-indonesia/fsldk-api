@@ -27,6 +27,10 @@ func (s *serviceImpl) NetworkStats(ctx context.Context) (*statistic_dto.NetworkS
 	if err != nil {
 		return nil, err
 	}
+	byCity, err := s.repo.CountByCity(ctx)
+	if err != nil {
+		return nil, err
+	}
 	byLevel, err := s.repo.LevelDistribution(ctx)
 	if err != nil {
 		return nil, err
@@ -39,6 +43,7 @@ func (s *serviceImpl) NetworkStats(ctx context.Context) (*statistic_dto.NetworkS
 	resp := &statistic_dto.NetworkStatsResponse{
 		TotalActiveKader: activeKader,
 		ByProvince:       byProvince,
+		ByCity:           byCity,
 		ByLevel:          byLevel,
 	}
 	for _, t := range byType {
@@ -54,6 +59,6 @@ func (s *serviceImpl) NetworkStats(ctx context.Context) (*statistic_dto.NetworkS
 	return resp, nil
 }
 
-func (s *serviceImpl) Directory(ctx context.Context, q dto.ListQuery, organizationTypeCode, provinceName string) ([]statistic_dto.DirectoryEntry, int, error) {
-	return s.repo.Directory(ctx, q, organizationTypeCode, provinceName)
+func (s *serviceImpl) Directory(ctx context.Context, q dto.ListQuery, f statistic_dto.DirectoryFilter) ([]statistic_dto.DirectoryEntry, int, error) {
+	return s.repo.Directory(ctx, q, f)
 }

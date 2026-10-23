@@ -12,6 +12,7 @@ import (
 type mockRepository struct {
 	byType      []statistic_dto.TypeCount
 	byProvince  []statistic_dto.ProvinceCount
+	byCity      []statistic_dto.CityCount
 	byLevel     []statistic_dto.LevelCount
 	activeKader int
 	directory   []statistic_dto.DirectoryEntry
@@ -23,13 +24,16 @@ func (m *mockRepository) CountByType(ctx context.Context) ([]statistic_dto.TypeC
 func (m *mockRepository) CountByProvince(ctx context.Context) ([]statistic_dto.ProvinceCount, error) {
 	return m.byProvince, nil
 }
+func (m *mockRepository) CountByCity(ctx context.Context) ([]statistic_dto.CityCount, error) {
+	return m.byCity, nil
+}
 func (m *mockRepository) LevelDistribution(ctx context.Context) ([]statistic_dto.LevelCount, error) {
 	return m.byLevel, nil
 }
 func (m *mockRepository) CountActiveKader(ctx context.Context) (int, error) {
 	return m.activeKader, nil
 }
-func (m *mockRepository) Directory(ctx context.Context, q dto.ListQuery, organizationTypeCode, provinceName string) ([]statistic_dto.DirectoryEntry, int, error) {
+func (m *mockRepository) Directory(ctx context.Context, q dto.ListQuery, f statistic_dto.DirectoryFilter) ([]statistic_dto.DirectoryEntry, int, error) {
 	return m.directory, len(m.directory), nil
 }
 
@@ -90,7 +94,7 @@ func TestStatisticService_Directory_PassesThrough(t *testing.T) {
 	}
 	svc := statistic_service.NewService(repo)
 
-	items, total, err := svc.Directory(context.Background(), dto.ListQuery{Page: 1, Limit: 20}, "LDK", "")
+	items, total, err := svc.Directory(context.Background(), dto.ListQuery{Page: 1, Limit: 20}, statistic_dto.DirectoryFilter{OrganizationTypeCodes: []string{"LDK"}})
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}

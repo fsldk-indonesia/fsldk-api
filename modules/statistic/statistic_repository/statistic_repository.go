@@ -15,7 +15,8 @@ import (
 type Repository interface {
 	CountByType(ctx context.Context) ([]statistic_dto.TypeCount, error)
 	CountByProvince(ctx context.Context) ([]statistic_dto.ProvinceCount, error)
+	CountByCity(ctx context.Context) ([]statistic_dto.CityCount, error)
 	LevelDistribution(ctx context.Context) ([]statistic_dto.LevelCount, error)
 	CountActiveKader(ctx context.Context) (int, error)
-	Directory(ctx context.Context, q dto.ListQuery, organizationTypeCode, provinceName string) ([]statistic_dto.DirectoryEntry, int, error)
+	Directory(ctx context.Context, q dto.ListQuery, f statistic_dto.DirectoryFilter) ([]statistic_dto.DirectoryEntry, int, error)
 }
