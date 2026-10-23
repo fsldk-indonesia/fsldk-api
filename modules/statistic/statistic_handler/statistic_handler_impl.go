@@ -16,6 +16,16 @@ type handlerImpl struct {
 	svc statistic_service.Service
 }
 
+// directoryMaxLimit is Directory()'s own, higher result-size ceiling — the
+// public "Direktori Jaringan" renders ALL matching organizations at once as
+// one Puskomnas -> Puskomda -> LDK tree (no numbered pagination UI, see
+// statistic.index.page.ts), unlike every other list endpoint. The shared
+// 100-row clamp in base/dto/pagination.go (ParseListQuery) is deliberately
+// NOT raised there — it's used across many unrelated modules — so this
+// endpoint overrides it locally instead. 2000 comfortably covers the current
+// 590 active organizations (2026-10) with headroom for years of growth.
+const directoryMaxLimit = 2000
+
 // NewHandler creates a new instance of statistic Handler.
 func NewHandler(svc statistic_service.Service) Handler {
 	return &handlerImpl{svc: svc}
@@ -57,6 +67,17 @@ func (h *handlerImpl) NetworkStats(c *gin.Context) {
 
 func (h *handlerImpl) Directory(c *gin.Context) {
 	q := dto.ParseListQuery(c)
+	// q.Limit is already clamped to 100 by ParseListQuery — re-read the raw
+	// query value here to apply this endpoint's own higher ceiling instead
+	// (see directoryMaxLimit comment above).
+	if raw := c.Query("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > q.Limit {
+			if n > directoryMaxLimit {
+				n = directoryMaxLimit
+			}
+			q.Limit = n
+		}
+	}
 	f := statistic_dto.DirectoryFilter{
 		OrganizationTypeCodes: trimmedNonEmpty(c.QueryArray("type")),
 		ProvinceNames:         trimmedNonEmpty(c.QueryArray("province")),
