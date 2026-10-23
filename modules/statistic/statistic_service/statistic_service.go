@@ -12,5 +12,5 @@ import (
 // Service defines operations backing the public "Statistik Jaringan" page.
 type Service interface {
 	NetworkStats(ctx context.Context) (*statistic_dto.NetworkStatsResponse, error)
-	Directory(ctx context.Context, q dto.ListQuery, organizationTypeCode, provinceName string) ([]statistic_dto.DirectoryEntry, int, error)
+	Directory(ctx context.Context, q dto.ListQuery, f statistic_dto.DirectoryFilter) ([]statistic_dto.DirectoryEntry, int, error)
 }

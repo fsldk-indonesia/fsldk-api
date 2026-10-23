@@ -22,6 +22,14 @@ type LevelCount struct {
 	Count      int    `json:"count"`
 }
 
+// CityCount is the active-LDK count for one city/kabupaten — mirrors
+// ProvinceCount, used to populate the "Kota/Kabupaten" directory filter
+// data-driven (distinct values that actually exist), same rule as province.
+type CityCount struct {
+	CityName string `json:"cityName"`
+	Count    int    `json:"count"`
+}
+
 // NetworkStatsResponse is the aggregate public "Statistik Jaringan" payload.
 type NetworkStatsResponse struct {
 	TotalPuskomnas   int             `json:"totalPuskomnas"`
@@ -30,6 +38,7 @@ type NetworkStatsResponse struct {
 	TotalActiveKader int             `json:"totalActiveKader"`
 	ByProvince       []ProvinceCount `json:"byProvince"`
 	ByLevel          []LevelCount    `json:"byLevel"`
+	ByCity           []CityCount     `json:"byCity"`
 }
 
 // DirectoryEntry is one organization row in the public network directory —
@@ -60,4 +69,24 @@ type DirectoryEntry struct {
 	ParentOrganizationName *string `json:"parentOrganizationName,omitempty"`
 	LevelCode              string  `json:"levelCode,omitempty"`
 	LevelLabel             string  `json:"levelLabel,omitempty"`
+}
+
+// DirectoryFilter groups Directory()'s optional multi-select filters into one
+// struct instead of positional params — avoids a positional-argument mix-up
+// each time another filter column is added, same convention as
+// article_dto.PublicFilter. Every field is matched via SQL IN (empty/nil
+// slice means "no filter on this field").
+type DirectoryFilter struct {
+	OrganizationTypeCodes []string // filter "Tipe Unit" (LDK/PUSKOMDA/PUSKOMNAS)
+	ProvinceNames         []string // filter "Provinsi"
+	CityNames             []string // filter "Kota/Kabupaten"
+	// ParentOrganizationIDs matches o.organizationID OR o.parentOrganizationID
+	// — filter "Puskomda Induk" selecting a Puskomda returns the Puskomda row
+	// itself PLUS its LDKs, not just the LDKs.
+	ParentOrganizationIDs []int64
+	// LevelCodes matches tr_levelisasi_result.levelCode (current+published,
+	// already scoped by the JOIN condition in Directory()) — filter "Level
+	// Levelisasi". Puskomda/Puskomnas never have a level, so they're
+	// naturally excluded whenever this filter is active.
+	LevelCodes []string
 }
