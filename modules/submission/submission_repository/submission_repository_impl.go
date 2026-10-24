@@ -72,11 +72,13 @@ func (r *RepositoryImpl) FindByUserAndForm(ctx context.Context, userID, formID i
 
 // List memakai alias tabel `s` + LEFT JOIN ms_organization `o` (bukan hanya
 // saat search terisi) supaya kolom organizationName SELALU ikut ter-select —
-// dipakai kolom "LDK" halaman Laporan (lihat submission_dto.Response). Filter
-// lain (organizationIDs/status/formID) tetap merujuk tabel `s`.
+// dipakai kolom "LDK" halaman Laporan (lihat submission_dto.Response). JOIN
+// kedua `po` (parent dari `o`) mengisi kolom "Puskomda" di tabel yang sama.
+// Filter lain (organizationIDs/status/formID) tetap merujuk tabel `s`.
 func (r *RepositoryImpl) List(ctx context.Context, f submission_dto.ListFilter) ([]submission_model.Submission, int64, error) {
 	base := r.db.WithContext(ctx).Table("tr_submission s").
-		Joins("LEFT JOIN ms_organization o ON o.organizationID = s.organizationID")
+		Joins("LEFT JOIN ms_organization o ON o.organizationID = s.organizationID").
+		Joins("LEFT JOIN ms_organization po ON po.organizationID = o.parentOrganizationID")
 	if f.SubmittedByUserID != nil {
 		base = base.Where("s.submittedByUserID = ?", *f.SubmittedByUserID)
 	} else {
@@ -106,7 +108,7 @@ func (r *RepositoryImpl) List(ctx context.Context, f submission_dto.ListFilter) 
 		orderBy = "s.createdDate DESC"
 	}
 	var out []submission_model.Submission
-	q := base.Select("s.*, o.organizationName AS organizationName").Order(orderBy)
+	q := base.Select("s.*, o.organizationName AS organizationName, po.organizationName AS parentOrganizationName").Order(orderBy)
 	if f.Limit > 0 {
 		q = q.Limit(f.Limit).Offset(f.Offset)
 	}

@@ -12,20 +12,21 @@ import (
 // submission_repository.List); `;->` menandainya read-only sesuai konvensi
 // "model tidak pernah ditulis lewat field turunan join".
 type Submission struct {
-	SubmissionID       int64         `gorm:"column:submissionID;primaryKey"`
-	FormID             int64         `gorm:"column:formID"`
-	FormVersionID      int64         `gorm:"column:formVersionID"`
-	PeriodID           sql.NullInt64 `gorm:"column:periodID"`
-	OrganizationID     int64         `gorm:"column:organizationID"`
-	OrganizationName   string        `gorm:"column:organizationName;->"`
-	SubjectType        string        `gorm:"column:subjectType"`
-	SubjectReferenceID sql.NullInt64 `gorm:"column:subjectReferenceID"`
-	SubmittedByUserID  int64         `gorm:"column:submittedByUserID"`
-	Status             string        `gorm:"column:status"`
-	Version            int           `gorm:"column:version"`
-	SubmittedDate      sql.NullTime  `gorm:"column:submittedDate"`
-	LastUpdatedDate    sql.NullTime  `gorm:"column:lastUpdatedDate"`
-	CreatedDate        time.Time     `gorm:"column:createdDate"`
+	SubmissionID           int64          `gorm:"column:submissionID;primaryKey"`
+	FormID                 int64          `gorm:"column:formID"`
+	FormVersionID          int64          `gorm:"column:formVersionID"`
+	PeriodID               sql.NullInt64  `gorm:"column:periodID"`
+	OrganizationID         int64          `gorm:"column:organizationID"`
+	OrganizationName       string         `gorm:"column:organizationName;->"`
+	ParentOrganizationName sql.NullString `gorm:"column:parentOrganizationName;->"`
+	SubjectType            string         `gorm:"column:subjectType"`
+	SubjectReferenceID     sql.NullInt64  `gorm:"column:subjectReferenceID"`
+	SubmittedByUserID      int64          `gorm:"column:submittedByUserID"`
+	Status                 string         `gorm:"column:status"`
+	Version                int            `gorm:"column:version"`
+	SubmittedDate          sql.NullTime   `gorm:"column:submittedDate"`
+	LastUpdatedDate        sql.NullTime   `gorm:"column:lastUpdatedDate"`
+	CreatedDate            time.Time      `gorm:"column:createdDate"`
 }
 
 // Answer merepresentasikan satu baris tr_submission_answer.
