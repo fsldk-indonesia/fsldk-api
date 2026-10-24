@@ -22,7 +22,7 @@ func (r *RepositoryImpl) SubmissionRows(ctx context.Context, formID int64, statu
 		return []report_dto.SubmissionRow{}, nil
 	}
 	q := r.db.WithContext(ctx).Table("tr_submission s").
-		Select("o.organizationName, o.provinceName, o.cityName, s.status, l.levelLabel, s.submittedDate, s.lastUpdatedDate").
+		Select("s.submissionID, s.formVersionID, o.organizationName, o.provinceName, o.cityName, s.status, l.levelLabel, s.submittedDate, s.lastUpdatedDate").
 		Joins("JOIN ms_organization o ON o.organizationID = s.organizationID").
 		Joins("LEFT JOIN tr_levelisasi_result res ON res.organizationID = s.organizationID AND res.isCurrent = 1").
 		Joins("LEFT JOIN lk_level l ON l.levelCode = res.levelCode").
@@ -32,6 +32,18 @@ func (r *RepositoryImpl) SubmissionRows(ctx context.Context, formID int64, statu
 	}
 	var out []report_dto.SubmissionRow
 	err := q.Order("o.organizationName ASC").Find(&out).Error
+	return out, err
+}
+
+func (r *RepositoryImpl) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
+	if len(submissionIDs) == 0 {
+		return []report_dto.AnswerRow{}, nil
+	}
+	var out []report_dto.AnswerRow
+	err := r.db.WithContext(ctx).Table("tr_submission_answer").
+		Select("submissionID, fieldID, valueText, valueNumber, valueDate, valueOptionID, valueFileName").
+		Where("submissionID IN ?", submissionIDs).
+		Find(&out).Error
 	return out, err
 }
 

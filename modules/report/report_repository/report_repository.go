@@ -11,6 +11,10 @@ import (
 // Repository adalah kontrak akses data laporan.
 type Repository interface {
 	SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error)
+	// AnswersBySubmissionIDs mengembalikan seluruh baris tr_submission_answer
+	// untuk sekumpulan submissionID sekaligus (satu query, bukan N+1) — dipakai
+	// ExportSubmissions menyusun sheet "Jawaban" per versi form.
+	AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
 

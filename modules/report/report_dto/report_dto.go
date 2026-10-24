@@ -7,7 +7,13 @@ import (
 )
 
 // SubmissionRow adalah satu baris laporan submission untuk ekspor.
+// SubmissionID/FormVersionID tidak ditampilkan sebagai kolom (dipakai
+// internal saja) — FormVersionID mengelompokkan baris ke sheet "Jawaban"
+// per versi form (lihat ServiceImpl.buildAnswerSheets), karena field
+// Levelisasi LDK bisa berubah tiap Puskomnas publish versi baru.
 type SubmissionRow struct {
+	SubmissionID     int64          `gorm:"column:submissionID"`
+	FormVersionID    int64          `gorm:"column:formVersionID"`
 	OrganizationName string         `gorm:"column:organizationName"`
 	ProvinceName     sql.NullString `gorm:"column:provinceName"`
 	CityName         sql.NullString `gorm:"column:cityName"`
@@ -15,6 +21,19 @@ type SubmissionRow struct {
 	LevelLabel       sql.NullString `gorm:"column:levelLabel"`
 	SubmittedDate    sql.NullTime   `gorm:"column:submittedDate"`
 	LastUpdatedDate  sql.NullTime   `gorm:"column:lastUpdatedDate"`
+}
+
+// AnswerRow adalah satu baris tr_submission_answer mentah — dipakai
+// ServiceImpl.buildAnswerSheets untuk resolusi nilai per field (bukan
+// dikembalikan langsung ke klien).
+type AnswerRow struct {
+	SubmissionID  int64          `gorm:"column:submissionID"`
+	FieldID       int64          `gorm:"column:fieldID"`
+	ValueText     sql.NullString `gorm:"column:valueText"`
+	ValueNumber   sql.NullFloat64 `gorm:"column:valueNumber"`
+	ValueDate     sql.NullTime   `gorm:"column:valueDate"`
+	ValueOptionID sql.NullInt64  `gorm:"column:valueOptionID"`
+	ValueFileName sql.NullString `gorm:"column:valueFileName"`
 }
 
 // ExportFilter menampung parameter penyaringan ekspor laporan submission.

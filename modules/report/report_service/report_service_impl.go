@@ -5,9 +5,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"fsldk-api/base/apperror"
@@ -15,6 +19,7 @@ import (
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
 	"fsldk-api/modules/report/report_repository"
+	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
 	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/bisatopup"
@@ -80,19 +85,52 @@ func toCSV(rows []report_dto.SubmissionRow) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func toXLSX(rows []report_dto.SubmissionRow) ([]byte, error) {
+// answerSheetBaseColumns mendahului kolom per-field di tiap sheet "Jawaban" —
+// konteks organisasi yang sama dipakai di sheet "Ringkasan", diulang di sini
+// supaya tiap sheet jawaban tetap bisa dibaca berdiri sendiri.
+var answerSheetBaseColumns = []string{"Nama Organisasi", "Provinsi", "Kota/Kabupaten", "Status", "Tanggal Submit"}
+
+func rowsToValues(rows []report_dto.SubmissionRow) [][]string {
+	out := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, rowValues(row))
+	}
+	return out
+}
+
+// sheetData adalah satu sheet mentah (nama + header + baris) sebelum ditulis
+// ke berkas XLSX — dipisah dari excelize supaya ExportSubmissions bisa
+// menyusun N sheet (Ringkasan + satu per versi form) sebelum menulis sekali.
+type sheetData struct {
+	Name    string
+	Columns []string
+	Rows    [][]string
+}
+
+// buildWorkbook menulis satu berkas XLSX in-memory berisi beberapa sheet
+// sekaligus — generalisasi toXLSXGeneric (yang cuma satu sheet) untuk
+// ExportSubmissions, satu-satunya pemanggil yang butuh banyak sheet saat ini
+// (Ringkasan + Jawaban per versi form, lihat buildAnswerSheets).
+func buildWorkbook(sheets []sheetData) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
-	const sheet = "Laporan"
-	f.SetSheetName("Sheet1", sheet)
-	for i, col := range reportColumns {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		f.SetCellValue(sheet, cell, col)
-	}
-	for r, row := range rows {
-		for c, v := range rowValues(row) {
-			cell, _ := excelize.CoordinatesToCellName(c+1, r+2)
-			f.SetCellValue(sheet, cell, v)
+	usedNames := map[string]bool{}
+	for i, sd := range sheets {
+		name := uniqueSheetName(sd.Name, usedNames)
+		if i == 0 {
+			f.SetSheetName("Sheet1", name)
+		} else if _, err := f.NewSheet(name); err != nil {
+			return nil, err
+		}
+		for c, col := range sd.Columns {
+			cell, _ := excelize.CoordinatesToCellName(c+1, 1)
+			f.SetCellValue(name, cell, col)
+		}
+		for r, row := range sd.Rows {
+			for c, v := range row {
+				cell, _ := excelize.CoordinatesToCellName(c+1, r+2)
+				f.SetCellValue(name, cell, v)
+			}
 		}
 	}
 	var buf bytes.Buffer
@@ -100,6 +138,263 @@ func toXLSX(rows []report_dto.SubmissionRow) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// uniqueSheetName menegakkan batasan nama sheet Excel (maks 31 karakter,
+// tanpa \/?*[]:, tidak boleh duplikat) — dipanggil berurutan per sheet,
+// `used` diisi in-place supaya sheet berikutnya tahu nama yang sudah dipakai.
+func uniqueSheetName(raw string, used map[string]bool) string {
+	replacer := strings.NewReplacer(`\`, "-", "/", "-", "?", "", "*", "", "[", "(", "]", ")", ":", "-")
+	name := strings.TrimSpace(replacer.Replace(raw))
+	if name == "" {
+		name = "Sheet"
+	}
+	if len(name) > 31 {
+		name = name[:31]
+	}
+	base, suffix := name, 2
+	for used[strings.ToLower(name)] {
+		extra := fmt.Sprintf(" (%d)", suffix)
+		maxBase := 31 - len(extra)
+		if maxBase < 1 {
+			maxBase = 1
+		}
+		trimmed := base
+		if len(trimmed) > maxBase {
+			trimmed = trimmed[:maxBase]
+		}
+		name = trimmed + extra
+		suffix++
+	}
+	used[strings.ToLower(name)] = true
+	return name
+}
+
+// buildAnswerSheets mengelompokkan submission berdasarkan formVersionID lalu
+// menyusun satu sheet "Jawaban" per versi — field Levelisasi LDK bisa berubah
+// tiap Puskomnas publish versi baru (lihat Publish Cascade), jadi kolomnya
+// TIDAK bisa digabung lintas versi tanpa campur aduk. Versi terbaru (ID
+// tertinggi) ditaruh duluan.
+func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.SubmissionRow) ([]sheetData, error) {
+	byVersion := map[int64][]report_dto.SubmissionRow{}
+	var versionIDs []int64
+	for _, r := range rows {
+		if _, ok := byVersion[r.FormVersionID]; !ok {
+			versionIDs = append(versionIDs, r.FormVersionID)
+		}
+		byVersion[r.FormVersionID] = append(byVersion[r.FormVersionID], r)
+	}
+	sort.Slice(versionIDs, func(i, j int) bool { return versionIDs[i] > versionIDs[j] })
+
+	sheets := make([]sheetData, 0, len(versionIDs))
+	for _, versionID := range versionIDs {
+		group := byVersion[versionID]
+		version, err := s.formRepo.FindVersionByID(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		sections, err := s.formRepo.ListSectionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := s.formRepo.ListFieldsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		options, err := s.formRepo.ListOptionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		sectionLabel := make(map[int64]string, len(sections))
+		sectionOrder := make(map[int64]int, len(sections))
+		for _, sec := range sections {
+			sectionLabel[sec.SectionID] = sec.SectionLabel
+			sectionOrder[sec.SectionID] = sec.SortOrder
+		}
+		sort.Slice(fields, func(i, j int) bool {
+			oi, oj := sectionOrder[fields[i].SectionID], sectionOrder[fields[j].SectionID]
+			if oi != oj {
+				return oi < oj
+			}
+			return fields[i].SortOrder < fields[j].SortOrder
+		})
+
+		optionsByField := make(map[int64][]submission_form_model.Option)
+		optionValueByID := make(map[int64]string, len(options))
+		for _, o := range options {
+			optionsByField[o.FieldID] = append(optionsByField[o.FieldID], o)
+			optionValueByID[o.OptionID] = o.OptionValue
+		}
+		fieldByID := make(map[int64]submission_form_model.Field, len(fields))
+		for _, f := range fields {
+			fieldByID[f.FieldID] = f
+		}
+
+		submissionIDs := make([]int64, len(group))
+		for i, r := range group {
+			submissionIDs[i] = r.SubmissionID
+		}
+		answers, err := s.repo.AnswersBySubmissionIDs(ctx, submissionIDs)
+		if err != nil {
+			return nil, err
+		}
+		answersBySubmission := make(map[int64]map[int64]report_dto.AnswerRow, len(group))
+		for _, a := range answers {
+			bucket, ok := answersBySubmission[a.SubmissionID]
+			if !ok {
+				bucket = make(map[int64]report_dto.AnswerRow)
+				answersBySubmission[a.SubmissionID] = bucket
+			}
+			bucket[a.FieldID] = a
+		}
+
+		columns := append([]string{}, answerSheetBaseColumns...)
+		for _, f := range fields {
+			label := f.FieldLabel
+			if sl := sectionLabel[f.SectionID]; sl != "" {
+				label = sl + " — " + f.FieldLabel
+			}
+			columns = append(columns, label)
+		}
+
+		rowsOut := make([][]string, 0, len(group))
+		for _, subRow := range group {
+			answersForSub := answersBySubmission[subRow.SubmissionID]
+			values := make([]string, 0, len(columns))
+			values = append(values,
+				subRow.OrganizationName, subRow.ProvinceName.String, subRow.CityName.String,
+				subRow.Status, formatNullDateTime(subRow.SubmittedDate),
+			)
+			for _, f := range fields {
+				if !isFieldVisible(f, fieldByID, answersForSub, optionValueByID) {
+					values = append(values, "")
+					continue
+				}
+				values = append(values, formatAnswerValue(f, answersForSub[f.FieldID], optionsByField[f.FieldID]))
+			}
+			rowsOut = append(rowsOut, values)
+		}
+
+		sheets = append(sheets, sheetData{
+			Name:    fmt.Sprintf("Jawaban V%d", version.VersionNumber),
+			Columns: columns,
+			Rows:    rowsOut,
+		})
+	}
+	return sheets, nil
+}
+
+// answerConditionalRule mencerminkan bentuk JSON conditionalRuleJSON yang
+// sama persis dipakai submission_service (evaluateConditional) dan frontend
+// SubmissionAnswersViewComponent — duplikasi kecil yang disengaja (report
+// module tidak bergantung ke submission_service, cuma submission_form_repository).
+type answerConditionalRule struct {
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
+}
+
+// isFieldVisible meniru persis evaluateConditional (submission_service) +
+// SubmissionAnswersViewComponent.isVisible (frontend) — field tanpa aturan
+// selalu tampil; field kondisional disembunyikan (nilainya dikosongkan di
+// ekspor, BUKAN dihapus dari tr_submission_answer) kalau field acuannya belum
+// dijawab atau jawabannya tidak memenuhi aturan.
+func isFieldVisible(f submission_form_model.Field, byID map[int64]submission_form_model.Field, answers map[int64]report_dto.AnswerRow, optionValueByID map[int64]string) bool {
+	if !f.ConditionalOnFieldID.Valid || !f.ConditionalRuleJSON.Valid || f.ConditionalRuleJSON.String == "" {
+		return true
+	}
+	trigger, ok := byID[f.ConditionalOnFieldID.Int64]
+	if !ok {
+		return false
+	}
+	var rule answerConditionalRule
+	if err := json.Unmarshal([]byte(f.ConditionalRuleJSON.String), &rule); err != nil {
+		return true
+	}
+	triggerAnswer, hasAnswer := answers[trigger.FieldID]
+	if !hasAnswer {
+		return false
+	}
+	actual := answerAsString(triggerAnswer, optionValueByID)
+	switch rule.Operator {
+	case "equals":
+		return actual == rule.Value
+	case "notEquals":
+		return actual != rule.Value
+	default:
+		return true
+	}
+}
+
+// answerAsString mengembalikan representasi string MENTAH satu jawaban
+// (optionVALUE, bukan label, untuk SELECT/RADIO) — dipakai evaluasi
+// conditional di atas, mencerminkan submission_service.answerAsString.
+func answerAsString(a report_dto.AnswerRow, optionValueByID map[int64]string) string {
+	switch {
+	case a.ValueOptionID.Valid:
+		return optionValueByID[a.ValueOptionID.Int64]
+	case a.ValueText.Valid:
+		return a.ValueText.String
+	case a.ValueNumber.Valid:
+		return strconv.FormatFloat(a.ValueNumber.Float64, 'f', -1, 64)
+	case a.ValueDate.Valid:
+		return a.ValueDate.Time.Format("2006-01-02")
+	default:
+		return ""
+	}
+}
+
+// formatAnswerValue mengembalikan nilai TAMPILAN (label, bukan value mentah)
+// satu jawaban sesuai fieldType — mencerminkan
+// SubmissionAnswersViewComponent.displayValue di frontend. MULTISELECT/
+// CHECKBOX disimpan sebagai JSON array optionID di valueText (lihat
+// submission_service_impl.go buildAnswerParams), di-decode lalu
+// dipetakan ke optionLabel gabungan koma.
+func formatAnswerValue(f submission_form_model.Field, a report_dto.AnswerRow, options []submission_form_model.Option) string {
+	optionLabel := func(id int64) string {
+		for _, o := range options {
+			if o.OptionID == id {
+				return o.OptionLabel
+			}
+		}
+		return ""
+	}
+	switch f.FieldType {
+	case constants.FieldTypeSelect, constants.FieldTypeRadio:
+		if !a.ValueOptionID.Valid {
+			return ""
+		}
+		return optionLabel(a.ValueOptionID.Int64)
+	case constants.FieldTypeMultiselect, constants.FieldTypeCheckbox:
+		if !a.ValueText.Valid || a.ValueText.String == "" {
+			return ""
+		}
+		var ids []int64
+		if err := json.Unmarshal([]byte(a.ValueText.String), &ids); err != nil {
+			return ""
+		}
+		labels := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if l := optionLabel(id); l != "" {
+				labels = append(labels, l)
+			}
+		}
+		return strings.Join(labels, ", ")
+	case constants.FieldTypeFileDoc, constants.FieldTypeFileImage:
+		return a.ValueFileName.String
+	case constants.FieldTypeNumber:
+		if !a.ValueNumber.Valid {
+			return ""
+		}
+		return strconv.FormatFloat(a.ValueNumber.Float64, 'f', -1, 64)
+	case constants.FieldTypeDate:
+		if !a.ValueDate.Valid {
+			return ""
+		}
+		return a.ValueDate.Time.Format("2006-01-02")
+	default:
+		return a.ValueText.String
+	}
 }
 
 func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error) {
@@ -136,10 +431,19 @@ func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope,
 	var contentType, ext string
 	switch filter.Format {
 	case "csv":
+		// CSV cuma satu tabel datar — tidak ada konsep sheet, jadi tetap
+		// ringkasan saja (tanpa jawaban per field). Ekspor lengkap dengan
+		// jawaban HARUS pakai xlsx.
 		data, err = toCSV(rows)
 		contentType, ext = "text/csv", "csv"
 	default:
-		data, err = toXLSX(rows)
+		sheets := []sheetData{{Name: "Ringkasan", Columns: reportColumns, Rows: rowsToValues(rows)}}
+		answerSheets, aerr := s.buildAnswerSheets(ctx, rows)
+		if aerr != nil {
+			return report_dto.ExportResult{}, apperror.Internal("Gagal menyusun data jawaban")
+		}
+		sheets = append(sheets, answerSheets...)
+		data, err = buildWorkbook(sheets)
 		contentType, ext = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
 	}
 	if err != nil {
