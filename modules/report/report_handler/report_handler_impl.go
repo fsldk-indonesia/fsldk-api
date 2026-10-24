@@ -3,6 +3,7 @@ package report_handler
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"fsldk-api/base/appctx"
@@ -35,26 +36,86 @@ type HandlerImpl struct{ svc report_service.Service }
 // NewHandler membuat Handler report.
 func NewHandler(svc report_service.Service) Handler { return &HandlerImpl{svc: svc} }
 
-func (h *HandlerImpl) ExportSubmissions(c *gin.Context) {
-	formCode := c.Query("formCode")
-	if formCode == "" {
-		httphelper.Error(c, apperror.BadRequest("Parameter formCode wajib diisi"))
-		return
+// trimmedNonEmpty/parseInt64s mencerminkan statistic_handler_impl.go — pola
+// yang sama diulang di tiap handler yang butuh (bukan dipusatkan), konsisten
+// dengan konvensi project (lihat article_handler_impl.go/gallery_handler_impl.go).
+func trimmedNonEmpty(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
 	}
-	format := c.DefaultQuery("format", "xlsx")
+	return out
+}
 
-	caller := report_service.CallerScope{
+func parseInt64s(values []string) []int64 {
+	out := make([]int64, 0, len(values))
+	for _, v := range values {
+		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func parseReportFilter(c *gin.Context) report_dto.ReportFilter {
+	return report_dto.ReportFilter{
+		Statuses:              trimmedNonEmpty(c.QueryArray("status")),
+		ProvinceNames:         trimmedNonEmpty(c.QueryArray("province")),
+		CityNames:             trimmedNonEmpty(c.QueryArray("city")),
+		ParentOrganizationIDs: parseInt64s(c.QueryArray("parentOrganizationID")),
+		LevelCodes:            trimmedNonEmpty(c.QueryArray("level")),
+		DateFrom:              c.Query("dateFrom"),
+		DateTo:                c.Query("dateTo"),
+	}
+}
+
+func reportCallerScope(c *gin.Context) report_service.CallerScope {
+	return report_service.CallerScope{
 		UserID:                  appctx.UserID(c),
 		OrganizationID:          appctx.OrganizationID(c),
 		OrganizationTypeCode:    appctx.OrganizationTypeCode(c),
 		WildcardTierAccess:      appctx.WildcardTierAccess(c),
 		RequestedOrganizationID: requestedOrganizationID(c),
+		GeneratedByEmail:        appctx.Email(c),
 	}
-	result, err := h.svc.ExportSubmissions(c.Request.Context(), caller, report_dto.ExportFilter{
-		FormCode: formCode,
-		Status:   c.Query("status"),
-		Format:   format,
-	})
+}
+
+func (h *HandlerImpl) ListLevelisasi(c *gin.Context) {
+	filter := parseReportFilter(c)
+	filter.Sort = c.Query("sort")
+	filter.Page, _ = strconv.Atoi(c.DefaultQuery("page", "1"))
+	filter.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "50"))
+	result, err := h.svc.ListLevelisasi(c.Request.Context(), reportCallerScope(c), filter)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, result.Rows, int(result.Total), filter.Page, filter.Limit))
+}
+
+func (h *HandlerImpl) ExportLevelisasi(c *gin.Context) {
+	result, err := h.svc.ExportLevelisasi(c.Request.Context(), reportCallerScope(c), parseReportFilter(c), c.DefaultQuery("format", "xlsx"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", result.FileName))
+	c.Data(200, result.ContentType, result.Data)
+}
+
+func (h *HandlerImpl) ListPendataan(c *gin.Context) {
+	tabs, err := h.svc.ListPendataan(c.Request.Context(), reportCallerScope(c), parseReportFilter(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", tabs)
+}
+
+func (h *HandlerImpl) ExportPendataan(c *gin.Context) {
+	result, err := h.svc.ExportPendataan(c.Request.Context(), reportCallerScope(c), parseReportFilter(c), c.DefaultQuery("format", "xlsx"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return

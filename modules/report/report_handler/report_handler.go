@@ -5,7 +5,10 @@ import "github.com/gin-gonic/gin"
 
 // Handler adalah kontrak handler HTTP modul report.
 type Handler interface {
-	ExportSubmissions(c *gin.Context)
+	ListLevelisasi(c *gin.Context)
+	ExportLevelisasi(c *gin.Context)
+	ListPendataan(c *gin.Context)
+	ExportPendataan(c *gin.Context)
 
 	// ---------- Kantong Amal (Phase 9) ----------
 	BalanceReport(c *gin.Context)

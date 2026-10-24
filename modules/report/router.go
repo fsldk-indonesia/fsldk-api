@@ -12,15 +12,24 @@ import (
 // RegisterRoutes mendaftarkan endpoint modul report. Kantong Amal selalu
 // aktif sejak revisi 2026-09-01 (item 9 revision-prompt-2.md —
 // KANTONG_AMAL_ENABLED dihapus, tidak ada lagi gating flag di sini).
-// Endpoint /submissions/export (report existing, tidak terkait Kantong
+// Endpoint /levelisasi & /pendataan (report existing, tidak terkait Kantong
 // Amal) tidak terpengaruh.
 func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewares.Middleware) {
 	g := rg.Group("/reports")
 	g.Use(mw.Auth())
 	{
-		g.GET("/submissions/export", mw.RequirePermission(
+		g.GET("/levelisasi", mw.RequirePermission(
+			constants.PermReportRegionView, constants.PermReportNationalView,
+		), h.ListLevelisasi)
+		g.GET("/levelisasi/export", mw.RequirePermission(
 			constants.PermReportRegionExport, constants.PermReportNationalExport,
-		), h.ExportSubmissions)
+		), h.ExportLevelisasi)
+		g.GET("/pendataan", mw.RequirePermission(
+			constants.PermReportRegionView, constants.PermReportNationalView,
+		), h.ListPendataan)
+		g.GET("/pendataan/export", mw.RequirePermission(
+			constants.PermReportRegionExport, constants.PermReportNationalExport,
+		), h.ExportPendataan)
 
 		// Kantong Amal (Phase 9, §15 techspec) — akses dibatasi murni via
 		// permission (least-privilege), bukan org-scope seperti report submission.
