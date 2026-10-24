@@ -10,7 +10,12 @@ import (
 
 // Repository adalah kontrak akses data laporan.
 type Repository interface {
-	SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error)
+	// SubmissionRows adalah SATU-SATUNYA jalur query untuk Laporan Levelisasi
+	// & Pendataan — dipakai baik Show Data (paginasi via f.Page/f.Limit) maupun
+	// Download Data (f.Limit 0 = ambil semua baris), menjamin keduanya identik
+	// (TechSpec-Report-Revamp.md DL-5). total = jumlah baris SEBELUM paginasi.
+	// orderBy kosong = default "o.organizationName ASC".
+	SubmissionRows(ctx context.Context, formID int64, f report_dto.ReportFilter, orderBy string, organizationIDs []int64) (rows []report_dto.SubmissionRow, total int64, err error)
 	// AnswersBySubmissionIDs mengembalikan seluruh baris tr_submission_answer
 	// untuk sekumpulan submissionID sekaligus (satu query, bukan N+1) — dipakai
 	// ExportSubmissions menyusun sheet "Jawaban" per versi form.

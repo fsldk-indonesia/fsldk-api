@@ -26,10 +26,15 @@ type fakeReportRepository struct {
 	donationPaidAmount float64
 	withdrawalCount    int64
 	withdrawalAmount   float64
+
+	submissionRows []report_dto.SubmissionRow
 }
 
-func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error) {
-	return nil, nil
+func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, filter report_dto.ReportFilter, orderBy string, organizationIDs []int64) ([]report_dto.SubmissionRow, int64, error) {
+	if f.submissionRows == nil {
+		return nil, 0, nil
+	}
+	return f.submissionRows, int64(len(f.submissionRows)), nil
 }
 func (f *fakeReportRepository) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
 	return nil, nil

@@ -17,22 +17,61 @@ type RepositoryImpl struct{ db *gorm.DB }
 // NewRepository membuat implementasi Repository.
 func NewRepository(db *gorm.DB) Repository { return &RepositoryImpl{db: db} }
 
-func (r *RepositoryImpl) SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error) {
+func (r *RepositoryImpl) SubmissionRows(ctx context.Context, formID int64, f report_dto.ReportFilter, orderBy string, organizationIDs []int64) ([]report_dto.SubmissionRow, int64, error) {
 	if len(organizationIDs) == 0 {
-		return []report_dto.SubmissionRow{}, nil
+		return []report_dto.SubmissionRow{}, 0, nil
+	}
+	if orderBy == "" {
+		orderBy = "o.organizationName ASC"
 	}
 	q := r.db.WithContext(ctx).Table("tr_submission s").
-		Select("s.submissionID, s.formVersionID, o.organizationName, o.provinceName, o.cityName, s.status, l.levelLabel, s.submittedDate, s.lastUpdatedDate").
 		Joins("JOIN ms_organization o ON o.organizationID = s.organizationID").
+		Joins("LEFT JOIN ms_organization po ON po.organizationID = o.parentOrganizationID").
 		Joins("LEFT JOIN tr_levelisasi_result res ON res.organizationID = s.organizationID AND res.isCurrent = 1").
 		Joins("LEFT JOIN lk_level l ON l.levelCode = res.levelCode").
 		Where("s.formID = ? AND s.organizationID IN ?", formID, organizationIDs)
-	if status != "" {
-		q = q.Where("s.status = ?", status)
+	if len(f.Statuses) > 0 {
+		q = q.Where("s.status IN ?", f.Statuses)
+	}
+	if len(f.ProvinceNames) > 0 {
+		q = q.Where("o.provinceName IN ?", f.ProvinceNames)
+	}
+	if len(f.CityNames) > 0 {
+		q = q.Where("o.cityName IN ?", f.CityNames)
+	}
+	if len(f.ParentOrganizationIDs) > 0 {
+		q = q.Where("po.organizationID IN ?", f.ParentOrganizationIDs)
+	}
+	if len(f.LevelCodes) > 0 {
+		q = q.Where("res.levelCode IN ?", f.LevelCodes)
+	}
+	if f.DateFrom != "" {
+		q = q.Where("s.submittedDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("s.submittedDate <= ?", f.DateTo+" 23:59:59")
+	}
+
+	var total int64
+	if err := q.Session(&gorm.Session{}).Select("s.submissionID").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	q = q.Select("s.submissionID, s.formVersionID, o.organizationName, po.organizationName AS parentOrganizationName, o.provinceName, o.cityName, s.status, l.levelLabel, s.submittedDate, s.lastUpdatedDate").
+		Order(orderBy)
+	if f.Limit > 0 {
+		q = q.Offset((maxInt(f.Page, 1) - 1) * f.Limit).Limit(f.Limit)
 	}
 	var out []report_dto.SubmissionRow
-	err := q.Order("o.organizationName ASC").Find(&out).Error
-	return out, err
+	err := q.Find(&out).Error
+	return out, total, err
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (r *RepositoryImpl) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
