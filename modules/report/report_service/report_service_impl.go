@@ -34,7 +34,7 @@ import (
 // OQ-22 (reuse ldksyahid-app): Rp50.000.
 const reconciliationDiscrepancyThreshold = 50_000
 
-var reportColumns = []string{"Nama LDK", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
+var reportColumns = []string{"Nama LDK", "Puskomda", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
@@ -52,20 +52,27 @@ func NewService(repo report_repository.Repository, formRepo submission_form_repo
 }
 
 func rowValues(row report_dto.SubmissionRow) []string {
-	fmtDate := func(t time.Time, valid bool) string {
-		if !valid {
+	strOrEmpty := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	fmtDate := func(t *time.Time) string {
+		if t == nil {
 			return ""
 		}
 		return t.Format("2006-01-02 15:04")
 	}
 	return []string{
 		row.OrganizationName,
-		row.ProvinceName.String,
-		row.CityName.String,
+		strOrEmpty(row.ParentOrganizationName),
+		strOrEmpty(row.ProvinceName),
+		strOrEmpty(row.CityName),
 		row.Status,
-		row.LevelLabel.String,
-		fmtDate(row.SubmittedDate.Time, row.SubmittedDate.Valid),
-		fmtDate(row.LastUpdatedDate.Time, row.LastUpdatedDate.Valid),
+		strOrEmpty(row.LevelLabel),
+		fmtDate(row.SubmittedDate),
+		fmtDate(row.LastUpdatedDate),
 	}
 }
 
@@ -369,8 +376,8 @@ func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.S
 			answersForSub := answersBySubmission[subRow.SubmissionID]
 			values := make([]string, 0, len(columns))
 			values = append(values,
-				subRow.OrganizationName, subRow.ProvinceName.String, subRow.CityName.String,
-				subRow.Status, formatNullDateTime(subRow.SubmittedDate),
+				subRow.OrganizationName, strOrEmptyPtr(subRow.ProvinceName), strOrEmptyPtr(subRow.CityName),
+				subRow.Status, formatDateTimePtr(subRow.SubmittedDate),
 			)
 			for _, f := range fields {
 				if !isFieldVisible(f, fieldByID, answersForSub, optionValueByID) {
@@ -1041,4 +1048,25 @@ func formatNullDateTime(t sql.NullTime) string {
 		return ""
 	}
 	return t.Time.Format("2006-01-02 15:04")
+}
+
+// formatDateTimePtr adalah versi formatNullDateTime untuk field *time.Time
+// (SubmissionRow, lihat komentar FinanceAuditLogItem di report_dto.go) —
+// TIDAK menggantikan formatNullDateTime, yang masih dipakai field
+// sql.NullTime lain (WithdrawalReportRow) di file ini.
+func formatDateTimePtr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
+// strOrEmptyPtr adalah versi package-level dari closure strOrEmpty lokal di
+// rowValues — dipakai buildAnswerSheets yang tidak punya akses ke closure
+// tersebut.
+func strOrEmptyPtr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

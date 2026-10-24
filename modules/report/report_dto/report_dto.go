@@ -12,29 +12,29 @@ import (
 // per versi form (lihat ServiceImpl.buildAnswerSheets), karena field
 // Levelisasi LDK bisa berubah tiap Puskomnas publish versi baru.
 type SubmissionRow struct {
-	SubmissionID           int64          `gorm:"column:submissionID"`
-	FormVersionID          int64          `gorm:"column:formVersionID"`
-	OrganizationName       string         `gorm:"column:organizationName"`
-	ParentOrganizationName sql.NullString `gorm:"column:parentOrganizationName"`
-	ProvinceName           sql.NullString `gorm:"column:provinceName"`
-	CityName               sql.NullString `gorm:"column:cityName"`
-	Status                 string         `gorm:"column:status"`
-	LevelLabel             sql.NullString `gorm:"column:levelLabel"`
-	SubmittedDate          sql.NullTime   `gorm:"column:submittedDate"`
-	LastUpdatedDate        sql.NullTime   `gorm:"column:lastUpdatedDate"`
+	SubmissionID           int64      `gorm:"column:submissionID" json:"submissionID"`
+	FormVersionID          int64      `gorm:"column:formVersionID" json:"formVersionID"`
+	OrganizationName       string     `gorm:"column:organizationName" json:"organizationName"`
+	ParentOrganizationName *string    `gorm:"column:parentOrganizationName" json:"parentOrganizationName,omitempty"`
+	ProvinceName           *string    `gorm:"column:provinceName" json:"provinceName,omitempty"`
+	CityName               *string    `gorm:"column:cityName" json:"cityName,omitempty"`
+	Status                 string     `gorm:"column:status" json:"status"`
+	LevelLabel             *string    `gorm:"column:levelLabel" json:"levelLabel,omitempty"`
+	SubmittedDate          *time.Time `gorm:"column:submittedDate" json:"submittedDate,omitempty"`
+	LastUpdatedDate        *time.Time `gorm:"column:lastUpdatedDate" json:"lastUpdatedDate,omitempty"`
 }
 
 // AnswerRow adalah satu baris tr_submission_answer mentah — dipakai
 // ServiceImpl.buildAnswerSheets untuk resolusi nilai per field (bukan
 // dikembalikan langsung ke klien).
 type AnswerRow struct {
-	SubmissionID  int64          `gorm:"column:submissionID"`
-	FieldID       int64          `gorm:"column:fieldID"`
-	ValueText     sql.NullString `gorm:"column:valueText"`
+	SubmissionID  int64           `gorm:"column:submissionID"`
+	FieldID       int64           `gorm:"column:fieldID"`
+	ValueText     sql.NullString  `gorm:"column:valueText"`
 	ValueNumber   sql.NullFloat64 `gorm:"column:valueNumber"`
-	ValueDate     sql.NullTime   `gorm:"column:valueDate"`
-	ValueOptionID sql.NullInt64  `gorm:"column:valueOptionID"`
-	ValueFileName sql.NullString `gorm:"column:valueFileName"`
+	ValueDate     sql.NullTime    `gorm:"column:valueDate"`
+	ValueOptionID sql.NullInt64   `gorm:"column:valueOptionID"`
+	ValueFileName sql.NullString  `gorm:"column:valueFileName"`
 }
 
 // ExportResult adalah berkas hasil ekspor siap dikirim sebagai response.
@@ -81,9 +81,9 @@ type ReportListResult struct {
 // supaya Show Data dan Download Data dibangun dari komputasi yang sama persis
 // (DL-5), hanya beda tujuan akhir (JSON vs tulis ke file).
 type PendataanTab struct {
-	FormVersionID int64    `json:"formVersionID"`
-	VersionLabel  string   `json:"versionLabel"`
-	Columns       []string `json:"columns"`
+	FormVersionID int64      `json:"formVersionID"`
+	VersionLabel  string     `json:"versionLabel"`
+	Columns       []string   `json:"columns"`
 	Rows          [][]string `json:"rows"`
 }
 
@@ -258,8 +258,8 @@ type AgeBandRow struct {
 // AnalyticsResponse membungkus seluruh data tab Analitik satu campaign
 // (atau seluruh campaign bila campaignID 0) sekali panggil.
 type AnalyticsResponse struct {
-	DonationAmountBands []AmountBandRow    `json:"donationAmountBands"`
-	DonorAgeBands       []AgeBandRow       `json:"donorAgeBands"`
+	DonationAmountBands []AmountBandRow     `json:"donationAmountBands"`
+	DonorAgeBands       []AgeBandRow        `json:"donorAgeBands"`
 	CampaignProgress    []CampaignReportRow `json:"campaignProgress"`
 }
 
