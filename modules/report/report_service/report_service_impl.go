@@ -103,9 +103,14 @@ func rowsToValues(rows []report_dto.SubmissionRow) [][]string {
 // ke berkas XLSX — dipisah dari excelize supaya ExportSubmissions bisa
 // menyusun N sheet (Ringkasan + satu per versi form) sebelum menulis sekali.
 type sheetData struct {
-	Name    string
-	Columns []string
-	Rows    [][]string
+	Name string
+	// HeaderRows ditulis sebelum Columns/Rows (TechSpec-Report-Revamp.md
+	// DL-7) — muncul di SETIAP sheet, bukan hanya yang pertama, supaya tiap
+	// sheet tetap bisa dibaca berdiri sendiri bila di-extract terpisah
+	// (filosofi sama dengan answerSheetBaseColumns).
+	HeaderRows [][]string
+	Columns    []string
+	Rows       [][]string
 }
 
 // buildWorkbook menulis satu berkas XLSX in-memory berisi beberapa sheet
@@ -123,13 +128,20 @@ func buildWorkbook(sheets []sheetData) ([]byte, error) {
 		} else if _, err := f.NewSheet(name); err != nil {
 			return nil, err
 		}
+		offset := len(sd.HeaderRows)
+		for r, row := range sd.HeaderRows {
+			for c, v := range row {
+				cell, _ := excelize.CoordinatesToCellName(c+1, r+1)
+				f.SetCellValue(name, cell, v)
+			}
+		}
 		for c, col := range sd.Columns {
-			cell, _ := excelize.CoordinatesToCellName(c+1, 1)
+			cell, _ := excelize.CoordinatesToCellName(c+1, offset+1)
 			f.SetCellValue(name, cell, col)
 		}
 		for r, row := range sd.Rows {
 			for c, v := range row {
-				cell, _ := excelize.CoordinatesToCellName(c+1, r+2)
+				cell, _ := excelize.CoordinatesToCellName(c+1, offset+r+2)
 				f.SetCellValue(name, cell, v)
 			}
 		}
@@ -176,6 +188,61 @@ func autoFitColumns(f *excelize.File, sheet string, columns []string, rows [][]s
 			continue
 		}
 		_ = f.SetColWidth(sheet, colName, colName, width)
+	}
+}
+
+// buildReportHeaderRows menghasilkan baris metadata sebelum header kolom
+// data — judul, konteks portal, waktu dibuat, periode, pembuat, dan ringkasan
+// filter yang BENAR-BENAR diterapkan (filter kosong tidak disebut sama
+// sekali, bukan ditulis "-") — mengikuti referensi "Transaction Log Report"
+// ESBCore (TechSpec-Report-Revamp.md §4.4).
+func buildReportHeaderRows(title, portalLabel string, f report_dto.ReportFilter, generatedByEmail string) [][]string {
+	period := "Semua periode"
+	if f.DateFrom != "" || f.DateTo != "" {
+		from, to := f.DateFrom, f.DateTo
+		if from == "" {
+			from = "awal"
+		}
+		if to == "" {
+			to = "sekarang"
+		}
+		period = from + " - " + to
+	}
+
+	var applied []string
+	if len(f.Statuses) > 0 {
+		applied = append(applied, "Status: "+strings.Join(f.Statuses, ", "))
+	}
+	if len(f.ProvinceNames) > 0 {
+		applied = append(applied, "Provinsi: "+strings.Join(f.ProvinceNames, ", "))
+	}
+	if len(f.CityNames) > 0 {
+		applied = append(applied, "Kota/Kabupaten: "+strings.Join(f.CityNames, ", "))
+	}
+	if len(f.ParentOrganizationIDs) > 0 {
+		ids := make([]string, len(f.ParentOrganizationIDs))
+		for i, id := range f.ParentOrganizationIDs {
+			ids[i] = strconv.FormatInt(id, 10)
+		}
+		applied = append(applied, "Puskomda ID: "+strings.Join(ids, ", "))
+	}
+	if len(f.LevelCodes) > 0 {
+		applied = append(applied, "Level: "+strings.Join(f.LevelCodes, ", "))
+	}
+	appliedLabel := "Tidak ada filter tambahan"
+	if len(applied) > 0 {
+		appliedLabel = strings.Join(applied, "; ")
+	}
+
+	return [][]string{
+		{title},
+		{portalLabel},
+		{},
+		{"Dibuat", time.Now().Format("2006-01-02 15:04:05")},
+		{"Periode", period},
+		{"Dibuat oleh", generatedByEmail},
+		{"Filter Diterapkan", appliedLabel},
+		{},
 	}
 }
 
@@ -461,7 +528,7 @@ func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope,
 			return report_dto.ExportResult{}, apperror.Internal("")
 		}
 	}
-	rows, err := s.repo.SubmissionRows(ctx, form.FormID, filter.Status, orgIDs)
+	rows, _, err := s.repo.SubmissionRows(ctx, form.FormID, report_dto.ReportFilter{Statuses: []string{filter.Status}}, "", orgIDs)
 	if err != nil {
 		return report_dto.ExportResult{}, apperror.Internal("")
 	}
