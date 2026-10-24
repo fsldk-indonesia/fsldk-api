@@ -18,6 +18,10 @@ type CallerScope struct {
 	// `organizationID` (org-switcher shell cms-ldk/cms-puskomda) — divalidasi
 	// accessible via OrgScopeResolver.IsAccessible sebelum dipakai.
 	RequestedOrganizationID *int64
+	// GeneratedByEmail diisi handler dari appctx.Email(c) — satu-satunya
+	// identitas pengguna yang sudah ada di context tanpa query tambahan
+	// (DL-8), dipakai baris "Dibuat oleh" di header Excel.
+	GeneratedByEmail string
 }
 
 // OrgScopeResolver menyediakan resolusi cakupan akses organisasi berjenjang.
@@ -29,7 +33,15 @@ type OrgScopeResolver interface {
 
 // Service adalah kontrak logika bisnis report.
 type Service interface {
-	ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error)
+	// ListLevelisasi/ListPendataan adalah Show Data; ExportLevelisasi/
+	// ExportPendataan adalah Download Data — tiap pasangan memanggil
+	// ListLevelisasi/ListPendataan masing-masing secara internal sebelum
+	// menulis hasilnya ke Excel/CSV, supaya Show Data dan Download Data
+	// dijamin mengembalikan data identik (DL-5).
+	ListLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) (report_dto.ReportListResult, error)
+	ListPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) ([]report_dto.PendataanTab, error)
+	ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
+	ExportPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
 

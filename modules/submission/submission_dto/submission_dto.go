@@ -185,22 +185,24 @@ type StatusHistoryResponse struct {
 	CreatedDate time.Time `json:"createdDate"`
 }
 
-// Response adalah representasi ringkas submission untuk API. OrganizationName
-// diisi lewat LEFT JOIN ms_organization di submission_repository.List (kosong
-// pada jalur lain yang tidak melakukan join, mis. Create/Get) — dipakai kolom
-// "LDK" halaman Laporan (app-cms-index) supaya FE tidak perlu lookup terpisah.
+// Response adalah representasi ringkas submission untuk API. OrganizationName/
+// ParentOrganizationName diisi lewat LEFT JOIN ms_organization (dua tingkat)
+// di submission_repository.List (kosong pada jalur lain yang tidak melakukan
+// join, mis. Create/Get) — dipakai kolom "LDK"/"Puskomda" halaman Laporan
+// (app-cms-index) supaya FE tidak perlu lookup terpisah.
 type Response struct {
-	SubmissionID     int64      `json:"submissionID"`
-	FormID           int64      `json:"formID"`
-	FormCode         string     `json:"formCode"`
-	FormVersionID    int64      `json:"formVersionID"`
-	OrganizationID   int64      `json:"organizationID"`
-	OrganizationName string     `json:"organizationName,omitempty"`
-	SubjectType      string     `json:"subjectType"`
-	Status           string     `json:"status"`
-	Version          int        `json:"version"`
-	SubmittedDate    *time.Time `json:"submittedDate,omitempty"`
-	CreatedDate      time.Time  `json:"createdDate"`
+	SubmissionID           int64      `json:"submissionID"`
+	FormID                 int64      `json:"formID"`
+	FormCode               string     `json:"formCode"`
+	FormVersionID          int64      `json:"formVersionID"`
+	OrganizationID         int64      `json:"organizationID"`
+	OrganizationName       string     `json:"organizationName,omitempty"`
+	ParentOrganizationName string     `json:"parentOrganizationName,omitempty"`
+	SubjectType            string     `json:"subjectType"`
+	Status                 string     `json:"status"`
+	Version                int        `json:"version"`
+	SubmittedDate          *time.Time `json:"submittedDate,omitempty"`
+	CreatedDate            time.Time  `json:"createdDate"`
 }
 
 // FieldScoreResponse adalah breakdown skor satu field UseScoring — dipakai

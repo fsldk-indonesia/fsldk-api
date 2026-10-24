@@ -7,21 +7,34 @@ import (
 )
 
 // SubmissionRow adalah satu baris laporan submission untuk ekspor.
+// SubmissionID/FormVersionID tidak ditampilkan sebagai kolom (dipakai
+// internal saja) — FormVersionID mengelompokkan baris ke sheet "Jawaban"
+// per versi form (lihat ServiceImpl.buildAnswerSheets), karena field
+// Levelisasi LDK bisa berubah tiap Puskomnas publish versi baru.
 type SubmissionRow struct {
-	OrganizationName string         `gorm:"column:organizationName"`
-	ProvinceName     sql.NullString `gorm:"column:provinceName"`
-	CityName         sql.NullString `gorm:"column:cityName"`
-	Status           string         `gorm:"column:status"`
-	LevelLabel       sql.NullString `gorm:"column:levelLabel"`
-	SubmittedDate    sql.NullTime   `gorm:"column:submittedDate"`
-	LastUpdatedDate  sql.NullTime   `gorm:"column:lastUpdatedDate"`
+	SubmissionID           int64      `gorm:"column:submissionID" json:"submissionID"`
+	FormVersionID          int64      `gorm:"column:formVersionID" json:"formVersionID"`
+	OrganizationName       string     `gorm:"column:organizationName" json:"organizationName"`
+	ParentOrganizationName *string    `gorm:"column:parentOrganizationName" json:"parentOrganizationName,omitempty"`
+	ProvinceName           *string    `gorm:"column:provinceName" json:"provinceName,omitempty"`
+	CityName               *string    `gorm:"column:cityName" json:"cityName,omitempty"`
+	Status                 string     `gorm:"column:status" json:"status"`
+	LevelLabel             *string    `gorm:"column:levelLabel" json:"levelLabel,omitempty"`
+	SubmittedDate          *time.Time `gorm:"column:submittedDate" json:"submittedDate,omitempty"`
+	LastUpdatedDate        *time.Time `gorm:"column:lastUpdatedDate" json:"lastUpdatedDate,omitempty"`
 }
 
-// ExportFilter menampung parameter penyaringan ekspor laporan submission.
-type ExportFilter struct {
-	FormCode string
-	Status   string
-	Format   string // "xlsx" atau "csv"
+// AnswerRow adalah satu baris tr_submission_answer mentah — dipakai
+// ServiceImpl.buildAnswerSheets untuk resolusi nilai per field (bukan
+// dikembalikan langsung ke klien).
+type AnswerRow struct {
+	SubmissionID  int64           `gorm:"column:submissionID"`
+	FieldID       int64           `gorm:"column:fieldID"`
+	ValueText     sql.NullString  `gorm:"column:valueText"`
+	ValueNumber   sql.NullFloat64 `gorm:"column:valueNumber"`
+	ValueDate     sql.NullTime    `gorm:"column:valueDate"`
+	ValueOptionID sql.NullInt64   `gorm:"column:valueOptionID"`
+	ValueFileName sql.NullString  `gorm:"column:valueFileName"`
 }
 
 // ExportResult adalah berkas hasil ekspor siap dikirim sebagai response.
@@ -29,6 +42,57 @@ type ExportResult struct {
 	FileName    string
 	ContentType string
 	Data        []byte
+}
+
+// ReportFilter menyaring Show Data (list) & Download Data (export) untuk
+// Laporan Levelisasi/Pendataan — SATU struct dipakai kedua jalur supaya
+// nilainya dijamin sama (TechSpec-Report-Revamp.md DL-5). LevelCodes hanya
+// dipakai Laporan Levelisasi; ParentOrganizationIDs hanya dikirim dari shell
+// cms-puskomnas (DL-4). Page/Limit dipakai ListLevelisasi saja — ListPendataan
+// & export selalu mengambil seluruh baris (Limit 0 = tanpa batas).
+type ReportFilter struct {
+	Statuses              []string
+	ProvinceNames         []string
+	CityNames             []string
+	ParentOrganizationIDs []int64
+	// OrganizationIDs adalah filter "Nama LDK" (multi-select) — dikirim dari
+	// KEDUA tier (DL-4 tidak berlaku di sini, beda dari ParentOrganizationIDs):
+	// opsinya di frontend sudah dibatasi sesuai scope caller (tier Puskomda
+	// cuma menawarkan LDK miliknya sendiri lewat filter `puskomda` di
+	// directory endpoint, tier Puskomnas menawarkan seluruh LDK) — backend
+	// cukup AND filter ini dengan organizationIDs hasil resolveReportOrgIDs,
+	// tidak bisa dipakai untuk eskalasi akses di luar scope caller.
+	OrganizationIDs []int64
+	LevelCodes      []string
+	DateFrom        string // "2026-01-01", cocok ke s.submittedDate
+	DateTo          string
+	// Sort mentah dari klik header kolom CmsIndexComponent (mis. "-submittedDate")
+	// — HANYA dipakai ListLevelisasi (Show Data tabel), di-whitelist di situ
+	// lewat reportSortColumns (Task 4), bukan dipakai langsung sebagai SQL.
+	// ListPendataan/ExportLevelisasi/ExportPendataan mengabaikannya (selalu
+	// urutan default nama LDK) — keputusan scope sengaja, bukan celah: export
+	// tidak punya UI sort sendiri, dan Pendataan ditampilkan per tab, bukan
+	// tabel tunggal yang masuk akal diurutkan ulang.
+	Sort  string
+	Page  int
+	Limit int
+}
+
+// ReportListResult adalah hasil Show Data Laporan Levelisasi, terpaginasi.
+type ReportListResult struct {
+	Rows  []SubmissionRow
+	Total int64
+}
+
+// PendataanTab adalah satu tab versi form di Laporan Pendataan (Show Data
+// JSON) — struktur sama persis dengan sheetData Excel (report_service_impl.go),
+// supaya Show Data dan Download Data dibangun dari komputasi yang sama persis
+// (DL-5), hanya beda tujuan akhir (JSON vs tulis ke file).
+type PendataanTab struct {
+	FormVersionID int64      `json:"formVersionID"`
+	VersionLabel  string     `json:"versionLabel"`
+	Columns       []string   `json:"columns"`
+	Rows          [][]string `json:"rows"`
 }
 
 // ---------- Kantong Amal (Phase 9) ----------
@@ -202,8 +266,8 @@ type AgeBandRow struct {
 // AnalyticsResponse membungkus seluruh data tab Analitik satu campaign
 // (atau seluruh campaign bila campaignID 0) sekali panggil.
 type AnalyticsResponse struct {
-	DonationAmountBands []AmountBandRow    `json:"donationAmountBands"`
-	DonorAgeBands       []AgeBandRow       `json:"donorAgeBands"`
+	DonationAmountBands []AmountBandRow     `json:"donationAmountBands"`
+	DonorAgeBands       []AgeBandRow        `json:"donorAgeBands"`
 	CampaignProgress    []CampaignReportRow `json:"campaignProgress"`
 }
 

@@ -60,10 +60,11 @@ func pengurusRoleAllowed(callerOrgType, roleName string) bool {
 }
 
 var sortColumns = map[string]string{
-	"createdDate":      "s.createdDate",
-	"submittedDate":    "s.submittedDate",
-	"status":           "s.status",
-	"organizationName": "o.organizationName",
+	"createdDate":            "s.createdDate",
+	"submittedDate":          "s.submittedDate",
+	"status":                 "s.status",
+	"organizationName":       "o.organizationName",
+	"parentOrganizationName": "po.organizationName",
 }
 
 // ServiceImpl adalah implementasi Service.
@@ -371,16 +372,17 @@ func toKaderResponse(k submission_model.Kader) submission_dto.KaderResponse {
 
 func (s *ServiceImpl) toResponse(sub submission_model.Submission, formCode string) submission_dto.Response {
 	out := submission_dto.Response{
-		SubmissionID:   sub.SubmissionID,
-		FormID:         sub.FormID,
-		FormCode:       formCode,
-		FormVersionID:  sub.FormVersionID,
-		OrganizationID:   sub.OrganizationID,
-		OrganizationName: sub.OrganizationName,
-		SubjectType:      sub.SubjectType,
-		Status:           sub.Status,
-		Version:          sub.Version,
-		CreatedDate:      sub.CreatedDate,
+		SubmissionID:           sub.SubmissionID,
+		FormID:                 sub.FormID,
+		FormCode:               formCode,
+		FormVersionID:          sub.FormVersionID,
+		OrganizationID:         sub.OrganizationID,
+		OrganizationName:       sub.OrganizationName,
+		ParentOrganizationName: sub.ParentOrganizationName.String,
+		SubjectType:            sub.SubjectType,
+		Status:                 sub.Status,
+		Version:                sub.Version,
+		CreatedDate:            sub.CreatedDate,
 	}
 	if sub.SubmittedDate.Valid {
 		out.SubmittedDate = &sub.SubmittedDate.Time

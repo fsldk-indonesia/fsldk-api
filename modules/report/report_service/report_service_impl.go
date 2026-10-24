@@ -5,16 +5,23 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
 	"fsldk-api/modules/report/report_repository"
+	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/modules/submission_form/submission_form_repository"
 	"fsldk-api/pkg/auditlog"
 	"fsldk-api/pkg/bisatopup"
@@ -27,7 +34,7 @@ import (
 // OQ-22 (reuse ldksyahid-app): Rp50.000.
 const reconciliationDiscrepancyThreshold = 50_000
 
-var reportColumns = []string{"Nama Organisasi", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
+var reportColumns = []string{"Nama LDK", "Puskomda", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
@@ -44,21 +51,55 @@ func NewService(repo report_repository.Repository, formRepo submission_form_repo
 	return &ServiceImpl{repo: repo, formRepo: formRepo, orgScope: orgScope, audit: audit, gateway: gateway, cfg: cfg}
 }
 
+// reportStatusLabels mencerminkan SUBMISSION_STATUS_LABELS
+// (fsldk-web/src/app/modules/submission/entities/submission.ts) — Excel
+// export (rowValues, dipakai ExportLevelisasi) harus menampilkan label
+// Indonesia yang SAMA dengan tabel on-screen Show Data, bukan kode mentah
+// tr_submission.status (TechSpec-Report-Revamp.md DL-5: "Excel export
+// matches exactly what the on-screen table shows").
+var reportStatusLabels = map[string]string{
+	"DRAFT": "Draf", "SUBMITTED": "Terkirim", "CANCELLED": "Dibatalkan", "REJECTED": "Ditolak",
+	"PUSKOMDA_REVIEW": "Verifikasi Puskomda", "REVISION_REQUESTED_PUSKOMDA": "Revisi Diminta (Puskomda)",
+	"APPROVED_PUSKOMDA": "Disetujui Puskomda", "PUSKOMNAS_REVIEW": "Verifikasi Puskomnas",
+	"REVISION_REQUESTED_PUSKOMNAS": "Revisi Diminta (Puskomnas)", "APPROVED_PUSKOMNAS": "Disetujui Puskomnas",
+	"LEVEL_ESTABLISHED": "Level Ditetapkan",
+	"PUBLISHED": "Dipublikasikan", "LDK_REVIEW": "Verifikasi LDK", "REVISION_REQUESTED_LDK": "Revisi Diminta (LDK)",
+	"APPROVED_LDK": "Disetujui LDK", "CODE_ISSUED": "Kode Terbit", "ACTIVE": "Aktif",
+}
+
+// reportStatusLabel menerjemahkan kode status mentah ke label Indonesia,
+// fallback ke kode itu sendiri bila belum ada di peta — pola sama dengan
+// statusLabel() di report.levelisasi.page.ts (status yang belum dikenal
+// tetap tampil, bukan string kosong).
+func reportStatusLabel(code string) string {
+	if label, ok := reportStatusLabels[code]; ok {
+		return label
+	}
+	return code
+}
+
 func rowValues(row report_dto.SubmissionRow) []string {
-	fmtDate := func(t time.Time, valid bool) string {
-		if !valid {
+	strOrEmpty := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+	fmtDate := func(t *time.Time) string {
+		if t == nil {
 			return ""
 		}
 		return t.Format("2006-01-02 15:04")
 	}
 	return []string{
 		row.OrganizationName,
-		row.ProvinceName.String,
-		row.CityName.String,
-		row.Status,
-		row.LevelLabel.String,
-		fmtDate(row.SubmittedDate.Time, row.SubmittedDate.Valid),
-		fmtDate(row.LastUpdatedDate.Time, row.LastUpdatedDate.Valid),
+		strOrEmpty(row.ParentOrganizationName),
+		strOrEmpty(row.ProvinceName),
+		strOrEmpty(row.CityName),
+		reportStatusLabel(row.Status),
+		strOrEmpty(row.LevelLabel),
+		fmtDate(row.SubmittedDate),
+		fmtDate(row.LastUpdatedDate),
 	}
 }
 
@@ -80,20 +121,94 @@ func toCSV(rows []report_dto.SubmissionRow) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func toXLSX(rows []report_dto.SubmissionRow) ([]byte, error) {
+// answerSheetBaseColumns mendahului kolom per-field di tiap sheet "Jawaban" —
+// konteks organisasi yang sama dipakai di sheet "Result", diulang di sini
+// supaya tiap sheet jawaban tetap bisa dibaca berdiri sendiri.
+var answerSheetBaseColumns = []string{"Nama LDK", "Provinsi", "Kota/Kabupaten", "Status", "Tanggal Submit"}
+
+func rowsToValues(rows []report_dto.SubmissionRow) [][]string {
+	out := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, rowValues(row))
+	}
+	return out
+}
+
+// sheetData adalah satu sheet mentah (nama + header + baris) sebelum ditulis
+// ke berkas XLSX — dipisah dari excelize supaya ExportPendataan bisa
+// menyusun N sheet (satu per versi form) sebelum menulis sekali.
+type sheetData struct {
+	Name string
+	// HeaderRows ditulis sebelum Columns/Rows (TechSpec-Report-Revamp.md
+	// DL-7) — muncul di SETIAP sheet, bukan hanya yang pertama, supaya tiap
+	// sheet tetap bisa dibaca berdiri sendiri bila di-extract terpisah
+	// (filosofi sama dengan answerSheetBaseColumns).
+	HeaderRows [][]string
+	Columns    []string
+	Rows       [][]string
+}
+
+// buildWorkbook menulis satu berkas XLSX in-memory berisi beberapa sheet
+// sekaligus — ExportLevelisasi dipakai dengan satu sheet ("Result"),
+// ExportPendataan dengan N sheet (satu per versi form, lihat buildAnswerSheets).
+// Judul (baris 1) ditulis bold+besar, label baris metadata (Dibuat/Periode/
+// Dibuat oleh/Filter Diterapkan) dan header kolom tabel ditulis bold —
+// permintaan user saat manual testing supaya blok header lebih mudah dibaca
+// sekilas dibanding data di bawahnya.
+func buildWorkbook(sheets []sheetData) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
-	const sheet = "Laporan"
-	f.SetSheetName("Sheet1", sheet)
-	for i, col := range reportColumns {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		f.SetCellValue(sheet, cell, col)
+
+	titleStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true, Size: 14}})
+	if err != nil {
+		return nil, err
 	}
-	for r, row := range rows {
-		for c, v := range rowValues(row) {
-			cell, _ := excelize.CoordinatesToCellName(c+1, r+2)
-			f.SetCellValue(sheet, cell, v)
+	boldStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	if err != nil {
+		return nil, err
+	}
+
+	usedNames := map[string]bool{}
+	for i, sd := range sheets {
+		name := uniqueSheetName(sd.Name, usedNames)
+		if i == 0 {
+			f.SetSheetName("Sheet1", name)
+		} else if _, err := f.NewSheet(name); err != nil {
+			return nil, err
 		}
+		offset := len(sd.HeaderRows)
+		for r, row := range sd.HeaderRows {
+			for c, v := range row {
+				cell, _ := excelize.CoordinatesToCellName(c+1, r+1)
+				f.SetCellValue(name, cell, v)
+			}
+			if len(row) == 0 {
+				continue
+			}
+			firstCell, _ := excelize.CoordinatesToCellName(1, r+1)
+			switch r {
+			case reportHeaderTitleRow:
+				f.SetCellStyle(name, firstCell, firstCell, titleStyle)
+			case reportHeaderDibuatRow, reportHeaderPeriodeRow, reportHeaderDibuatOlehRow, reportHeaderFilterRow:
+				f.SetCellStyle(name, firstCell, firstCell, boldStyle)
+			}
+		}
+		for c, col := range sd.Columns {
+			cell, _ := excelize.CoordinatesToCellName(c+1, offset+1)
+			f.SetCellValue(name, cell, col)
+		}
+		if len(sd.Columns) > 0 {
+			firstCell, _ := excelize.CoordinatesToCellName(1, offset+1)
+			lastCell, _ := excelize.CoordinatesToCellName(len(sd.Columns), offset+1)
+			f.SetCellStyle(name, firstCell, lastCell, boldStyle)
+		}
+		for r, row := range sd.Rows {
+			for c, v := range row {
+				cell, _ := excelize.CoordinatesToCellName(c+1, offset+r+2)
+				f.SetCellValue(name, cell, v)
+			}
+		}
+		autoFitColumns(f, name, sd.Columns, sd.Rows)
 	}
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
@@ -102,62 +217,561 @@ func toXLSX(rows []report_dto.SubmissionRow) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error) {
-	form, err := s.formRepo.FindFormByCode(ctx, filter.FormCode)
-	if err != nil {
-		return report_dto.ExportResult{}, apperror.NotFound("Form tidak ditemukan")
+// autoFitColumns melebarkan tiap kolom sheet mengikuti isi terpanjangnya
+// (header atau baris) supaya nilai tidak terpotong saat dibuka — excelize
+// tidak punya auto-fit bawaan seperti Excel/WPS, jadi dihitung manual dari
+// panjang teks tiap kolom. Dibatasi [10,60] char: lantai supaya header
+// pendek (mis. "Status") tidak terlalu sempit, plafon supaya satu jawaban
+// esai panjang tidak membuat satu kolom melebar penuh layar.
+func autoFitColumns(f *excelize.File, sheet string, columns []string, rows [][]string) {
+	widths := make([]int, len(columns))
+	for i, c := range columns {
+		widths[i] = utf8.RuneCountInString(c)
 	}
-	var orgIDs []int64
+	for _, row := range rows {
+		for i, v := range row {
+			if i >= len(widths) {
+				continue
+			}
+			if l := utf8.RuneCountInString(v); l > widths[i] {
+				widths[i] = l
+			}
+		}
+	}
+	for i, w := range widths {
+		width := float64(w) + 4
+		if width < 10 {
+			width = 10
+		}
+		if width > 60 {
+			width = 60
+		}
+		colName, err := excelize.ColumnNumberToName(i + 1)
+		if err != nil {
+			continue
+		}
+		_ = f.SetColWidth(sheet, colName, colName, width)
+	}
+}
+
+// Indeks baris tetap di dalam HeaderRows (lihat buildReportHeaderRows) —
+// dipakai buildWorkbook untuk menerapkan style bold tanpa baris jadi rapuh
+// terhadap re-ordering manual di kedua fungsi.
+const (
+	reportHeaderTitleRow      = 0
+	reportHeaderDibuatRow     = 2
+	reportHeaderPeriodeRow    = 3
+	reportHeaderDibuatOlehRow = 4
+	reportHeaderFilterRow     = 5
+)
+
+// buildReportHeaderRows menghasilkan baris metadata sebelum header kolom
+// data — judul, waktu dibuat, periode, pembuat, dan ringkasan filter yang
+// BENAR-BENAR diterapkan (filter kosong tidak disebut sama sekali, bukan
+// ditulis "-") — mengikuti referensi "Transaction Log Report" ESBCore
+// (TechSpec-Report-Revamp.md §4.4). Baris portal/branch context SENGAJA
+// tidak disertakan (permintaan user saat manual testing) — nama Puskomda
+// per baris sudah ada di kolom data, dan Puskomnas selalu lintas-wilayah
+// sehingga satu baris "Portal ..." tidak menambah informasi.
+//
+// orgNamesByID adalah peta organizationID->organizationName yang SUDAH
+// di-resolve pemanggil (lewat Repository.OrganizationNamesByIDs, satu query
+// gabungan untuk f.ParentOrganizationIDs + f.OrganizationIDs) — fungsi ini
+// tetap murni (tidak mengakses DB sendiri). ID yang tidak ketemu di peta
+// (mis. organisasi sudah terhapus, atau map nil) jatuh kembali ke ID mentah
+// per-ID (lihat joinOrgNames) supaya informasi filter tidak hilang diam-diam.
+// joinOrgNames menyusun nama organisasi untuk sekumpulan ID dari peta yang
+// sudah di-resolve pemanggil — per-ID fallback ke ID mentah kalau ID
+// tersebut tidak ketemu di peta (mis. organisasi sudah terhapus, atau peta
+// nil karena resolusi gagal), bukan all-or-nothing.
+func joinOrgNames(ids []int64, namesByID map[int64]string) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		if name, ok := namesByID[id]; ok && name != "" {
+			parts[i] = name
+		} else {
+			parts[i] = strconv.FormatInt(id, 10)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByEmail string, orgNamesByID map[int64]string) [][]string {
+	period := "Semua periode"
+	if f.DateFrom != "" || f.DateTo != "" {
+		from, to := f.DateFrom, f.DateTo
+		if from == "" {
+			from = "awal"
+		}
+		if to == "" {
+			to = "sekarang"
+		}
+		period = from + " - " + to
+	}
+
+	var applied []string
+	if len(f.Statuses) > 0 {
+		labels := make([]string, len(f.Statuses))
+		for i, s := range f.Statuses {
+			labels[i] = reportStatusLabel(s)
+		}
+		applied = append(applied, "Status: "+strings.Join(labels, ", "))
+	}
+	if len(f.ProvinceNames) > 0 {
+		applied = append(applied, "Provinsi: "+strings.Join(f.ProvinceNames, ", "))
+	}
+	if len(f.CityNames) > 0 {
+		applied = append(applied, "Kota/Kabupaten: "+strings.Join(f.CityNames, ", "))
+	}
+	if len(f.ParentOrganizationIDs) > 0 {
+		applied = append(applied, "Puskomda: "+joinOrgNames(f.ParentOrganizationIDs, orgNamesByID))
+	}
+	if len(f.OrganizationIDs) > 0 {
+		applied = append(applied, "Nama LDK: "+joinOrgNames(f.OrganizationIDs, orgNamesByID))
+	}
+	if len(f.LevelCodes) > 0 {
+		applied = append(applied, "Level: "+strings.Join(f.LevelCodes, ", "))
+	}
+	appliedLabel := "Tidak ada filter tambahan"
+	if len(applied) > 0 {
+		appliedLabel = strings.Join(applied, "; ")
+	}
+
+	return [][]string{
+		{title},
+		{},
+		{"Dibuat", time.Now().Format("2006-01-02 15:04:05")},
+		{"Periode", period},
+		{"Dibuat oleh", generatedByEmail},
+		{"Filter Diterapkan", appliedLabel},
+		{},
+	}
+}
+
+// uniqueSheetName menegakkan batasan nama sheet Excel (maks 31 karakter,
+// tanpa \/?*[]:, tidak boleh duplikat) — dipanggil berurutan per sheet,
+// `used` diisi in-place supaya sheet berikutnya tahu nama yang sudah dipakai.
+func uniqueSheetName(raw string, used map[string]bool) string {
+	replacer := strings.NewReplacer(`\`, "-", "/", "-", "?", "", "*", "", "[", "(", "]", ")", ":", "-")
+	name := strings.TrimSpace(replacer.Replace(raw))
+	if name == "" {
+		name = "Sheet"
+	}
+	if len(name) > 31 {
+		name = name[:31]
+	}
+	base, suffix := name, 2
+	for used[strings.ToLower(name)] {
+		extra := fmt.Sprintf(" (%d)", suffix)
+		maxBase := 31 - len(extra)
+		if maxBase < 1 {
+			maxBase = 1
+		}
+		trimmed := base
+		if len(trimmed) > maxBase {
+			trimmed = trimmed[:maxBase]
+		}
+		name = trimmed + extra
+		suffix++
+	}
+	used[strings.ToLower(name)] = true
+	return name
+}
+
+// buildAnswerSheets mengelompokkan submission berdasarkan formVersionID lalu
+// menyusun satu sheet "Jawaban" per versi — field Levelisasi LDK bisa berubah
+// tiap Puskomnas publish versi baru (lihat Publish Cascade), jadi kolomnya
+// TIDAK bisa digabung lintas versi tanpa campur aduk. Versi terbaru (ID
+// tertinggi) ditaruh duluan.
+func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.SubmissionRow) ([]report_dto.PendataanTab, error) {
+	byVersion := map[int64][]report_dto.SubmissionRow{}
+	var versionIDs []int64
+	for _, r := range rows {
+		if _, ok := byVersion[r.FormVersionID]; !ok {
+			versionIDs = append(versionIDs, r.FormVersionID)
+		}
+		byVersion[r.FormVersionID] = append(byVersion[r.FormVersionID], r)
+	}
+	sort.Slice(versionIDs, func(i, j int) bool { return versionIDs[i] > versionIDs[j] })
+
+	tabs := make([]report_dto.PendataanTab, 0, len(versionIDs))
+	for _, versionID := range versionIDs {
+		group := byVersion[versionID]
+		version, err := s.formRepo.FindVersionByID(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		sections, err := s.formRepo.ListSectionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := s.formRepo.ListFieldsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		options, err := s.formRepo.ListOptionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		sectionLabel := make(map[int64]string, len(sections))
+		sectionOrder := make(map[int64]int, len(sections))
+		for _, sec := range sections {
+			sectionLabel[sec.SectionID] = sec.SectionLabel
+			sectionOrder[sec.SectionID] = sec.SortOrder
+		}
+		sort.Slice(fields, func(i, j int) bool {
+			oi, oj := sectionOrder[fields[i].SectionID], sectionOrder[fields[j].SectionID]
+			if oi != oj {
+				return oi < oj
+			}
+			return fields[i].SortOrder < fields[j].SortOrder
+		})
+
+		optionsByField := make(map[int64][]submission_form_model.Option)
+		optionValueByID := make(map[int64]string, len(options))
+		for _, o := range options {
+			optionsByField[o.FieldID] = append(optionsByField[o.FieldID], o)
+			optionValueByID[o.OptionID] = o.OptionValue
+		}
+		fieldByID := make(map[int64]submission_form_model.Field, len(fields))
+		for _, f := range fields {
+			fieldByID[f.FieldID] = f
+		}
+
+		submissionIDs := make([]int64, len(group))
+		for i, r := range group {
+			submissionIDs[i] = r.SubmissionID
+		}
+		answers, err := s.repo.AnswersBySubmissionIDs(ctx, submissionIDs)
+		if err != nil {
+			return nil, err
+		}
+		answersBySubmission := make(map[int64]map[int64]report_dto.AnswerRow, len(group))
+		for _, a := range answers {
+			bucket, ok := answersBySubmission[a.SubmissionID]
+			if !ok {
+				bucket = make(map[int64]report_dto.AnswerRow)
+				answersBySubmission[a.SubmissionID] = bucket
+			}
+			bucket[a.FieldID] = a
+		}
+
+		columns := append([]string{}, answerSheetBaseColumns...)
+		for _, f := range fields {
+			label := f.FieldLabel
+			if sl := sectionLabel[f.SectionID]; sl != "" {
+				label = sl + " — " + f.FieldLabel
+			}
+			columns = append(columns, label)
+		}
+
+		rowsOut := make([][]string, 0, len(group))
+		for _, subRow := range group {
+			answersForSub := answersBySubmission[subRow.SubmissionID]
+			values := make([]string, 0, len(columns))
+			values = append(values,
+				subRow.OrganizationName, strOrEmptyPtr(subRow.ProvinceName), strOrEmptyPtr(subRow.CityName),
+				subRow.Status, formatDateTimePtr(subRow.SubmittedDate),
+			)
+			for _, f := range fields {
+				if !isFieldVisible(f, fieldByID, answersForSub, optionValueByID) {
+					values = append(values, "")
+					continue
+				}
+				values = append(values, formatAnswerValue(f, answersForSub[f.FieldID], optionsByField[f.FieldID]))
+			}
+			rowsOut = append(rowsOut, values)
+		}
+
+		tabs = append(tabs, report_dto.PendataanTab{
+			FormVersionID: versionID,
+			VersionLabel:  fmt.Sprintf("V%d", version.VersionNumber),
+			Columns:       columns,
+			Rows:          rowsOut,
+		})
+	}
+	return tabs, nil
+}
+
+// answerConditionalRule mencerminkan bentuk JSON conditionalRuleJSON yang
+// sama persis dipakai submission_service (evaluateConditional) dan frontend
+// SubmissionAnswersViewComponent — duplikasi kecil yang disengaja (report
+// module tidak bergantung ke submission_service, cuma submission_form_repository).
+type answerConditionalRule struct {
+	Operator string `json:"operator"`
+	Value    string `json:"value"`
+}
+
+// isFieldVisible meniru persis evaluateConditional (submission_service) +
+// SubmissionAnswersViewComponent.isVisible (frontend) — field tanpa aturan
+// selalu tampil; field kondisional disembunyikan (nilainya dikosongkan di
+// ekspor, BUKAN dihapus dari tr_submission_answer) kalau field acuannya belum
+// dijawab atau jawabannya tidak memenuhi aturan.
+func isFieldVisible(f submission_form_model.Field, byID map[int64]submission_form_model.Field, answers map[int64]report_dto.AnswerRow, optionValueByID map[int64]string) bool {
+	if !f.ConditionalOnFieldID.Valid || !f.ConditionalRuleJSON.Valid || f.ConditionalRuleJSON.String == "" {
+		return true
+	}
+	trigger, ok := byID[f.ConditionalOnFieldID.Int64]
+	if !ok {
+		return false
+	}
+	var rule answerConditionalRule
+	if err := json.Unmarshal([]byte(f.ConditionalRuleJSON.String), &rule); err != nil {
+		return true
+	}
+	triggerAnswer, hasAnswer := answers[trigger.FieldID]
+	if !hasAnswer {
+		return false
+	}
+	actual := answerAsString(triggerAnswer, optionValueByID)
+	switch rule.Operator {
+	case "equals":
+		return actual == rule.Value
+	case "notEquals":
+		return actual != rule.Value
+	default:
+		return true
+	}
+}
+
+// answerAsString mengembalikan representasi string MENTAH satu jawaban
+// (optionVALUE, bukan label, untuk SELECT/RADIO) — dipakai evaluasi
+// conditional di atas, mencerminkan submission_service.answerAsString.
+func answerAsString(a report_dto.AnswerRow, optionValueByID map[int64]string) string {
+	switch {
+	case a.ValueOptionID.Valid:
+		return optionValueByID[a.ValueOptionID.Int64]
+	case a.ValueText.Valid:
+		return a.ValueText.String
+	case a.ValueNumber.Valid:
+		return strconv.FormatFloat(a.ValueNumber.Float64, 'f', -1, 64)
+	case a.ValueDate.Valid:
+		return a.ValueDate.Time.Format("2006-01-02")
+	default:
+		return ""
+	}
+}
+
+// formatAnswerValue mengembalikan nilai TAMPILAN (label, bukan value mentah)
+// satu jawaban sesuai fieldType — mencerminkan
+// SubmissionAnswersViewComponent.displayValue di frontend. MULTISELECT/
+// CHECKBOX disimpan sebagai JSON array optionID di valueText (lihat
+// submission_service_impl.go buildAnswerParams), di-decode lalu
+// dipetakan ke optionLabel gabungan koma.
+func formatAnswerValue(f submission_form_model.Field, a report_dto.AnswerRow, options []submission_form_model.Option) string {
+	optionLabel := func(id int64) string {
+		for _, o := range options {
+			if o.OptionID == id {
+				return o.OptionLabel
+			}
+		}
+		return ""
+	}
+	switch f.FieldType {
+	case constants.FieldTypeSelect, constants.FieldTypeRadio:
+		if !a.ValueOptionID.Valid {
+			return ""
+		}
+		return optionLabel(a.ValueOptionID.Int64)
+	case constants.FieldTypeMultiselect, constants.FieldTypeCheckbox:
+		if !a.ValueText.Valid || a.ValueText.String == "" {
+			return ""
+		}
+		var ids []int64
+		if err := json.Unmarshal([]byte(a.ValueText.String), &ids); err != nil {
+			return ""
+		}
+		labels := make([]string, 0, len(ids))
+		for _, id := range ids {
+			if l := optionLabel(id); l != "" {
+				labels = append(labels, l)
+			}
+		}
+		return strings.Join(labels, ", ")
+	case constants.FieldTypeFileDoc, constants.FieldTypeFileImage:
+		return a.ValueFileName.String
+	case constants.FieldTypeNumber:
+		if !a.ValueNumber.Valid {
+			return ""
+		}
+		return strconv.FormatFloat(a.ValueNumber.Float64, 'f', -1, 64)
+	case constants.FieldTypeDate:
+		if !a.ValueDate.Valid {
+			return ""
+		}
+		return a.ValueDate.Time.Format("2006-01-02")
+	default:
+		return a.ValueText.String
+	}
+}
+
+// resolveReportOrgIDs mencerminkan submission_service.resolveScopedOrganizationIDs
+// (duplikasi kecil disengaja — report_service tidak bergantung ke
+// submission_service, cuma submission_form_repository) — dipakai SEMUA
+// endpoint Laporan (List & Export, kedua jenis) supaya cakupan organisasi
+// selalu konsisten dengan org-switcher.
+func (s *ServiceImpl) resolveReportOrgIDs(ctx context.Context, caller CallerScope) ([]int64, error) {
 	if caller.RequestedOrganizationID != nil {
 		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
 		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
+			return nil, apperror.Internal("")
 		}
 		if !ok {
-			return report_dto.ExportResult{}, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+			return nil, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
 		}
-		orgIDs, err = s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
-		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
-		}
-	} else {
-		var err error
-		orgIDs, err = s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
-		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
-		}
+		return s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
 	}
-	rows, err := s.repo.SubmissionRows(ctx, form.FormID, filter.Status, orgIDs)
+	return s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+}
+
+// reportSortColumns menyaring kolom yang boleh dipakai sort tabel Laporan
+// Levelisasi — mencerminkan submission_service_impl.go sortColumns, hanya
+// kolom yang nyata ada di Select SubmissionRows (lihat Task 2).
+var reportSortColumns = map[string]string{
+	"organizationName": "o.organizationName",
+	"status":           "s.status",
+	"submittedDate":    "s.submittedDate",
+}
+
+// ListLevelisasi mengembalikan Show Data tabel Laporan Levelisasi LDK —
+// paginasi via filter.Page/filter.Limit, sort via reportSortColumns
+// (satu-satunya endpoint baru yang menghormati filter.Sort, lihat komentar
+// report_dto.ReportFilter.Sort).
+func (s *ServiceImpl) ListLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) (report_dto.ReportListResult, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeLevelisasiLDK)
 	if err != nil {
-		return report_dto.ExportResult{}, apperror.Internal("")
+		return report_dto.ReportListResult{}, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return report_dto.ReportListResult{}, err
+	}
+	orderBy := dto.ListQuery{Sort: filter.Sort}.OrderBy(reportSortColumns, "o.organizationName ASC")
+	rows, total, err := s.repo.SubmissionRows(ctx, form.FormID, filter, orderBy, orgIDs)
+	if err != nil {
+		return report_dto.ReportListResult{}, apperror.Internal("")
+	}
+	return report_dto.ReportListResult{Rows: rows, Total: total}, nil
+}
+
+// ListPendataan mengembalikan Show Data Laporan Pendataan — SELURUH baris
+// (bukan dipaginasi, DL-4/§4.3) dikelompokkan jadi satu tab per versi form
+// lewat buildAnswerSheets, komputasi yang sama dipakai Download Data (Task 5).
+func (s *ServiceImpl) ListPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) ([]report_dto.PendataanTab, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeLevelisasiLDK)
+	if err != nil {
+		return nil, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return nil, err
+	}
+	filter.Page, filter.Limit = 0, 0 // Pendataan selalu ambil semua baris (DL-4/§4.3)
+	rows, _, err := s.repo.SubmissionRows(ctx, form.FormID, filter, "", orgIDs)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	return s.buildAnswerSheets(ctx, rows)
+}
+
+func (s *ServiceImpl) ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error) {
+	result, err := s.ListLevelisasi(ctx, caller, report_dto.ReportFilter{
+		Statuses: filter.Statuses, ProvinceNames: filter.ProvinceNames, CityNames: filter.CityNames,
+		ParentOrganizationIDs: filter.ParentOrganizationIDs, OrganizationIDs: filter.OrganizationIDs, LevelCodes: filter.LevelCodes,
+		DateFrom: filter.DateFrom, DateTo: filter.DateTo, // Page/Limit tetap 0 — export selalu semua baris
+	})
+	if err != nil {
+		return report_dto.ExportResult{}, err
 	}
 
 	var data []byte
 	var contentType, ext string
-	switch filter.Format {
+	switch format {
 	case "csv":
-		data, err = toCSV(rows)
+		data, err = toCSV(result.Rows)
 		contentType, ext = "text/csv", "csv"
 	default:
-		data, err = toXLSX(rows)
-		contentType, ext = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
+		header := buildReportHeaderRows("Laporan Levelisasi", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
+		sheets := []sheetData{{Name: "Result", HeaderRows: header, Columns: reportColumns, Rows: rowsToValues(result.Rows)}}
+		data, err = buildWorkbook(sheets)
+		contentType, ext = xlsxContentType, "xlsx"
 	}
 	if err != nil {
 		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
 	}
 
-	fileName := fmt.Sprintf("laporan-%s-%s.%s", filter.FormCode, time.Now().Format("20060102-150405"), ext)
+	fileName := fmt.Sprintf("laporan-levelisasi-%s.%s", time.Now().Format("20060102-150405"), ext)
+	s.logReportExport(ctx, caller, "Laporan Levelisasi", len(result.Rows))
+	return report_dto.ExportResult{FileName: fileName, ContentType: contentType, Data: data}, nil
+}
+
+func (s *ServiceImpl) ExportPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error) {
+	tabs, err := s.ListPendataan(ctx, caller, filter)
+	if err != nil {
+		return report_dto.ExportResult{}, err
+	}
+
+	header := buildReportHeaderRows("Laporan Pendataan", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
+	sheets := make([]sheetData, 0, len(tabs))
+	for _, t := range tabs {
+		sheets = append(sheets, sheetData{Name: "Jawaban " + t.VersionLabel, HeaderRows: header, Columns: t.Columns, Rows: t.Rows})
+	}
+	if len(sheets) == 0 {
+		// Tidak ada versi form dengan submission yang cocok filter — tetap
+		// tulis satu sheet berisi blok judul/header + kolom dasar, bukan file
+		// kosong tanpa konteks sama sekali (permintaan user saat manual
+		// testing: "jika gk ada datanya, tetep tampilin header table, filter,
+		// nama laporan"). Pakai answerSheetBaseColumns sebagai kolom dasar —
+		// satu-satunya kolom yang pasti ada di semua versi form.
+		sheets = append(sheets, sheetData{Name: "Jawaban", HeaderRows: header, Columns: answerSheetBaseColumns, Rows: [][]string{}})
+	}
+	data, err := buildWorkbook(sheets)
+	if err != nil {
+		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
+	}
+
+	rowCount := 0
+	for _, t := range tabs {
+		rowCount += len(t.Rows)
+	}
+	fileName := fmt.Sprintf("laporan-pendataan-%s.xlsx", time.Now().Format("20060102-150405"))
+	s.logReportExport(ctx, caller, "Laporan Pendataan", rowCount)
+	return report_dto.ExportResult{FileName: fileName, ContentType: xlsxContentType, Data: data}, nil
+}
+
+// resolveReportOrgNames menerjemahkan filter.ParentOrganizationIDs +
+// filter.OrganizationIDs (Puskomda & Nama LDK) jadi peta nama untuk baris
+// "Filter Diterapkan" header Excel (permintaan user: jangan tampilkan ID
+// mentah) — SATU query gabungan untuk kedua filter sekaligus, HANYA
+// dipanggil ketika salah satunya benar-benar dipakai (kedua kosong = tidak
+// ada query sama sekali, konsisten dengan filosofi "hemat query" modul ini).
+// Kegagalan resolusi tidak menggagalkan export — ini cuma baris metadata
+// kosmetik, joinOrgNames jatuh kembali ke ID mentah per-ID kalau peta kosong.
+func (s *ServiceImpl) resolveReportOrgNames(ctx context.Context, parentIDs, orgIDs []int64) map[int64]string {
+	if len(parentIDs) == 0 && len(orgIDs) == 0 {
+		return nil
+	}
+	ids := append(append([]int64{}, parentIDs...), orgIDs...)
+	namesByID, err := s.repo.OrganizationNamesByIDs(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return namesByID
+}
+
+// logReportExport dipisah dari ExportSubmissions lama (dulu inline) supaya
+// dipakai ulang oleh kedua fungsi export baru tanpa duplikasi.
+func (s *ServiceImpl) logReportExport(ctx context.Context, caller CallerScope, reportName string, rowCount int) {
 	var actorOrg *int64
 	if caller.OrganizationID != nil {
 		actorOrg = caller.OrganizationID
 	}
 	s.audit.LogExport(ctx, auditlog.Entry{
 		ActorUserID: caller.UserID, ActorOrganizationID: actorOrg,
-		Action: "EXPORT", Entity: "tr_submission", EntityID: form.FormID,
-		Metadata: map[string]interface{}{"formCode": filter.FormCode, "status": filter.Status, "format": filter.Format, "rowCount": len(rows)},
+		Action: "EXPORT", Entity: "tr_submission",
+		Metadata: map[string]interface{}{"report": reportName, "rowCount": rowCount},
 	})
-
-	return report_dto.ExportResult{FileName: fileName, ContentType: contentType, Data: data}, nil
 }
 
 // ---------- Kantong Amal (Phase 9) — §15 techspec ----------
@@ -543,4 +1157,25 @@ func formatNullDateTime(t sql.NullTime) string {
 		return ""
 	}
 	return t.Time.Format("2006-01-02 15:04")
+}
+
+// formatDateTimePtr adalah versi formatNullDateTime untuk field *time.Time
+// (SubmissionRow, lihat komentar FinanceAuditLogItem di report_dto.go) —
+// TIDAK menggantikan formatNullDateTime, yang masih dipakai field
+// sql.NullTime lain (WithdrawalReportRow) di file ini.
+func formatDateTimePtr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format("2006-01-02 15:04")
+}
+
+// strOrEmptyPtr adalah versi package-level dari closure strOrEmpty lokal di
+// rowValues — dipakai buildAnswerSheets yang tidak punya akses ke closure
+// tersebut.
+func strOrEmptyPtr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

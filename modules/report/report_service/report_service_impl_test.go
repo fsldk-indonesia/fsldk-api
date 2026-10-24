@@ -2,12 +2,14 @@ package report_service
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
+	"fsldk-api/modules/submission_form/submission_form_model"
 	"fsldk-api/pkg/bisatopup"
 )
 
@@ -26,10 +28,21 @@ type fakeReportRepository struct {
 	donationPaidAmount float64
 	withdrawalCount    int64
 	withdrawalAmount   float64
+
+	submissionRows []report_dto.SubmissionRow
 }
 
-func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, status string, organizationIDs []int64) ([]report_dto.SubmissionRow, error) {
+func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, filter report_dto.ReportFilter, orderBy string, organizationIDs []int64) ([]report_dto.SubmissionRow, int64, error) {
+	if f.submissionRows == nil {
+		return nil, 0, nil
+	}
+	return f.submissionRows, int64(len(f.submissionRows)), nil
+}
+func (f *fakeReportRepository) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
 	return nil, nil
+}
+func (f *fakeReportRepository) OrganizationNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return map[int64]string{}, nil
 }
 func (f *fakeReportRepository) BalanceBefore(ctx context.Context, campaignID int64, before time.Time) (float64, error) {
 	return f.balanceBefore, nil
@@ -241,6 +254,170 @@ func TestGetReconciliation_SettlementPendingCappedToActualGap(t *testing.T) {
 	}
 	if resp.SettlementPendingAmount != 100_000 {
 		t.Fatalf("expected settlement pending capped to the actual 100.000 gap, got %.2f", resp.SettlementPendingAmount)
+	}
+}
+
+// ---------- ListLevelisasi ----------
+
+// fakeFormRepoForLevelisasi adalah implementasi minimal
+// submission_form_repository.Repository untuk menguji ListLevelisasi/
+// ListPendataan — hanya FindFormByCode yang berperilaku bermakna (satu-
+// satunya method submission_form_repository yang dipanggil langsung oleh
+// kedua service method tersebut); sisanya stub, sama pola dengan
+// fakeReportRepository di atas (nilai balik diatur lewat field, bukan
+// disimulasikan dari data mentah).
+type fakeFormRepoForLevelisasi struct {
+	formID int64
+}
+
+func (f *fakeFormRepoForLevelisasi) CreateForm(ctx context.Context, formCode, formName, description string, createdBy sql.NullInt64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) ExistsFormCode(ctx context.Context, code string) (bool, error) {
+	return false, nil
+}
+func (f *fakeFormRepoForLevelisasi) ListForms(ctx context.Context) ([]submission_form_model.Form, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindFormByID(ctx context.Context, id int64) (submission_form_model.Form, error) {
+	return submission_form_model.Form{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindFormByCode(ctx context.Context, code string) (submission_form_model.Form, error) {
+	return submission_form_model.Form{FormID: f.formID, FormCode: code}, nil
+}
+func (f *fakeFormRepoForLevelisasi) CreateVersion(ctx context.Context, formID int64, versionNumber int, createdBy sql.NullInt64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) MaxVersionNumber(ctx context.Context, formID int64) (int, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindVersionByID(ctx context.Context, id int64) (submission_form_model.Version, error) {
+	return submission_form_model.Version{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindPublishedVersionByForm(ctx context.Context, formID int64) (submission_form_model.Version, error) {
+	return submission_form_model.Version{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) ListVersionsByForm(ctx context.Context, formID int64) ([]submission_form_model.Version, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) PublishVersion(ctx context.Context, id int64, publishedBy int64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) ArchiveOtherPublished(ctx context.Context, formID, exceptVersionID int64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) CreateSection(ctx context.Context, versionID int64, code, label string, sortOrder int, description sql.NullString) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindSectionByID(ctx context.Context, id int64) (submission_form_model.Section, error) {
+	return submission_form_model.Section{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) UpdateSection(ctx context.Context, id int64, label string, sortOrder int, description sql.NullString) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) DeleteSection(ctx context.Context, id int64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) ListSectionsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Section, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) CreateField(ctx context.Context, p submission_form_model.FieldParams) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindFieldByID(ctx context.Context, id int64) (submission_form_model.Field, error) {
+	return submission_form_model.Field{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) UpdateField(ctx context.Context, id int64, p submission_form_model.FieldParams) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) DeleteField(ctx context.Context, id int64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) ListFieldsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Field, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) FindOptionByID(ctx context.Context, id int64) (submission_form_model.Option, error) {
+	return submission_form_model.Option{}, nil
+}
+func (f *fakeFormRepoForLevelisasi) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) DeleteOption(ctx context.Context, id int64) error {
+	return nil
+}
+func (f *fakeFormRepoForLevelisasi) ListOptionsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Option, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) ListOptionsByField(ctx context.Context, fieldID int64) ([]submission_form_model.Option, error) {
+	return nil, nil
+}
+func (f *fakeFormRepoForLevelisasi) VersionStatusBySectionID(ctx context.Context, sectionID int64) (string, error) {
+	return "", nil
+}
+func (f *fakeFormRepoForLevelisasi) VersionStatusByFieldID(ctx context.Context, fieldID int64) (string, error) {
+	return "", nil
+}
+func (f *fakeFormRepoForLevelisasi) VersionIDByFieldID(ctx context.Context, fieldID int64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeFormRepoForLevelisasi) CloneVersionStructure(ctx context.Context, fromVersionID, toVersionID int64) error {
+	return nil
+}
+
+// fakeOrgScopeForLevelisasi adalah implementasi OrgScopeResolver in-memory
+// untuk menguji percabangan resolveReportOrgIDs (RequestedOrganizationID
+// vs tanpa) — sama pola dengan fake lain di file ini: nilai balik diatur
+// langsung lewat field, calledWithOrgType dicatat untuk verifikasi argumen.
+type fakeOrgScopeForLevelisasi struct {
+	accessibleIDs     []int64
+	isAccessible      bool
+	calledWithOrgType string
+}
+
+func (f *fakeOrgScopeForLevelisasi) IsAccessible(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string, targetOrganizationID int64) (bool, error) {
+	return f.isAccessible, nil
+}
+func (f *fakeOrgScopeForLevelisasi) AccessibleOrganizationIDs(ctx context.Context, callerOrganizationID *int64, callerOrganizationTypeCode, wildcardTierAccess string) ([]int64, error) {
+	f.calledWithOrgType = callerOrganizationTypeCode
+	return f.accessibleIDs, nil
+}
+func (f *fakeOrgScopeForLevelisasi) AccessibleOrganizationIDsForTarget(ctx context.Context, targetOrganizationID int64) ([]int64, error) {
+	return f.accessibleIDs, nil
+}
+
+func TestListLevelisasi_UsesAccessibleOrganizationIDs(t *testing.T) {
+	repo := &fakeReportRepository{submissionRows: []report_dto.SubmissionRow{
+		{SubmissionID: 1, OrganizationName: "LDK Syahid"},
+	}}
+	form := &fakeFormRepoForLevelisasi{formID: 7}
+	orgScope := &fakeOrgScopeForLevelisasi{accessibleIDs: []int64{10, 11}}
+	svc := NewService(repo, form, orgScope, nil, nil, config.AppConfig{})
+
+	result, err := svc.ListLevelisasi(context.Background(), CallerScope{OrganizationTypeCode: "PUSKOMDA"}, report_dto.ReportFilter{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Total != 1 || len(result.Rows) != 1 {
+		t.Fatalf("got %+v, want 1 row/1 total", result)
+	}
+	if orgScope.calledWithOrgType != "PUSKOMDA" {
+		t.Errorf("orgScope.AccessibleOrganizationIDs called with orgType %q, want PUSKOMDA", orgScope.calledWithOrgType)
+	}
+}
+
+func TestListLevelisasi_RequestedOrganizationIDNotAccessible_ReturnsForbidden(t *testing.T) {
+	repo := &fakeReportRepository{}
+	form := &fakeFormRepoForLevelisasi{formID: 7}
+	orgScope := &fakeOrgScopeForLevelisasi{isAccessible: false}
+	svc := NewService(repo, form, orgScope, nil, nil, config.AppConfig{})
+
+	target := int64(99)
+	_, err := svc.ListLevelisasi(context.Background(), CallerScope{RequestedOrganizationID: &target}, report_dto.ReportFilter{})
+	if err == nil {
+		t.Fatal("expected Forbidden error, got nil")
 	}
 }
 
