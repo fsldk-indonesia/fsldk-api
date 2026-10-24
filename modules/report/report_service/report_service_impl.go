@@ -51,6 +51,33 @@ func NewService(repo report_repository.Repository, formRepo submission_form_repo
 	return &ServiceImpl{repo: repo, formRepo: formRepo, orgScope: orgScope, audit: audit, gateway: gateway, cfg: cfg}
 }
 
+// reportStatusLabels mencerminkan SUBMISSION_STATUS_LABELS
+// (fsldk-web/src/app/modules/submission/entities/submission.ts) — Excel
+// export (rowValues, dipakai ExportLevelisasi) harus menampilkan label
+// Indonesia yang SAMA dengan tabel on-screen Show Data, bukan kode mentah
+// tr_submission.status (TechSpec-Report-Revamp.md DL-5: "Excel export
+// matches exactly what the on-screen table shows").
+var reportStatusLabels = map[string]string{
+	"DRAFT": "Draf", "SUBMITTED": "Terkirim", "CANCELLED": "Dibatalkan", "REJECTED": "Ditolak",
+	"PUSKOMDA_REVIEW": "Verifikasi Puskomda", "REVISION_REQUESTED_PUSKOMDA": "Revisi Diminta (Puskomda)",
+	"APPROVED_PUSKOMDA": "Disetujui Puskomda", "PUSKOMNAS_REVIEW": "Verifikasi Puskomnas",
+	"REVISION_REQUESTED_PUSKOMNAS": "Revisi Diminta (Puskomnas)", "APPROVED_PUSKOMNAS": "Disetujui Puskomnas",
+	"LEVEL_ESTABLISHED": "Level Ditetapkan",
+	"PUBLISHED": "Dipublikasikan", "LDK_REVIEW": "Verifikasi LDK", "REVISION_REQUESTED_LDK": "Revisi Diminta (LDK)",
+	"APPROVED_LDK": "Disetujui LDK", "CODE_ISSUED": "Kode Terbit", "ACTIVE": "Aktif",
+}
+
+// reportStatusLabel menerjemahkan kode status mentah ke label Indonesia,
+// fallback ke kode itu sendiri bila belum ada di peta — pola sama dengan
+// statusLabel() di report.levelisasi.page.ts (status yang belum dikenal
+// tetap tampil, bukan string kosong).
+func reportStatusLabel(code string) string {
+	if label, ok := reportStatusLabels[code]; ok {
+		return label
+	}
+	return code
+}
+
 func rowValues(row report_dto.SubmissionRow) []string {
 	strOrEmpty := func(s *string) string {
 		if s == nil {
@@ -69,7 +96,7 @@ func rowValues(row report_dto.SubmissionRow) []string {
 		strOrEmpty(row.ParentOrganizationName),
 		strOrEmpty(row.ProvinceName),
 		strOrEmpty(row.CityName),
-		row.Status,
+		reportStatusLabel(row.Status),
 		strOrEmpty(row.LevelLabel),
 		fmtDate(row.SubmittedDate),
 		fmtDate(row.LastUpdatedDate),

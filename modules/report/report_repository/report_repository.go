@@ -18,7 +18,8 @@ type Repository interface {
 	SubmissionRows(ctx context.Context, formID int64, f report_dto.ReportFilter, orderBy string, organizationIDs []int64) (rows []report_dto.SubmissionRow, total int64, err error)
 	// AnswersBySubmissionIDs mengembalikan seluruh baris tr_submission_answer
 	// untuk sekumpulan submissionID sekaligus (satu query, bukan N+1) — dipakai
-	// ExportSubmissions menyusun sheet "Jawaban" per versi form.
+	// buildAnswerSheets (ListPendataan & ExportPendataan) menyusun sheet
+	// "Jawaban" per versi form.
 	AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------

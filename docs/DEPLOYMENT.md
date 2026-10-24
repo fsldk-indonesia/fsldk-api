@@ -141,3 +141,13 @@ Fitur finansial **tidak** mengandalkan `git revert` semata — per komponen:
 ## 7. Data Retention (referensi)
 
 `tr_donation`, `tr_withdrawal`, `tr_wallet_ledger`, `tr_finance_audit_log` — **permanen, tidak pernah dihapus** (kebutuhan audit/reconciliation jangka panjang, termasuk PII donor yang melekat pada record finansialnya) — **kecuali** donasi manual (`gateway='manual'`) yang boleh dihapus admin lewat `AdminDelete` (data entri, bukan catatan gateway). `tr_job_queue`/log status final — retensi 90 hari lalu cleanup terjadwal (bukan data finansial primer, ledger tetap sumber kebenaran).
+
+## 8. Catatan Rilis Lintas-Repo — Migration `0057_report_revamp_menu`
+
+> ⚠️ **Catatan ini TIDAK terkait Kantong Amal** — ditambahkan di sini karena `DEPLOYMENT.md` adalah satu-satunya dokumen rilis `fsldk-api` saat ini.
+
+Migration `migrations/0057_report_revamp_menu.up.sql` mengubah `menuRoute` menu sidebar "Laporan" (`lk_permission.permissionCode` `report.region.view`/`report.national.view`) ke path hub baru (`/cms-puskomda/reports`, `/cms-puskomnas/reports`) — path ini hanya ada di build `fsldk-web` yang sudah menyertakan perubahan Report Revamp (halaman hub pengganti `/reports/wilayah`/`/reports/nasional`). Karena `fsldk-api` dan `fsldk-web` dideploy terpisah (lihat `CLAUDE.md` workspace layout), **migration `0057` wajib dirilis dalam rilis yang SAMA dengan perubahan frontend Report Revamp** — merilis salah satu sisi lebih dulu membuat link sidebar "Laporan" sempat 404 sampai kedua sisi live:
+- API baru + frontend lama → DB menunjuk `/reports`, frontend lama cuma punya `/reports/wilayah`.
+- API lama + frontend baru → DB masih menunjuk `/reports/wilayah`, frontend baru sudah menghapus path itu.
+
+Jendela 404 ini singkat (durasi antara dua deploy selesai) dan tidak merusak data — tidak perlu rollback, cukup jadwalkan kedua rilis berdekatan.
