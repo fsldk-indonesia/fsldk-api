@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fsldk-api/base/apperror"
 	"fsldk-api/config"
@@ -32,7 +33,7 @@ import (
 // OQ-22 (reuse ldksyahid-app): Rp50.000.
 const reconciliationDiscrepancyThreshold = 50_000
 
-var reportColumns = []string{"Nama Organisasi", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
+var reportColumns = []string{"Nama LDK", "Provinsi", "Kota/Kabupaten", "Status", "Level", "Tanggal Submit", "Terakhir Diperbarui"}
 
 // ServiceImpl adalah implementasi Service.
 type ServiceImpl struct {
@@ -88,7 +89,7 @@ func toCSV(rows []report_dto.SubmissionRow) ([]byte, error) {
 // answerSheetBaseColumns mendahului kolom per-field di tiap sheet "Jawaban" —
 // konteks organisasi yang sama dipakai di sheet "Ringkasan", diulang di sini
 // supaya tiap sheet jawaban tetap bisa dibaca berdiri sendiri.
-var answerSheetBaseColumns = []string{"Nama Organisasi", "Provinsi", "Kota/Kabupaten", "Status", "Tanggal Submit"}
+var answerSheetBaseColumns = []string{"Nama LDK", "Provinsi", "Kota/Kabupaten", "Status", "Tanggal Submit"}
 
 func rowsToValues(rows []report_dto.SubmissionRow) [][]string {
 	out := make([][]string, 0, len(rows))
@@ -132,12 +133,50 @@ func buildWorkbook(sheets []sheetData) ([]byte, error) {
 				f.SetCellValue(name, cell, v)
 			}
 		}
+		autoFitColumns(f, name, sd.Columns, sd.Rows)
 	}
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// autoFitColumns melebarkan tiap kolom sheet mengikuti isi terpanjangnya
+// (header atau baris) supaya nilai tidak terpotong saat dibuka — excelize
+// tidak punya auto-fit bawaan seperti Excel/WPS, jadi dihitung manual dari
+// panjang teks tiap kolom. Dibatasi [10,60] char: lantai supaya header
+// pendek (mis. "Status") tidak terlalu sempit, plafon supaya satu jawaban
+// esai panjang tidak membuat satu kolom melebar penuh layar.
+func autoFitColumns(f *excelize.File, sheet string, columns []string, rows [][]string) {
+	widths := make([]int, len(columns))
+	for i, c := range columns {
+		widths[i] = utf8.RuneCountInString(c)
+	}
+	for _, row := range rows {
+		for i, v := range row {
+			if i >= len(widths) {
+				continue
+			}
+			if l := utf8.RuneCountInString(v); l > widths[i] {
+				widths[i] = l
+			}
+		}
+	}
+	for i, w := range widths {
+		width := float64(w) + 4
+		if width < 10 {
+			width = 10
+		}
+		if width > 60 {
+			width = 60
+		}
+		colName, err := excelize.ColumnNumberToName(i + 1)
+		if err != nil {
+			continue
+		}
+		_ = f.SetColWidth(sheet, colName, colName, width)
+	}
 }
 
 // uniqueSheetName menegakkan batasan nama sheet Excel (maks 31 karakter,
@@ -450,7 +489,7 @@ func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope,
 		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
 	}
 
-	fileName := fmt.Sprintf("laporan-%s-%s.%s", filter.FormCode, time.Now().Format("20060102-150405"), ext)
+	fileName := fmt.Sprintf("laporan-levelisasi-pendataan-ldk-%s.%s", time.Now().Format("20060102-150405"), ext)
 	var actorOrg *int64
 	if caller.OrganizationID != nil {
 		actorOrg = caller.OrganizationID
