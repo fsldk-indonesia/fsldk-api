@@ -10,7 +10,7 @@ import (
 func TestBuildReportHeaderRows_IncludesOnlyAppliedFilters(t *testing.T) {
 	rows := buildReportHeaderRows("Laporan Levelisasi", report_dto.ReportFilter{
 		Statuses: []string{"SUBMITTED", "PUBLISHED"},
-	}, "dev1@fsldk.or.id")
+	}, "dev1@fsldk.or.id", nil)
 
 	if len(rows) < 6 {
 		t.Fatalf("expected at least 6 header rows, got %d", len(rows))
@@ -29,8 +29,8 @@ func TestBuildReportHeaderRows_IncludesOnlyAppliedFilters(t *testing.T) {
 	if !strings.Contains(joined, "dev1@fsldk.or.id") {
 		t.Errorf("header rows missing generatedByEmail, got:\n%s", joined)
 	}
-	if !strings.Contains(joined, "Status: SUBMITTED, PUBLISHED") {
-		t.Errorf("header rows missing applied Status filter, got:\n%s", joined)
+	if !strings.Contains(joined, "Status: Terkirim, Dipublikasikan") {
+		t.Errorf("header rows missing translated applied Status filter, got:\n%s", joined)
 	}
 	if strings.Contains(joined, "Provinsi:") {
 		t.Errorf("header rows should NOT mention Provinsi when that filter is empty, got:\n%s", joined)
@@ -38,7 +38,7 @@ func TestBuildReportHeaderRows_IncludesOnlyAppliedFilters(t *testing.T) {
 }
 
 func TestBuildReportHeaderRows_NoFiltersAppliedShowsNeutralPeriod(t *testing.T) {
-	rows := buildReportHeaderRows("Laporan Pendataan", report_dto.ReportFilter{}, "a@b.co")
+	rows := buildReportHeaderRows("Laporan Pendataan", report_dto.ReportFilter{}, "a@b.co", nil)
 
 	joined := ""
 	for _, r := range rows {
@@ -69,5 +69,61 @@ func TestRowValues_TranslatesStatusLabel(t *testing.T) {
 func TestReportStatusLabel_FallsBackToRawCodeForUnknownStatus(t *testing.T) {
 	if got := reportStatusLabel("SOME_FUTURE_STATUS"); got != "SOME_FUTURE_STATUS" {
 		t.Errorf("reportStatusLabel(unknown) = %q, want fallback to the raw code", got)
+	}
+}
+
+// TestBuildReportHeaderRows_ShowsPuskomdaNamesNotIDs mengunci perbaikan:
+// baris "Filter Diterapkan" harus menampilkan NAMA Puskomda (sudah
+// di-resolve pemanggil lewat Repository.OrganizationNamesByIDs), bukan ID
+// mentah — permintaan user saat manual testing.
+func TestBuildReportHeaderRows_ShowsPuskomdaNamesNotIDs(t *testing.T) {
+	rows := buildReportHeaderRows("Laporan Levelisasi", report_dto.ReportFilter{
+		ParentOrganizationIDs: []int64{12, 45},
+	}, "dev1@fsldk.or.id", map[int64]string{12: "Banten Raya", 45: "Jakarta Raya"})
+
+	joined := ""
+	for _, r := range rows {
+		joined += strings.Join(r, " ") + "\n"
+	}
+	if !strings.Contains(joined, "Puskomda: Banten Raya, Jakarta Raya") {
+		t.Errorf("header rows should show resolved Puskomda names, got:\n%s", joined)
+	}
+	if strings.Contains(joined, "12, 45") {
+		t.Errorf("header rows should NOT show raw Puskomda IDs when names are resolved, got:\n%s", joined)
+	}
+}
+
+// TestBuildReportHeaderRows_ShowsLdkNames mengunci filter "Nama LDK" (baru)
+// — sama pola dengan Puskomda, nama di-resolve lewat peta yang sama
+// (resolveReportOrgNames menggabungkan ParentOrganizationIDs+OrganizationIDs
+// jadi satu query).
+func TestBuildReportHeaderRows_ShowsLdkNames(t *testing.T) {
+	rows := buildReportHeaderRows("Laporan Levelisasi", report_dto.ReportFilter{
+		OrganizationIDs: []int64{7},
+	}, "dev1@fsldk.or.id", map[int64]string{7: "LDK Syahid"})
+
+	joined := ""
+	for _, r := range rows {
+		joined += strings.Join(r, " ") + "\n"
+	}
+	if !strings.Contains(joined, "Nama LDK: LDK Syahid") {
+		t.Errorf("header rows should show resolved LDK name, got:\n%s", joined)
+	}
+}
+
+// TestBuildReportHeaderRows_FallsBackToIDsWhenNamesUnresolved memastikan
+// informasi filter tidak hilang diam-diam kalau resolusi nama gagal/kosong
+// (mis. organisasi sudah terhapus) — fallback ke ID mentah.
+func TestBuildReportHeaderRows_FallsBackToIDsWhenNamesUnresolved(t *testing.T) {
+	rows := buildReportHeaderRows("Laporan Levelisasi", report_dto.ReportFilter{
+		ParentOrganizationIDs: []int64{12},
+	}, "dev1@fsldk.or.id", nil)
+
+	joined := ""
+	for _, r := range rows {
+		joined += strings.Join(r, " ") + "\n"
+	}
+	if !strings.Contains(joined, "Puskomda: 12") {
+		t.Errorf("header rows should fall back to raw ID when no names were resolved, got:\n%s", joined)
 	}
 }

@@ -273,7 +273,30 @@ const (
 // tidak disertakan (permintaan user saat manual testing) — nama Puskomda
 // per baris sudah ada di kolom data, dan Puskomnas selalu lintas-wilayah
 // sehingga satu baris "Portal ..." tidak menambah informasi.
-func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByEmail string) [][]string {
+//
+// orgNamesByID adalah peta organizationID->organizationName yang SUDAH
+// di-resolve pemanggil (lewat Repository.OrganizationNamesByIDs, satu query
+// gabungan untuk f.ParentOrganizationIDs + f.OrganizationIDs) — fungsi ini
+// tetap murni (tidak mengakses DB sendiri). ID yang tidak ketemu di peta
+// (mis. organisasi sudah terhapus, atau map nil) jatuh kembali ke ID mentah
+// per-ID (lihat joinOrgNames) supaya informasi filter tidak hilang diam-diam.
+// joinOrgNames menyusun nama organisasi untuk sekumpulan ID dari peta yang
+// sudah di-resolve pemanggil — per-ID fallback ke ID mentah kalau ID
+// tersebut tidak ketemu di peta (mis. organisasi sudah terhapus, atau peta
+// nil karena resolusi gagal), bukan all-or-nothing.
+func joinOrgNames(ids []int64, namesByID map[int64]string) string {
+	parts := make([]string, len(ids))
+	for i, id := range ids {
+		if name, ok := namesByID[id]; ok && name != "" {
+			parts[i] = name
+		} else {
+			parts[i] = strconv.FormatInt(id, 10)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByEmail string, orgNamesByID map[int64]string) [][]string {
 	period := "Semua periode"
 	if f.DateFrom != "" || f.DateTo != "" {
 		from, to := f.DateFrom, f.DateTo
@@ -288,7 +311,11 @@ func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByE
 
 	var applied []string
 	if len(f.Statuses) > 0 {
-		applied = append(applied, "Status: "+strings.Join(f.Statuses, ", "))
+		labels := make([]string, len(f.Statuses))
+		for i, s := range f.Statuses {
+			labels[i] = reportStatusLabel(s)
+		}
+		applied = append(applied, "Status: "+strings.Join(labels, ", "))
 	}
 	if len(f.ProvinceNames) > 0 {
 		applied = append(applied, "Provinsi: "+strings.Join(f.ProvinceNames, ", "))
@@ -297,11 +324,10 @@ func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByE
 		applied = append(applied, "Kota/Kabupaten: "+strings.Join(f.CityNames, ", "))
 	}
 	if len(f.ParentOrganizationIDs) > 0 {
-		ids := make([]string, len(f.ParentOrganizationIDs))
-		for i, id := range f.ParentOrganizationIDs {
-			ids[i] = strconv.FormatInt(id, 10)
-		}
-		applied = append(applied, "Puskomda ID: "+strings.Join(ids, ", "))
+		applied = append(applied, "Puskomda: "+joinOrgNames(f.ParentOrganizationIDs, orgNamesByID))
+	}
+	if len(f.OrganizationIDs) > 0 {
+		applied = append(applied, "Nama LDK: "+joinOrgNames(f.OrganizationIDs, orgNamesByID))
 	}
 	if len(f.LevelCodes) > 0 {
 		applied = append(applied, "Level: "+strings.Join(f.LevelCodes, ", "))
@@ -652,7 +678,7 @@ func (s *ServiceImpl) ListPendataan(ctx context.Context, caller CallerScope, fil
 func (s *ServiceImpl) ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error) {
 	result, err := s.ListLevelisasi(ctx, caller, report_dto.ReportFilter{
 		Statuses: filter.Statuses, ProvinceNames: filter.ProvinceNames, CityNames: filter.CityNames,
-		ParentOrganizationIDs: filter.ParentOrganizationIDs, LevelCodes: filter.LevelCodes,
+		ParentOrganizationIDs: filter.ParentOrganizationIDs, OrganizationIDs: filter.OrganizationIDs, LevelCodes: filter.LevelCodes,
 		DateFrom: filter.DateFrom, DateTo: filter.DateTo, // Page/Limit tetap 0 — export selalu semua baris
 	})
 	if err != nil {
@@ -666,7 +692,7 @@ func (s *ServiceImpl) ExportLevelisasi(ctx context.Context, caller CallerScope, 
 		data, err = toCSV(result.Rows)
 		contentType, ext = "text/csv", "csv"
 	default:
-		header := buildReportHeaderRows("Laporan Levelisasi", filter, caller.GeneratedByEmail)
+		header := buildReportHeaderRows("Laporan Levelisasi", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
 		sheets := []sheetData{{Name: "Result", HeaderRows: header, Columns: reportColumns, Rows: rowsToValues(result.Rows)}}
 		data, err = buildWorkbook(sheets)
 		contentType, ext = xlsxContentType, "xlsx"
@@ -686,10 +712,19 @@ func (s *ServiceImpl) ExportPendataan(ctx context.Context, caller CallerScope, f
 		return report_dto.ExportResult{}, err
 	}
 
-	header := buildReportHeaderRows("Laporan Pendataan", filter, caller.GeneratedByEmail)
+	header := buildReportHeaderRows("Laporan Pendataan", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
 	sheets := make([]sheetData, 0, len(tabs))
 	for _, t := range tabs {
 		sheets = append(sheets, sheetData{Name: "Jawaban " + t.VersionLabel, HeaderRows: header, Columns: t.Columns, Rows: t.Rows})
+	}
+	if len(sheets) == 0 {
+		// Tidak ada versi form dengan submission yang cocok filter — tetap
+		// tulis satu sheet berisi blok judul/header + kolom dasar, bukan file
+		// kosong tanpa konteks sama sekali (permintaan user saat manual
+		// testing: "jika gk ada datanya, tetep tampilin header table, filter,
+		// nama laporan"). Pakai answerSheetBaseColumns sebagai kolom dasar —
+		// satu-satunya kolom yang pasti ada di semua versi form.
+		sheets = append(sheets, sheetData{Name: "Jawaban", HeaderRows: header, Columns: answerSheetBaseColumns, Rows: [][]string{}})
 	}
 	data, err := buildWorkbook(sheets)
 	if err != nil {
@@ -703,6 +738,26 @@ func (s *ServiceImpl) ExportPendataan(ctx context.Context, caller CallerScope, f
 	fileName := fmt.Sprintf("laporan-pendataan-%s.xlsx", time.Now().Format("20060102-150405"))
 	s.logReportExport(ctx, caller, "Laporan Pendataan", rowCount)
 	return report_dto.ExportResult{FileName: fileName, ContentType: xlsxContentType, Data: data}, nil
+}
+
+// resolveReportOrgNames menerjemahkan filter.ParentOrganizationIDs +
+// filter.OrganizationIDs (Puskomda & Nama LDK) jadi peta nama untuk baris
+// "Filter Diterapkan" header Excel (permintaan user: jangan tampilkan ID
+// mentah) — SATU query gabungan untuk kedua filter sekaligus, HANYA
+// dipanggil ketika salah satunya benar-benar dipakai (kedua kosong = tidak
+// ada query sama sekali, konsisten dengan filosofi "hemat query" modul ini).
+// Kegagalan resolusi tidak menggagalkan export — ini cuma baris metadata
+// kosmetik, joinOrgNames jatuh kembali ke ID mentah per-ID kalau peta kosong.
+func (s *ServiceImpl) resolveReportOrgNames(ctx context.Context, parentIDs, orgIDs []int64) map[int64]string {
+	if len(parentIDs) == 0 && len(orgIDs) == 0 {
+		return nil
+	}
+	ids := append(append([]int64{}, parentIDs...), orgIDs...)
+	namesByID, err := s.repo.OrganizationNamesByIDs(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return namesByID
 }
 
 // logReportExport dipisah dari ExportSubmissions lama (dulu inline) supaya

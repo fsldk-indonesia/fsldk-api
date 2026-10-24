@@ -41,6 +41,9 @@ func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64,
 func (f *fakeReportRepository) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
 	return nil, nil
 }
+func (f *fakeReportRepository) OrganizationNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	return map[int64]string{}, nil
+}
 func (f *fakeReportRepository) BalanceBefore(ctx context.Context, campaignID int64, before time.Time) (float64, error) {
 	return f.balanceBefore, nil
 }

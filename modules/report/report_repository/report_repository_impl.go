@@ -42,6 +42,9 @@ func (r *RepositoryImpl) SubmissionRows(ctx context.Context, formID int64, f rep
 	if len(f.ParentOrganizationIDs) > 0 {
 		q = q.Where("po.organizationID IN ?", f.ParentOrganizationIDs)
 	}
+	if len(f.OrganizationIDs) > 0 {
+		q = q.Where("o.organizationID IN ?", f.OrganizationIDs)
+	}
 	if len(f.LevelCodes) > 0 {
 		q = q.Where("res.levelCode IN ?", f.LevelCodes)
 	}
@@ -84,6 +87,27 @@ func (r *RepositoryImpl) AnswersBySubmissionIDs(ctx context.Context, submissionI
 		Where("submissionID IN ?", submissionIDs).
 		Find(&out).Error
 	return out, err
+}
+
+func (r *RepositoryImpl) OrganizationNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	var rows []struct {
+		OrganizationID   int64
+		OrganizationName string
+	}
+	if err := r.db.WithContext(ctx).Table("ms_organization").
+		Select("organizationID, organizationName").
+		Where("organizationID IN ?", ids).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.OrganizationID] = row.OrganizationName
+	}
+	return out, nil
 }
 
 // ---------- Kantong Amal (Phase 9) — §15 techspec ----------

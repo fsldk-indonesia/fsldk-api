@@ -55,9 +55,17 @@ type ReportFilter struct {
 	ProvinceNames         []string
 	CityNames             []string
 	ParentOrganizationIDs []int64
-	LevelCodes            []string
-	DateFrom              string // "2026-01-01", cocok ke s.submittedDate
-	DateTo                string
+	// OrganizationIDs adalah filter "Nama LDK" (multi-select) — dikirim dari
+	// KEDUA tier (DL-4 tidak berlaku di sini, beda dari ParentOrganizationIDs):
+	// opsinya di frontend sudah dibatasi sesuai scope caller (tier Puskomda
+	// cuma menawarkan LDK miliknya sendiri lewat filter `puskomda` di
+	// directory endpoint, tier Puskomnas menawarkan seluruh LDK) — backend
+	// cukup AND filter ini dengan organizationIDs hasil resolveReportOrgIDs,
+	// tidak bisa dipakai untuk eskalasi akses di luar scope caller.
+	OrganizationIDs []int64
+	LevelCodes      []string
+	DateFrom        string // "2026-01-01", cocok ke s.submittedDate
+	DateTo          string
 	// Sort mentah dari klik header kolom CmsIndexComponent (mis. "-submittedDate")
 	// — HANYA dipakai ListLevelisasi (Show Data tabel), di-whitelist di situ
 	// lewat reportSortColumns (Task 4), bukan dipakai langsung sebagai SQL.

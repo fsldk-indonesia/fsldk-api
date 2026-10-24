@@ -65,6 +65,7 @@ func parseReportFilter(c *gin.Context) report_dto.ReportFilter {
 		ProvinceNames:         trimmedNonEmpty(c.QueryArray("province")),
 		CityNames:             trimmedNonEmpty(c.QueryArray("city")),
 		ParentOrganizationIDs: parseInt64s(c.QueryArray("parentOrganizationID")),
+		OrganizationIDs:       parseInt64s(c.QueryArray("ldkOrganizationID")),
 		LevelCodes:            trimmedNonEmpty(c.QueryArray("level")),
 		DateFrom:              c.Query("dateFrom"),
 		DateTo:                c.Query("dateTo"),

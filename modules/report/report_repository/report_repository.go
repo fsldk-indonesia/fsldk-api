@@ -21,6 +21,11 @@ type Repository interface {
 	// buildAnswerSheets (ListPendataan & ExportPendataan) menyusun sheet
 	// "Jawaban" per versi form.
 	AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error)
+	// OrganizationNamesByIDs mengembalikan peta organizationID->organizationName
+	// untuk sekumpulan ID sekaligus — dipakai header Excel ("Filter Diterapkan")
+	// menampilkan NAMA Puskomda, bukan ID mentah, hanya dipanggil ketika filter
+	// Puskomda benar-benar dipakai (bukan query tambahan di jalur umum).
+	OrganizationNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
 
