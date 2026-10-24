@@ -37,13 +37,6 @@ type AnswerRow struct {
 	ValueFileName sql.NullString `gorm:"column:valueFileName"`
 }
 
-// ExportFilter menampung parameter penyaringan ekspor laporan submission.
-type ExportFilter struct {
-	FormCode string
-	Status   string
-	Format   string // "xlsx" atau "csv"
-}
-
 // ExportResult adalah berkas hasil ekspor siap dikirim sebagai response.
 type ExportResult struct {
 	FileName    string

@@ -18,6 +18,10 @@ type CallerScope struct {
 	// `organizationID` (org-switcher shell cms-ldk/cms-puskomda) — divalidasi
 	// accessible via OrgScopeResolver.IsAccessible sebelum dipakai.
 	RequestedOrganizationID *int64
+	// GeneratedByEmail diisi handler dari appctx.Email(c) — satu-satunya
+	// identitas pengguna yang sudah ada di context tanpa query tambahan
+	// (DL-8), dipakai baris "Dibuat oleh" di header Excel.
+	GeneratedByEmail string
 }
 
 // OrgScopeResolver menyediakan resolusi cakupan akses organisasi berjenjang.
@@ -30,15 +34,14 @@ type OrgScopeResolver interface {
 // Service adalah kontrak logika bisnis report.
 type Service interface {
 	// ListLevelisasi/ListPendataan adalah Show Data; ExportLevelisasi/
-	// ExportPendataan (Task 5) akan jadi Download Data — keduanya dalam
-	// tiap pasangan memanggil repo.SubmissionRows dengan filter yang sama
-	// (DL-5). ExportLevelisasi/ExportPendataan belum ditambahkan ke
-	// interface ini (Task 5 menambahkannya bersamaan dengan implementasi
-	// dan penghapusan ExportSubmissions) supaya ServiceImpl tetap
-	// memenuhi Service interface ini di akhir Task 4.
+	// ExportPendataan adalah Download Data — tiap pasangan memanggil
+	// ListLevelisasi/ListPendataan masing-masing secara internal sebelum
+	// menulis hasilnya ke Excel/CSV, supaya Show Data dan Download Data
+	// dijamin mengembalikan data identik (DL-5).
 	ListLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) (report_dto.ReportListResult, error)
 	ListPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) ([]report_dto.PendataanTab, error)
-	ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error)
+	ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
+	ExportPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
 

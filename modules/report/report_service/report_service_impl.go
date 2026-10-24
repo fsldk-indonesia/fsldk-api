@@ -101,8 +101,8 @@ func rowsToValues(rows []report_dto.SubmissionRow) [][]string {
 }
 
 // sheetData adalah satu sheet mentah (nama + header + baris) sebelum ditulis
-// ke berkas XLSX — dipisah dari excelize supaya ExportSubmissions bisa
-// menyusun N sheet (Ringkasan + satu per versi form) sebelum menulis sekali.
+// ke berkas XLSX — dipisah dari excelize supaya ExportPendataan bisa
+// menyusun N sheet (satu per versi form) sebelum menulis sekali.
 type sheetData struct {
 	Name string
 	// HeaderRows ditulis sebelum Columns/Rows (TechSpec-Report-Revamp.md
@@ -115,9 +115,8 @@ type sheetData struct {
 }
 
 // buildWorkbook menulis satu berkas XLSX in-memory berisi beberapa sheet
-// sekaligus — generalisasi toXLSXGeneric (yang cuma satu sheet) untuk
-// ExportSubmissions, satu-satunya pemanggil yang butuh banyak sheet saat ini
-// (Ringkasan + Jawaban per versi form, lihat buildAnswerSheets).
+// sekaligus — ExportLevelisasi dipakai dengan satu sheet ("Ringkasan"),
+// ExportPendataan dengan N sheet (satu per versi form, lihat buildAnswerSheets).
 func buildWorkbook(sheets []sheetData) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
@@ -574,71 +573,89 @@ func (s *ServiceImpl) ListPendataan(ctx context.Context, caller CallerScope, fil
 	return s.buildAnswerSheets(ctx, rows)
 }
 
-func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error) {
-	form, err := s.formRepo.FindFormByCode(ctx, filter.FormCode)
+func (s *ServiceImpl) ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error) {
+	result, err := s.ListLevelisasi(ctx, caller, report_dto.ReportFilter{
+		Statuses: filter.Statuses, ProvinceNames: filter.ProvinceNames, CityNames: filter.CityNames,
+		ParentOrganizationIDs: filter.ParentOrganizationIDs, LevelCodes: filter.LevelCodes,
+		DateFrom: filter.DateFrom, DateTo: filter.DateTo, // Page/Limit tetap 0 — export selalu semua baris
+	})
 	if err != nil {
-		return report_dto.ExportResult{}, apperror.NotFound("Form tidak ditemukan")
-	}
-	var orgIDs []int64
-	if caller.RequestedOrganizationID != nil {
-		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
-		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
-		}
-		if !ok {
-			return report_dto.ExportResult{}, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
-		}
-		orgIDs, err = s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
-		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
-		}
-	} else {
-		var err error
-		orgIDs, err = s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
-		if err != nil {
-			return report_dto.ExportResult{}, apperror.Internal("")
-		}
-	}
-	rows, err := s.repo.SubmissionRows(ctx, form.FormID, filter.Status, orgIDs)
-	if err != nil {
-		return report_dto.ExportResult{}, apperror.Internal("")
+		return report_dto.ExportResult{}, err
 	}
 
 	var data []byte
 	var contentType, ext string
-	switch filter.Format {
+	switch format {
 	case "csv":
-		// CSV cuma satu tabel datar — tidak ada konsep sheet, jadi tetap
-		// ringkasan saja (tanpa jawaban per field). Ekspor lengkap dengan
-		// jawaban HARUS pakai xlsx.
-		data, err = toCSV(rows)
+		data, err = toCSV(result.Rows)
 		contentType, ext = "text/csv", "csv"
 	default:
-		sheets := []sheetData{{Name: "Ringkasan", Columns: reportColumns, Rows: rowsToValues(rows)}}
-		answerSheets, aerr := s.buildAnswerSheets(ctx, rows)
-		if aerr != nil {
-			return report_dto.ExportResult{}, apperror.Internal("Gagal menyusun data jawaban")
-		}
-		sheets = append(sheets, answerSheets...)
+		portalLabel := s.portalLabel(ctx, caller)
+		header := buildReportHeaderRows("Laporan Levelisasi", portalLabel, filter, caller.GeneratedByEmail)
+		sheets := []sheetData{{Name: "Ringkasan", HeaderRows: header, Columns: reportColumns, Rows: rowsToValues(result.Rows)}}
 		data, err = buildWorkbook(sheets)
-		contentType, ext = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
+		contentType, ext = xlsxContentType, "xlsx"
 	}
 	if err != nil {
 		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
 	}
 
-	fileName := fmt.Sprintf("laporan-levelisasi-pendataan-ldk-%s.%s", time.Now().Format("20060102-150405"), ext)
+	fileName := fmt.Sprintf("laporan-levelisasi-%s.%s", time.Now().Format("20060102-150405"), ext)
+	s.logReportExport(ctx, caller, "Laporan Levelisasi", len(result.Rows))
+	return report_dto.ExportResult{FileName: fileName, ContentType: contentType, Data: data}, nil
+}
+
+func (s *ServiceImpl) ExportPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error) {
+	tabs, err := s.ListPendataan(ctx, caller, filter)
+	if err != nil {
+		return report_dto.ExportResult{}, err
+	}
+
+	portalLabel := s.portalLabel(ctx, caller)
+	header := buildReportHeaderRows("Laporan Pendataan", portalLabel, filter, caller.GeneratedByEmail)
+	sheets := make([]sheetData, 0, len(tabs))
+	for _, t := range tabs {
+		sheets = append(sheets, sheetData{Name: "Jawaban " + t.VersionLabel, HeaderRows: header, Columns: t.Columns, Rows: t.Rows})
+	}
+	data, err := buildWorkbook(sheets)
+	if err != nil {
+		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
+	}
+
+	rowCount := 0
+	for _, t := range tabs {
+		rowCount += len(t.Rows)
+	}
+	fileName := fmt.Sprintf("laporan-pendataan-%s.xlsx", time.Now().Format("20060102-150405"))
+	s.logReportExport(ctx, caller, "Laporan Pendataan", rowCount)
+	return report_dto.ExportResult{FileName: fileName, ContentType: xlsxContentType, Data: data}, nil
+}
+
+// logReportExport dipisah dari ExportSubmissions lama (dulu inline) supaya
+// dipakai ulang oleh kedua fungsi export baru tanpa duplikasi.
+func (s *ServiceImpl) logReportExport(ctx context.Context, caller CallerScope, reportName string, rowCount int) {
 	var actorOrg *int64
 	if caller.OrganizationID != nil {
 		actorOrg = caller.OrganizationID
 	}
 	s.audit.LogExport(ctx, auditlog.Entry{
 		ActorUserID: caller.UserID, ActorOrganizationID: actorOrg,
-		Action: "EXPORT", Entity: "tr_submission", EntityID: form.FormID,
-		Metadata: map[string]interface{}{"formCode": filter.FormCode, "status": filter.Status, "format": filter.Format, "rowCount": len(rows)},
+		Action: "EXPORT", Entity: "tr_submission",
+		Metadata: map[string]interface{}{"report": reportName, "rowCount": rowCount},
 	})
+}
 
-	return report_dto.ExportResult{FileName: fileName, ContentType: contentType, Data: data}, nil
+// portalLabel menghasilkan baris kedua header Excel ("Portal Puskomda — ..."
+// / "Portal Puskomnas — Nasional") — TIDAK melakukan lookup nama organisasi
+// tambahan (hemat satu query); untuk Puskomda cukup label tier generik,
+// karena nama Puskomda spesifik sudah ada di kolom "Puskomda" tiap baris data.
+func (s *ServiceImpl) portalLabel(ctx context.Context, caller CallerScope) string {
+	switch caller.OrganizationTypeCode {
+	case "PUSKOMNAS":
+		return "Portal Puskomnas — Nasional"
+	default:
+		return "Portal Puskomda"
+	}
 }
 
 // ---------- Kantong Amal (Phase 9) — §15 techspec ----------
