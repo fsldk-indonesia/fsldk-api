@@ -29,6 +29,15 @@ type OrgScopeResolver interface {
 
 // Service adalah kontrak logika bisnis report.
 type Service interface {
+	// ListLevelisasi/ListPendataan adalah Show Data; ExportLevelisasi/
+	// ExportPendataan (Task 5) akan jadi Download Data — keduanya dalam
+	// tiap pasangan memanggil repo.SubmissionRows dengan filter yang sama
+	// (DL-5). ExportLevelisasi/ExportPendataan belum ditambahkan ke
+	// interface ini (Task 5 menambahkannya bersamaan dengan implementasi
+	// dan penghapusan ExportSubmissions) supaya ServiceImpl tetap
+	// memenuhi Service interface ini di akhir Task 4.
+	ListLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) (report_dto.ReportListResult, error)
+	ListPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) ([]report_dto.PendataanTab, error)
 	ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error)
 
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------

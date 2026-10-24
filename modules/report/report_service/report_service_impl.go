@@ -16,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"fsldk-api/base/apperror"
+	"fsldk-api/base/dto"
 	"fsldk-api/config"
 	"fsldk-api/constants"
 	"fsldk-api/modules/report/report_dto"
@@ -281,7 +282,7 @@ func uniqueSheetName(raw string, used map[string]bool) string {
 // tiap Puskomnas publish versi baru (lihat Publish Cascade), jadi kolomnya
 // TIDAK bisa digabung lintas versi tanpa campur aduk. Versi terbaru (ID
 // tertinggi) ditaruh duluan.
-func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.SubmissionRow) ([]sheetData, error) {
+func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.SubmissionRow) ([]report_dto.PendataanTab, error) {
 	byVersion := map[int64][]report_dto.SubmissionRow{}
 	var versionIDs []int64
 	for _, r := range rows {
@@ -292,7 +293,7 @@ func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.S
 	}
 	sort.Slice(versionIDs, func(i, j int) bool { return versionIDs[i] > versionIDs[j] })
 
-	sheets := make([]sheetData, 0, len(versionIDs))
+	tabs := make([]report_dto.PendataanTab, 0, len(versionIDs))
 	for _, versionID := range versionIDs {
 		group := byVersion[versionID]
 		version, err := s.formRepo.FindVersionByID(ctx, versionID)
@@ -382,13 +383,14 @@ func (s *ServiceImpl) buildAnswerSheets(ctx context.Context, rows []report_dto.S
 			rowsOut = append(rowsOut, values)
 		}
 
-		sheets = append(sheets, sheetData{
-			Name:    fmt.Sprintf("Jawaban V%d", version.VersionNumber),
-			Columns: columns,
-			Rows:    rowsOut,
+		tabs = append(tabs, report_dto.PendataanTab{
+			FormVersionID: versionID,
+			VersionLabel:  fmt.Sprintf("V%d", version.VersionNumber),
+			Columns:       columns,
+			Rows:          rowsOut,
 		})
 	}
-	return sheets, nil
+	return tabs, nil
 }
 
 // answerConditionalRule mencerminkan bentuk JSON conditionalRuleJSON yang
@@ -501,6 +503,75 @@ func formatAnswerValue(f submission_form_model.Field, a report_dto.AnswerRow, op
 	default:
 		return a.ValueText.String
 	}
+}
+
+// resolveReportOrgIDs mencerminkan submission_service.resolveScopedOrganizationIDs
+// (duplikasi kecil disengaja — report_service tidak bergantung ke
+// submission_service, cuma submission_form_repository) — dipakai SEMUA
+// endpoint Laporan (List & Export, kedua jenis) supaya cakupan organisasi
+// selalu konsisten dengan org-switcher.
+func (s *ServiceImpl) resolveReportOrgIDs(ctx context.Context, caller CallerScope) ([]int64, error) {
+	if caller.RequestedOrganizationID != nil {
+		ok, err := s.orgScope.IsAccessible(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess, *caller.RequestedOrganizationID)
+		if err != nil {
+			return nil, apperror.Internal("")
+		}
+		if !ok {
+			return nil, apperror.Forbidden("Anda tidak memiliki akses ke organisasi ini")
+		}
+		return s.orgScope.AccessibleOrganizationIDsForTarget(ctx, *caller.RequestedOrganizationID)
+	}
+	return s.orgScope.AccessibleOrganizationIDs(ctx, caller.OrganizationID, caller.OrganizationTypeCode, caller.WildcardTierAccess)
+}
+
+// reportSortColumns menyaring kolom yang boleh dipakai sort tabel Laporan
+// Levelisasi — mencerminkan submission_service_impl.go sortColumns, hanya
+// kolom yang nyata ada di Select SubmissionRows (lihat Task 2).
+var reportSortColumns = map[string]string{
+	"organizationName": "o.organizationName",
+	"status":           "s.status",
+	"submittedDate":    "s.submittedDate",
+}
+
+// ListLevelisasi mengembalikan Show Data tabel Laporan Levelisasi LDK —
+// paginasi via filter.Page/filter.Limit, sort via reportSortColumns
+// (satu-satunya endpoint baru yang menghormati filter.Sort, lihat komentar
+// report_dto.ReportFilter.Sort).
+func (s *ServiceImpl) ListLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) (report_dto.ReportListResult, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeLevelisasiLDK)
+	if err != nil {
+		return report_dto.ReportListResult{}, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return report_dto.ReportListResult{}, err
+	}
+	orderBy := dto.ListQuery{Sort: filter.Sort}.OrderBy(reportSortColumns, "o.organizationName ASC")
+	rows, total, err := s.repo.SubmissionRows(ctx, form.FormID, filter, orderBy, orgIDs)
+	if err != nil {
+		return report_dto.ReportListResult{}, apperror.Internal("")
+	}
+	return report_dto.ReportListResult{Rows: rows, Total: total}, nil
+}
+
+// ListPendataan mengembalikan Show Data Laporan Pendataan — SELURUH baris
+// (bukan dipaginasi, DL-4/§4.3) dikelompokkan jadi satu tab per versi form
+// lewat buildAnswerSheets, komputasi yang sama dipakai Download Data (Task 5).
+func (s *ServiceImpl) ListPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter) ([]report_dto.PendataanTab, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeLevelisasiLDK)
+	if err != nil {
+		return nil, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return nil, err
+	}
+	filter.Page, filter.Limit = 0, 0 // Pendataan selalu ambil semua baris (DL-4/§4.3)
+	rows, _, err := s.repo.SubmissionRows(ctx, form.FormID, filter, "", orgIDs)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	return s.buildAnswerSheets(ctx, rows)
 }
 
 func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope, filter report_dto.ExportFilter) (report_dto.ExportResult, error) {
