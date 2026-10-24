@@ -122,7 +122,7 @@ func toCSV(rows []report_dto.SubmissionRow) ([]byte, error) {
 }
 
 // answerSheetBaseColumns mendahului kolom per-field di tiap sheet "Jawaban" —
-// konteks organisasi yang sama dipakai di sheet "Ringkasan", diulang di sini
+// konteks organisasi yang sama dipakai di sheet "Result", diulang di sini
 // supaya tiap sheet jawaban tetap bisa dibaca berdiri sendiri.
 var answerSheetBaseColumns = []string{"Nama LDK", "Provinsi", "Kota/Kabupaten", "Status", "Tanggal Submit"}
 
@@ -149,11 +149,25 @@ type sheetData struct {
 }
 
 // buildWorkbook menulis satu berkas XLSX in-memory berisi beberapa sheet
-// sekaligus — ExportLevelisasi dipakai dengan satu sheet ("Ringkasan"),
+// sekaligus — ExportLevelisasi dipakai dengan satu sheet ("Result"),
 // ExportPendataan dengan N sheet (satu per versi form, lihat buildAnswerSheets).
+// Judul (baris 1) ditulis bold+besar, label baris metadata (Dibuat/Periode/
+// Dibuat oleh/Filter Diterapkan) dan header kolom tabel ditulis bold —
+// permintaan user saat manual testing supaya blok header lebih mudah dibaca
+// sekilas dibanding data di bawahnya.
 func buildWorkbook(sheets []sheetData) ([]byte, error) {
 	f := excelize.NewFile()
 	defer f.Close()
+
+	titleStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true, Size: 14}})
+	if err != nil {
+		return nil, err
+	}
+	boldStyle, err := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	if err != nil {
+		return nil, err
+	}
+
 	usedNames := map[string]bool{}
 	for i, sd := range sheets {
 		name := uniqueSheetName(sd.Name, usedNames)
@@ -168,10 +182,25 @@ func buildWorkbook(sheets []sheetData) ([]byte, error) {
 				cell, _ := excelize.CoordinatesToCellName(c+1, r+1)
 				f.SetCellValue(name, cell, v)
 			}
+			if len(row) == 0 {
+				continue
+			}
+			firstCell, _ := excelize.CoordinatesToCellName(1, r+1)
+			switch r {
+			case reportHeaderTitleRow:
+				f.SetCellStyle(name, firstCell, firstCell, titleStyle)
+			case reportHeaderDibuatRow, reportHeaderPeriodeRow, reportHeaderDibuatOlehRow, reportHeaderFilterRow:
+				f.SetCellStyle(name, firstCell, firstCell, boldStyle)
+			}
 		}
 		for c, col := range sd.Columns {
 			cell, _ := excelize.CoordinatesToCellName(c+1, offset+1)
 			f.SetCellValue(name, cell, col)
+		}
+		if len(sd.Columns) > 0 {
+			firstCell, _ := excelize.CoordinatesToCellName(1, offset+1)
+			lastCell, _ := excelize.CoordinatesToCellName(len(sd.Columns), offset+1)
+			f.SetCellStyle(name, firstCell, lastCell, boldStyle)
 		}
 		for r, row := range sd.Rows {
 			for c, v := range row {
@@ -225,12 +254,26 @@ func autoFitColumns(f *excelize.File, sheet string, columns []string, rows [][]s
 	}
 }
 
+// Indeks baris tetap di dalam HeaderRows (lihat buildReportHeaderRows) —
+// dipakai buildWorkbook untuk menerapkan style bold tanpa baris jadi rapuh
+// terhadap re-ordering manual di kedua fungsi.
+const (
+	reportHeaderTitleRow      = 0
+	reportHeaderDibuatRow     = 2
+	reportHeaderPeriodeRow    = 3
+	reportHeaderDibuatOlehRow = 4
+	reportHeaderFilterRow     = 5
+)
+
 // buildReportHeaderRows menghasilkan baris metadata sebelum header kolom
-// data — judul, konteks portal, waktu dibuat, periode, pembuat, dan ringkasan
-// filter yang BENAR-BENAR diterapkan (filter kosong tidak disebut sama
-// sekali, bukan ditulis "-") — mengikuti referensi "Transaction Log Report"
-// ESBCore (TechSpec-Report-Revamp.md §4.4).
-func buildReportHeaderRows(title, portalLabel string, f report_dto.ReportFilter, generatedByEmail string) [][]string {
+// data — judul, waktu dibuat, periode, pembuat, dan ringkasan filter yang
+// BENAR-BENAR diterapkan (filter kosong tidak disebut sama sekali, bukan
+// ditulis "-") — mengikuti referensi "Transaction Log Report" ESBCore
+// (TechSpec-Report-Revamp.md §4.4). Baris portal/branch context SENGAJA
+// tidak disertakan (permintaan user saat manual testing) — nama Puskomda
+// per baris sudah ada di kolom data, dan Puskomnas selalu lintas-wilayah
+// sehingga satu baris "Portal ..." tidak menambah informasi.
+func buildReportHeaderRows(title string, f report_dto.ReportFilter, generatedByEmail string) [][]string {
 	period := "Semua periode"
 	if f.DateFrom != "" || f.DateTo != "" {
 		from, to := f.DateFrom, f.DateTo
@@ -270,7 +313,6 @@ func buildReportHeaderRows(title, portalLabel string, f report_dto.ReportFilter,
 
 	return [][]string{
 		{title},
-		{portalLabel},
 		{},
 		{"Dibuat", time.Now().Format("2006-01-02 15:04:05")},
 		{"Periode", period},
@@ -624,9 +666,8 @@ func (s *ServiceImpl) ExportLevelisasi(ctx context.Context, caller CallerScope, 
 		data, err = toCSV(result.Rows)
 		contentType, ext = "text/csv", "csv"
 	default:
-		portalLabel := s.portalLabel(ctx, caller)
-		header := buildReportHeaderRows("Laporan Levelisasi", portalLabel, filter, caller.GeneratedByEmail)
-		sheets := []sheetData{{Name: "Ringkasan", HeaderRows: header, Columns: reportColumns, Rows: rowsToValues(result.Rows)}}
+		header := buildReportHeaderRows("Laporan Levelisasi", filter, caller.GeneratedByEmail)
+		sheets := []sheetData{{Name: "Result", HeaderRows: header, Columns: reportColumns, Rows: rowsToValues(result.Rows)}}
 		data, err = buildWorkbook(sheets)
 		contentType, ext = xlsxContentType, "xlsx"
 	}
@@ -645,8 +686,7 @@ func (s *ServiceImpl) ExportPendataan(ctx context.Context, caller CallerScope, f
 		return report_dto.ExportResult{}, err
 	}
 
-	portalLabel := s.portalLabel(ctx, caller)
-	header := buildReportHeaderRows("Laporan Pendataan", portalLabel, filter, caller.GeneratedByEmail)
+	header := buildReportHeaderRows("Laporan Pendataan", filter, caller.GeneratedByEmail)
 	sheets := make([]sheetData, 0, len(tabs))
 	for _, t := range tabs {
 		sheets = append(sheets, sheetData{Name: "Jawaban " + t.VersionLabel, HeaderRows: header, Columns: t.Columns, Rows: t.Rows})
@@ -677,19 +717,6 @@ func (s *ServiceImpl) logReportExport(ctx context.Context, caller CallerScope, r
 		Action: "EXPORT", Entity: "tr_submission",
 		Metadata: map[string]interface{}{"report": reportName, "rowCount": rowCount},
 	})
-}
-
-// portalLabel menghasilkan baris kedua header Excel ("Portal Puskomda — ..."
-// / "Portal Puskomnas — Nasional") — TIDAK melakukan lookup nama organisasi
-// tambahan (hemat satu query); untuk Puskomda cukup label tier generik,
-// karena nama Puskomda spesifik sudah ada di kolom "Puskomda" tiap baris data.
-func (s *ServiceImpl) portalLabel(ctx context.Context, caller CallerScope) string {
-	switch caller.OrganizationTypeCode {
-	case "PUSKOMNAS":
-		return "Portal Puskomnas — Nasional"
-	default:
-		return "Portal Puskomda"
-	}
 }
 
 // ---------- Kantong Amal (Phase 9) — §15 techspec ----------

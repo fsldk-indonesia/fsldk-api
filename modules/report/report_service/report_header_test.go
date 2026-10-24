@@ -8,18 +8,18 @@ import (
 )
 
 func TestBuildReportHeaderRows_IncludesOnlyAppliedFilters(t *testing.T) {
-	rows := buildReportHeaderRows("Laporan Levelisasi", "Portal Puskomda — Banten Raya", report_dto.ReportFilter{
+	rows := buildReportHeaderRows("Laporan Levelisasi", report_dto.ReportFilter{
 		Statuses: []string{"SUBMITTED", "PUBLISHED"},
 	}, "dev1@fsldk.or.id")
 
-	if len(rows) < 7 {
-		t.Fatalf("expected at least 7 header rows, got %d", len(rows))
+	if len(rows) < 6 {
+		t.Fatalf("expected at least 6 header rows, got %d", len(rows))
 	}
 	if rows[0][0] != "Laporan Levelisasi" {
 		t.Errorf("row 0 = %v, want title in [0][0]", rows[0])
 	}
-	if rows[1][0] != "Portal Puskomda — Banten Raya" {
-		t.Errorf("row 1 = %v, want portal label in [0][0]", rows[1])
+	if len(rows[1]) != 0 {
+		t.Errorf("row 1 = %v, want a blank row right after the title (no portal/branch line)", rows[1])
 	}
 
 	joined := ""
@@ -38,7 +38,7 @@ func TestBuildReportHeaderRows_IncludesOnlyAppliedFilters(t *testing.T) {
 }
 
 func TestBuildReportHeaderRows_NoFiltersAppliedShowsNeutralPeriod(t *testing.T) {
-	rows := buildReportHeaderRows("Laporan Pendataan", "Portal Puskomnas — Nasional", report_dto.ReportFilter{}, "a@b.co")
+	rows := buildReportHeaderRows("Laporan Pendataan", report_dto.ReportFilter{}, "a@b.co")
 
 	joined := ""
 	for _, r := range rows {
