@@ -528,7 +528,7 @@ func (s *ServiceImpl) ExportSubmissions(ctx context.Context, caller CallerScope,
 			return report_dto.ExportResult{}, apperror.Internal("")
 		}
 	}
-	rows, _, err := s.repo.SubmissionRows(ctx, form.FormID, report_dto.ReportFilter{Statuses: []string{filter.Status}}, "", orgIDs)
+	rows, err := s.repo.SubmissionRows(ctx, form.FormID, filter.Status, orgIDs)
 	if err != nil {
 		return report_dto.ExportResult{}, apperror.Internal("")
 	}
