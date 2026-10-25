@@ -634,6 +634,258 @@ var reportSortColumns = map[string]string{
 	"submittedDate":    "s.submittedDate",
 }
 
+// kaderStatusLabels mencerminkan KADER_STATUS_LABELS
+// (fsldk-web/src/app/modules/submission/entities/submission.ts:42-44)
+// VERBATIM — Show Data dan Download Data (Excel) Laporan Sensus Kader harus
+// menampilkan label yang sama persis dengan yang sudah dipakai di tempat
+// lain aplikasi untuk ms_kader.status.
+var kaderStatusLabels = map[string]string{
+	"PENDING": "Menunggu Persetujuan", "ACTIVE": "Aktif", "REJECTED": "Ditolak", "INACTIVE": "Nonaktif",
+}
+
+// reportKaderStatusLabel menerjemahkan ms_kader.status mentah ke label
+// Indonesia, fallback ke kode itu sendiri bila belum ada di peta — pola
+// sama dengan reportStatusLabel (tr_submission.status), TIDAK dipakai
+// bergantian dengan itu (dua konsep status berbeda, lihat KaderFilter).
+func reportKaderStatusLabel(code string) string {
+	if label, ok := kaderStatusLabels[code]; ok {
+		return label
+	}
+	return code
+}
+
+var kaderReportColumns = []string{"Nama Lengkap", "Nama LDK", "Puskomda", "Provinsi", "Kota/Kabupaten", "Status Keanggotaan", "Kode Unik", "Tanggal Terbit"}
+
+func kaderRowValues(row report_dto.KaderReportRow) []string {
+	return []string{
+		row.FullName,
+		row.OrganizationName,
+		strOrEmptyPtr(row.ParentOrganizationName),
+		strOrEmptyPtr(row.ProvinceName),
+		strOrEmptyPtr(row.CityName),
+		reportKaderStatusLabel(row.Status),
+		strOrEmptyPtr(row.UniqueCode),
+		formatDateTimePtr(row.IssuedDate),
+	}
+}
+
+func kaderRowsToValues(rows []report_dto.KaderReportRow) [][]string {
+	out := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, kaderRowValues(row))
+	}
+	return out
+}
+
+func toKaderCSV(rows []report_dto.KaderReportRow) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	if err := w.Write(kaderReportColumns); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if err := w.Write(kaderRowValues(row)); err != nil {
+			return nil, err
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// answerSheetKaderBaseColumns mendahului kolom per-field di tiap sheet
+// "Jawaban" Pendataan Sensus Kader — lebih kaya dari answerSheetBaseColumns
+// (Levelisasi) karena identitas Kader (Nama Lengkap/Kode Unik) relevan per
+// baris jawaban individu, beda dari Levelisasi yang identitasnya organisasi.
+var answerSheetKaderBaseColumns = []string{"Nama Lengkap", "Nama LDK", "Provinsi", "Kota/Kabupaten", "Status Keanggotaan", "Kode Unik", "Tanggal Terbit"}
+
+// kaderReportSortColumns menyaring kolom yang boleh dipakai sort tabel
+// Laporan Sensus Kader — mencerminkan reportSortColumns (Levelisasi), hanya
+// kolom yang nyata ada di Select KaderRows (Task 3).
+var kaderReportSortColumns = map[string]string{
+	"organizationName": "o.organizationName",
+	"status":           "k.status",
+	"issuedDate":       "k.issuedDate",
+}
+
+// buildKaderReportHeaderRows mencerminkan buildReportHeaderRows (Levelisasi)
+// TAPI menerjemahkan Status lewat reportKaderStatusLabel (ms_kader.status),
+// bukan reportStatusLabel (tr_submission.status) — DUPLIKASI SENGAJA
+// (2026-10-24-sensus-kader-report-design.md D5): mengubah signature
+// buildReportHeaderRows untuk menerima status-labeler sebagai parameter
+// akan menyentuh 2 call site Levelisasi/Pendataan yang sudah stabil, demi
+// satu baris "Status Keanggotaan" — bukan trade-off yang sepadan. Tidak ada
+// baris "Level" (KaderFilter tidak punya LevelCodes).
+func buildKaderReportHeaderRows(title string, f report_dto.KaderFilter, generatedByEmail string, orgNamesByID map[int64]string) [][]string {
+	period := "Semua periode"
+	if f.DateFrom != "" || f.DateTo != "" {
+		from, to := f.DateFrom, f.DateTo
+		if from == "" {
+			from = "awal"
+		}
+		if to == "" {
+			to = "sekarang"
+		}
+		period = from + " - " + to
+	}
+
+	var applied []string
+	if len(f.Statuses) > 0 {
+		labels := make([]string, len(f.Statuses))
+		for i, st := range f.Statuses {
+			labels[i] = reportKaderStatusLabel(st)
+		}
+		applied = append(applied, "Status Keanggotaan: "+strings.Join(labels, ", "))
+	}
+	if len(f.ProvinceNames) > 0 {
+		applied = append(applied, "Provinsi: "+strings.Join(f.ProvinceNames, ", "))
+	}
+	if len(f.CityNames) > 0 {
+		applied = append(applied, "Kota/Kabupaten: "+strings.Join(f.CityNames, ", "))
+	}
+	if len(f.ParentOrganizationIDs) > 0 {
+		applied = append(applied, "Puskomda: "+joinOrgNames(f.ParentOrganizationIDs, orgNamesByID))
+	}
+	if len(f.OrganizationIDs) > 0 {
+		applied = append(applied, "Nama LDK: "+joinOrgNames(f.OrganizationIDs, orgNamesByID))
+	}
+	appliedLabel := "Tidak ada filter tambahan"
+	if len(applied) > 0 {
+		appliedLabel = strings.Join(applied, "; ")
+	}
+
+	return [][]string{
+		{title},
+		{},
+		{"Dibuat", time.Now().Format("2006-01-02 15:04:05")},
+		{"Periode", period},
+		{"Dibuat oleh", generatedByEmail},
+		{"Filter Diterapkan", appliedLabel},
+		{},
+	}
+}
+
+// buildKaderAnswerSheets mencerminkan buildAnswerSheets (Levelisasi) dengan
+// KaderReportRow menggantikan SubmissionRow — isFieldVisible/formatAnswerValue
+// (operasi atas submission_form_model.Field/report_dto.AnswerRow, bukan atas
+// SubmissionRow/KaderReportRow) DIPAKAI ULANG tanpa perubahan; hanya loop
+// luar (pengelompokan versi + kolom dasar) yang perlu diduplikasi karena Go
+// tidak punya cara generik murah untuk 2 tipe baris berbeda tanpa interface
+// adapter yang berlebihan untuk 2 pemanggil (YAGNI, konsisten konvensi
+// project).
+func (s *ServiceImpl) buildKaderAnswerSheets(ctx context.Context, rows []report_dto.KaderReportRow) ([]report_dto.PendataanTab, error) {
+	byVersion := map[int64][]report_dto.KaderReportRow{}
+	var versionIDs []int64
+	for _, r := range rows {
+		if _, ok := byVersion[r.FormVersionID]; !ok {
+			versionIDs = append(versionIDs, r.FormVersionID)
+		}
+		byVersion[r.FormVersionID] = append(byVersion[r.FormVersionID], r)
+	}
+	sort.Slice(versionIDs, func(i, j int) bool { return versionIDs[i] > versionIDs[j] })
+
+	tabs := make([]report_dto.PendataanTab, 0, len(versionIDs))
+	for _, versionID := range versionIDs {
+		group := byVersion[versionID]
+		version, err := s.formRepo.FindVersionByID(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		sections, err := s.formRepo.ListSectionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := s.formRepo.ListFieldsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+		options, err := s.formRepo.ListOptionsByVersion(ctx, versionID)
+		if err != nil {
+			return nil, err
+		}
+
+		sectionLabel := make(map[int64]string, len(sections))
+		sectionOrder := make(map[int64]int, len(sections))
+		for _, sec := range sections {
+			sectionLabel[sec.SectionID] = sec.SectionLabel
+			sectionOrder[sec.SectionID] = sec.SortOrder
+		}
+		sort.Slice(fields, func(i, j int) bool {
+			oi, oj := sectionOrder[fields[i].SectionID], sectionOrder[fields[j].SectionID]
+			if oi != oj {
+				return oi < oj
+			}
+			return fields[i].SortOrder < fields[j].SortOrder
+		})
+
+		optionsByField := make(map[int64][]submission_form_model.Option)
+		optionValueByID := make(map[int64]string, len(options))
+		for _, o := range options {
+			optionsByField[o.FieldID] = append(optionsByField[o.FieldID], o)
+			optionValueByID[o.OptionID] = o.OptionValue
+		}
+		fieldByID := make(map[int64]submission_form_model.Field, len(fields))
+		for _, f := range fields {
+			fieldByID[f.FieldID] = f
+		}
+
+		submissionIDs := make([]int64, len(group))
+		for i, r := range group {
+			submissionIDs[i] = r.SubmissionID
+		}
+		answers, err := s.repo.AnswersBySubmissionIDs(ctx, submissionIDs)
+		if err != nil {
+			return nil, err
+		}
+		answersBySubmission := make(map[int64]map[int64]report_dto.AnswerRow, len(group))
+		for _, a := range answers {
+			bucket, ok := answersBySubmission[a.SubmissionID]
+			if !ok {
+				bucket = make(map[int64]report_dto.AnswerRow)
+				answersBySubmission[a.SubmissionID] = bucket
+			}
+			bucket[a.FieldID] = a
+		}
+
+		columns := append([]string{}, answerSheetKaderBaseColumns...)
+		for _, f := range fields {
+			label := f.FieldLabel
+			if sl := sectionLabel[f.SectionID]; sl != "" {
+				label = sl + " — " + f.FieldLabel
+			}
+			columns = append(columns, label)
+		}
+
+		rowsOut := make([][]string, 0, len(group))
+		for _, subRow := range group {
+			answersForSub := answersBySubmission[subRow.SubmissionID]
+			values := make([]string, 0, len(columns))
+			values = append(values,
+				subRow.FullName, subRow.OrganizationName, strOrEmptyPtr(subRow.ProvinceName), strOrEmptyPtr(subRow.CityName),
+				reportKaderStatusLabel(subRow.Status), strOrEmptyPtr(subRow.UniqueCode), formatDateTimePtr(subRow.IssuedDate),
+			)
+			for _, f := range fields {
+				if !isFieldVisible(f, fieldByID, answersForSub, optionValueByID) {
+					values = append(values, "")
+					continue
+				}
+				values = append(values, formatAnswerValue(f, answersForSub[f.FieldID], optionsByField[f.FieldID]))
+			}
+			rowsOut = append(rowsOut, values)
+		}
+
+		tabs = append(tabs, report_dto.PendataanTab{
+			FormVersionID: versionID,
+			VersionLabel:  fmt.Sprintf("V%d", version.VersionNumber),
+			Columns:       columns,
+			Rows:          rowsOut,
+		})
+	}
+	return tabs, nil
+}
+
 // ListLevelisasi mengembalikan Show Data tabel Laporan Levelisasi LDK —
 // paginasi via filter.Page/filter.Limit, sort via reportSortColumns
 // (satu-satunya endpoint baru yang menghormati filter.Sort, lihat komentar
@@ -758,6 +1010,110 @@ func (s *ServiceImpl) resolveReportOrgNames(ctx context.Context, parentIDs, orgI
 		return nil
 	}
 	return namesByID
+}
+
+// ListSensusKader mengembalikan Show Data tabel Laporan Sensus Kader —
+// paginasi via filter.Page/filter.Limit, sort via kaderReportSortColumns.
+// Jalur paralel ke ListLevelisasi (2026-10-24-sensus-kader-report-design.md
+// D5) — TIDAK memanggilnya atau SubmissionRows.
+func (s *ServiceImpl) ListSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter) (report_dto.KaderListResult, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeSensusKader)
+	if err != nil {
+		return report_dto.KaderListResult{}, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return report_dto.KaderListResult{}, err
+	}
+	orderBy := dto.ListQuery{Sort: filter.Sort}.OrderBy(kaderReportSortColumns, "o.organizationName ASC")
+	rows, total, err := s.repo.KaderRows(ctx, form.FormID, filter, orderBy, orgIDs)
+	if err != nil {
+		return report_dto.KaderListResult{}, apperror.Internal("")
+	}
+	return report_dto.KaderListResult{Rows: rows, Total: total}, nil
+}
+
+// ListPendataanSensusKader mengembalikan Show Data Laporan Pendataan Sensus
+// Kader — SELURUH baris (bukan dipaginasi, mirror ListPendataan),
+// dikelompokkan jadi satu tab per versi form lewat buildKaderAnswerSheets.
+func (s *ServiceImpl) ListPendataanSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter) ([]report_dto.PendataanTab, error) {
+	form, err := s.formRepo.FindFormByCode(ctx, constants.FormCodeSensusKader)
+	if err != nil {
+		return nil, apperror.NotFound("Form tidak ditemukan")
+	}
+	orgIDs, err := s.resolveReportOrgIDs(ctx, caller)
+	if err != nil {
+		return nil, err
+	}
+	filter.Page, filter.Limit = 0, 0
+	rows, _, err := s.repo.KaderRows(ctx, form.FormID, filter, "", orgIDs)
+	if err != nil {
+		return nil, apperror.Internal("")
+	}
+	return s.buildKaderAnswerSheets(ctx, rows)
+}
+
+func (s *ServiceImpl) ExportSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter, format string) (report_dto.ExportResult, error) {
+	result, err := s.ListSensusKader(ctx, caller, report_dto.KaderFilter{
+		Statuses: filter.Statuses, ProvinceNames: filter.ProvinceNames, CityNames: filter.CityNames,
+		ParentOrganizationIDs: filter.ParentOrganizationIDs, OrganizationIDs: filter.OrganizationIDs,
+		DateFrom: filter.DateFrom, DateTo: filter.DateTo, // Page/Limit tetap 0 — export selalu semua baris
+	})
+	if err != nil {
+		return report_dto.ExportResult{}, err
+	}
+
+	var data []byte
+	var contentType, ext string
+	switch format {
+	case "csv":
+		data, err = toKaderCSV(result.Rows)
+		contentType, ext = "text/csv", "csv"
+	default:
+		header := buildKaderReportHeaderRows("Laporan Sensus Kader", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
+		sheets := []sheetData{{Name: "Result", HeaderRows: header, Columns: kaderReportColumns, Rows: kaderRowsToValues(result.Rows)}}
+		data, err = buildWorkbook(sheets)
+		contentType, ext = xlsxContentType, "xlsx"
+	}
+	if err != nil {
+		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
+	}
+
+	fileName := fmt.Sprintf("laporan-sensus-kader-%s.%s", time.Now().Format("20060102-150405"), ext)
+	s.logReportExport(ctx, caller, "Laporan Sensus Kader", len(result.Rows))
+	return report_dto.ExportResult{FileName: fileName, ContentType: contentType, Data: data}, nil
+}
+
+func (s *ServiceImpl) ExportPendataanSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter, format string) (report_dto.ExportResult, error) {
+	tabs, err := s.ListPendataanSensusKader(ctx, caller, filter)
+	if err != nil {
+		return report_dto.ExportResult{}, err
+	}
+
+	header := buildKaderReportHeaderRows("Laporan Pendataan Sensus Kader", filter, caller.GeneratedByEmail, s.resolveReportOrgNames(ctx, filter.ParentOrganizationIDs, filter.OrganizationIDs))
+	sheets := make([]sheetData, 0, len(tabs))
+	for _, t := range tabs {
+		sheets = append(sheets, sheetData{Name: "Jawaban " + t.VersionLabel, HeaderRows: header, Columns: t.Columns, Rows: t.Rows})
+	}
+	if len(sheets) == 0 {
+		// Tidak ada versi form dengan submission yang cocok filter — tetap
+		// tulis satu sheet berisi blok judul/header + kolom dasar (sama
+		// perbaikan dengan ExportPendataan Levelisasi — permintaan user saat
+		// manual testing report-revamp, lihat progress.md).
+		sheets = append(sheets, sheetData{Name: "Jawaban", HeaderRows: header, Columns: answerSheetKaderBaseColumns, Rows: [][]string{}})
+	}
+	data, err := buildWorkbook(sheets)
+	if err != nil {
+		return report_dto.ExportResult{}, apperror.Internal("Gagal membuat berkas laporan")
+	}
+
+	rowCount := 0
+	for _, t := range tabs {
+		rowCount += len(t.Rows)
+	}
+	fileName := fmt.Sprintf("laporan-pendataan-sensus-kader-%s.xlsx", time.Now().Format("20060102-150405"))
+	s.logReportExport(ctx, caller, "Laporan Pendataan Sensus Kader", rowCount)
+	return report_dto.ExportResult{FileName: fileName, ContentType: xlsxContentType, Data: data}, nil
 }
 
 // logReportExport dipisah dari ExportSubmissions lama (dulu inline) supaya
