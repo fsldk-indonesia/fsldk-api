@@ -77,6 +77,61 @@ func maxInt(a, b int) int {
 	return b
 }
 
+// KaderRows query tr_submission JOIN ms_kader (bukan tr_levelisasi_result —
+// Sensus Kader tidak punya konsep Level) untuk Status Keanggotaan (k.status),
+// Kode Unik, Tanggal Terbit (k.issuedDate). Struktur query (empty-guard,
+// Session count-then-fetch, offset/limit) sengaja identik dengan
+// SubmissionRows untuk konsistensi, TIDAK memanggilnya/menyatukannya (lihat
+// komentar KaderFilter — jalur paralel).
+func (r *RepositoryImpl) KaderRows(ctx context.Context, formID int64, f report_dto.KaderFilter, orderBy string, organizationIDs []int64) ([]report_dto.KaderReportRow, int64, error) {
+	if len(organizationIDs) == 0 {
+		return []report_dto.KaderReportRow{}, 0, nil
+	}
+	if orderBy == "" {
+		orderBy = "o.organizationName ASC"
+	}
+	q := r.db.WithContext(ctx).Table("tr_submission s").
+		Joins("JOIN ms_kader k ON k.submissionID = s.submissionID").
+		Joins("JOIN ms_organization o ON o.organizationID = s.organizationID").
+		Joins("LEFT JOIN ms_organization po ON po.organizationID = o.parentOrganizationID").
+		Where("s.formID = ? AND s.organizationID IN ?", formID, organizationIDs)
+	if len(f.Statuses) > 0 {
+		q = q.Where("k.status IN ?", f.Statuses)
+	}
+	if len(f.ProvinceNames) > 0 {
+		q = q.Where("o.provinceName IN ?", f.ProvinceNames)
+	}
+	if len(f.CityNames) > 0 {
+		q = q.Where("o.cityName IN ?", f.CityNames)
+	}
+	if len(f.ParentOrganizationIDs) > 0 {
+		q = q.Where("po.organizationID IN ?", f.ParentOrganizationIDs)
+	}
+	if len(f.OrganizationIDs) > 0 {
+		q = q.Where("o.organizationID IN ?", f.OrganizationIDs)
+	}
+	if f.DateFrom != "" {
+		q = q.Where("k.issuedDate >= ?", f.DateFrom)
+	}
+	if f.DateTo != "" {
+		q = q.Where("k.issuedDate <= ?", f.DateTo+" 23:59:59")
+	}
+
+	var total int64
+	if err := q.Session(&gorm.Session{}).Select("s.submissionID").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	q = q.Select("s.submissionID, s.formVersionID, k.kaderID, k.uniqueCode, k.fullName, o.organizationName, po.organizationName AS parentOrganizationName, o.provinceName, o.cityName, k.status, k.issuedDate, s.submittedDate").
+		Order(orderBy)
+	if f.Limit > 0 {
+		q = q.Offset((maxInt(f.Page, 1) - 1) * f.Limit).Limit(f.Limit)
+	}
+	var out []report_dto.KaderReportRow
+	err := q.Find(&out).Error
+	return out, total, err
+}
+
 func (r *RepositoryImpl) AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error) {
 	if len(submissionIDs) == 0 {
 		return []report_dto.AnswerRow{}, nil

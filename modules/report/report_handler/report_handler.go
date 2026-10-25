@@ -9,6 +9,10 @@ type Handler interface {
 	ExportLevelisasi(c *gin.Context)
 	ListPendataan(c *gin.Context)
 	ExportPendataan(c *gin.Context)
+	ListSensusKader(c *gin.Context)
+	ExportSensusKader(c *gin.Context)
+	ListPendataanSensusKader(c *gin.Context)
+	ExportPendataanSensusKader(c *gin.Context)
 
 	// ---------- Kantong Amal (Phase 9) ----------
 	BalanceReport(c *gin.Context)

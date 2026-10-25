@@ -43,6 +43,16 @@ type Service interface {
 	ExportLevelisasi(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
 	ExportPendataan(ctx context.Context, caller CallerScope, filter report_dto.ReportFilter, format string) (report_dto.ExportResult, error)
 
+	// ListSensusKader/ListPendataanSensusKader adalah Show Data; ExportSensusKader/
+	// ExportPendataanSensusKader adalah Download Data — jalur PARALEL ke
+	// ListLevelisasi/ListPendataan (2026-10-24-sensus-kader-report-design.md
+	// D5), sumber data ms_kader bukan tr_levelisasi_result. Status di sini
+	// adalah ms_kader.status (Status Keanggotaan), bukan tr_submission.status.
+	ListSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter) (report_dto.KaderListResult, error)
+	ListPendataanSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter) ([]report_dto.PendataanTab, error)
+	ExportSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter, format string) (report_dto.ExportResult, error)
+	ExportPendataanSensusKader(ctx context.Context, caller CallerScope, filter report_dto.KaderFilter, format string) (report_dto.ExportResult, error)
+
 	// ---------- Kantong Amal (Phase 9) — §15 techspec ----------
 
 	// GetBalanceReport menghitung ringkasan saldo satu periode §15.1,

@@ -30,6 +30,18 @@ func RegisterRoutes(rg *gin.RouterGroup, h report_handler.Handler, mw *middlewar
 		g.GET("/pendataan/export", mw.RequirePermission(
 			constants.PermReportRegionExport, constants.PermReportNationalExport,
 		), h.ExportPendataan)
+		g.GET("/sensus-kader", mw.RequirePermission(
+			constants.PermReportRegionView, constants.PermReportNationalView, constants.PermReportLdkView,
+		), h.ListSensusKader)
+		g.GET("/sensus-kader/export", mw.RequirePermission(
+			constants.PermReportRegionExport, constants.PermReportNationalExport, constants.PermReportLdkExport,
+		), h.ExportSensusKader)
+		g.GET("/sensus-kader/pendataan", mw.RequirePermission(
+			constants.PermReportRegionView, constants.PermReportNationalView, constants.PermReportLdkView,
+		), h.ListPendataanSensusKader)
+		g.GET("/sensus-kader/pendataan/export", mw.RequirePermission(
+			constants.PermReportRegionExport, constants.PermReportNationalExport, constants.PermReportLdkExport,
+		), h.ExportPendataanSensusKader)
 
 		// Kantong Amal (Phase 9, §15 techspec) — akses dibatasi murni via
 		// permission (least-privilege), bukan org-scope seperti report submission.

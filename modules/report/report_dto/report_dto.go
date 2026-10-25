@@ -95,6 +95,50 @@ type PendataanTab struct {
 	Rows          [][]string `json:"rows"`
 }
 
+// KaderFilter menyaring Show Data (list) & Download Data (export) untuk
+// Laporan Sensus Kader — SATU struct dipakai kedua jalur (DL-5 pattern,
+// mirrors ReportFilter). Statuses di sini adalah ms_kader.status ("Status
+// Keanggotaan": PENDING/ACTIVE/REJECTED/INACTIVE) — BUKAN tr_submission.status
+// (2026-10-24-sensus-kader-report-design.md D4). Tidak ada LevelCodes —
+// Sensus Kader tidak punya konsep Level.
+type KaderFilter struct {
+	Statuses              []string
+	ProvinceNames         []string
+	CityNames             []string
+	ParentOrganizationIDs []int64 // Puskomda filter, Puskomnas-tier only
+	OrganizationIDs       []int64 // Nama LDK filter, sama param ldkOrganizationID dengan ReportFilter
+	DateFrom              string  // cocok ke ms_kader.issuedDate
+	DateTo                string
+	Sort                  string // ListSensusKader (Ringkasan) only, whitelisted lewat kaderReportSortColumns
+	Page                  int
+	Limit                 int
+}
+
+// KaderReportRow adalah satu baris Laporan Sensus Kader — mirror SubmissionRow
+// tapi sumbernya ms_kader (D4), bukan tr_submission langsung. *string/*time.Time
+// + json tag dari awal (bukan sql.NullString/sql.NullTime) — pelajaran dari
+// bug SubmissionRow di plan report-revamp (Task 8).
+type KaderReportRow struct {
+	KaderID                int64      `gorm:"column:kaderID" json:"kaderID"`
+	SubmissionID           int64      `gorm:"column:submissionID" json:"submissionID"`
+	FormVersionID          int64      `gorm:"column:formVersionID" json:"formVersionID"`
+	UniqueCode             *string    `gorm:"column:uniqueCode" json:"uniqueCode,omitempty"`
+	FullName               string     `gorm:"column:fullName" json:"fullName"`
+	OrganizationName       string     `gorm:"column:organizationName" json:"organizationName"`
+	ParentOrganizationName *string    `gorm:"column:parentOrganizationName" json:"parentOrganizationName,omitempty"`
+	ProvinceName           *string    `gorm:"column:provinceName" json:"provinceName,omitempty"`
+	CityName               *string    `gorm:"column:cityName" json:"cityName,omitempty"`
+	Status                 string     `gorm:"column:status" json:"status"`
+	IssuedDate             *time.Time `gorm:"column:issuedDate" json:"issuedDate,omitempty"`
+	SubmittedDate          *time.Time `gorm:"column:submittedDate" json:"submittedDate,omitempty"`
+}
+
+// KaderListResult adalah hasil Show Data Laporan Sensus Kader, terpaginasi.
+type KaderListResult struct {
+	Rows  []KaderReportRow
+	Total int64
+}
+
 // ---------- Kantong Amal (Phase 9) ----------
 
 // KantongAmalReportFilter menampung parameter penyaringan bersama untuk

@@ -21,6 +21,13 @@ type Repository interface {
 	// buildAnswerSheets (ListPendataan & ExportPendataan) menyusun sheet
 	// "Jawaban" per versi form.
 	AnswersBySubmissionIDs(ctx context.Context, submissionIDs []int64) ([]report_dto.AnswerRow, error)
+	// KaderRows adalah jalur query untuk Laporan Sensus Kader (Ringkasan &
+	// Pendataan) — paralel ke SubmissionRows, TIDAK menyentuhnya. Sumber data
+	// ms_kader (2026-10-24-sensus-kader-report-design.md D4), bukan
+	// tr_submission langsung — submission yang belum mencapai SUBMITTED
+	// (belum punya ms_kader row) otomatis tidak muncul. total = jumlah baris
+	// SEBELUM paginasi. orderBy kosong = default "o.organizationName ASC".
+	KaderRows(ctx context.Context, formID int64, f report_dto.KaderFilter, orderBy string, organizationIDs []int64) (rows []report_dto.KaderReportRow, total int64, err error)
 	// OrganizationNamesByIDs mengembalikan peta organizationID->organizationName
 	// untuk sekumpulan ID sekaligus — dipakai header Excel ("Filter Diterapkan")
 	// menampilkan NAMA Puskomda, bukan ID mentah, hanya dipanggil ketika filter

@@ -30,6 +30,7 @@ type fakeReportRepository struct {
 	withdrawalAmount   float64
 
 	submissionRows []report_dto.SubmissionRow
+	kaderRows      []report_dto.KaderReportRow
 }
 
 func (f *fakeReportRepository) SubmissionRows(ctx context.Context, formID int64, filter report_dto.ReportFilter, orderBy string, organizationIDs []int64) ([]report_dto.SubmissionRow, int64, error) {
@@ -43,6 +44,12 @@ func (f *fakeReportRepository) AnswersBySubmissionIDs(ctx context.Context, submi
 }
 func (f *fakeReportRepository) OrganizationNamesByIDs(ctx context.Context, ids []int64) (map[int64]string, error) {
 	return map[int64]string{}, nil
+}
+func (f *fakeReportRepository) KaderRows(ctx context.Context, formID int64, filter report_dto.KaderFilter, orderBy string, organizationIDs []int64) ([]report_dto.KaderReportRow, int64, error) {
+	if f.kaderRows == nil {
+		return nil, 0, nil
+	}
+	return f.kaderRows, int64(len(f.kaderRows)), nil
 }
 func (f *fakeReportRepository) BalanceBefore(ctx context.Context, campaignID int64, before time.Time) (float64, error) {
 	return f.balanceBefore, nil

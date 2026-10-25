@@ -72,6 +72,18 @@ func parseReportFilter(c *gin.Context) report_dto.ReportFilter {
 	}
 }
 
+func parseKaderFilter(c *gin.Context) report_dto.KaderFilter {
+	return report_dto.KaderFilter{
+		Statuses:              trimmedNonEmpty(c.QueryArray("status")),
+		ProvinceNames:         trimmedNonEmpty(c.QueryArray("province")),
+		CityNames:             trimmedNonEmpty(c.QueryArray("city")),
+		ParentOrganizationIDs: parseInt64s(c.QueryArray("parentOrganizationID")),
+		OrganizationIDs:       parseInt64s(c.QueryArray("ldkOrganizationID")),
+		DateFrom:              c.Query("dateFrom"),
+		DateTo:                c.Query("dateTo"),
+	}
+}
+
 func reportCallerScope(c *gin.Context) report_service.CallerScope {
 	return report_service.CallerScope{
 		UserID:                  appctx.UserID(c),
@@ -117,6 +129,48 @@ func (h *HandlerImpl) ListPendataan(c *gin.Context) {
 
 func (h *HandlerImpl) ExportPendataan(c *gin.Context) {
 	result, err := h.svc.ExportPendataan(c.Request.Context(), reportCallerScope(c), parseReportFilter(c), c.DefaultQuery("format", "xlsx"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", result.FileName))
+	c.Data(200, result.ContentType, result.Data)
+}
+
+func (h *HandlerImpl) ListSensusKader(c *gin.Context) {
+	filter := parseKaderFilter(c)
+	filter.Sort = c.Query("sort")
+	filter.Page, _ = strconv.Atoi(c.DefaultQuery("page", "1"))
+	filter.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "50"))
+	result, err := h.svc.ListSensusKader(c.Request.Context(), reportCallerScope(c), filter)
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", httphelper.BuildPagination(c, result.Rows, int(result.Total), filter.Page, filter.Limit))
+}
+
+func (h *HandlerImpl) ExportSensusKader(c *gin.Context) {
+	result, err := h.svc.ExportSensusKader(c.Request.Context(), reportCallerScope(c), parseKaderFilter(c), c.DefaultQuery("format", "xlsx"))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", result.FileName))
+	c.Data(200, result.ContentType, result.Data)
+}
+
+func (h *HandlerImpl) ListPendataanSensusKader(c *gin.Context) {
+	tabs, err := h.svc.ListPendataanSensusKader(c.Request.Context(), reportCallerScope(c), parseKaderFilter(c))
+	if err != nil {
+		httphelper.Error(c, err)
+		return
+	}
+	httphelper.Success(c, "", tabs)
+}
+
+func (h *HandlerImpl) ExportPendataanSensusKader(c *gin.Context) {
+	result, err := h.svc.ExportPendataanSensusKader(c.Request.Context(), reportCallerScope(c), parseKaderFilter(c), c.DefaultQuery("format", "xlsx"))
 	if err != nil {
 		httphelper.Error(c, err)
 		return
