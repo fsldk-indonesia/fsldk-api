@@ -132,7 +132,14 @@ const (
 	PermReportRegionExport   = "report.region.export"
 	PermReportNationalView   = "report.national.view"
 	PermReportNationalExport = "report.national.export"
-	PermShortlinkApprove     = "shortlink.approve"
+	// PermReportLdkView/.Export adalah permission report PERTAMA yang pernah
+	// dimiliki Portal LDK — diperkenalkan untuk Laporan Sensus Kader
+	// (2026-10-24-sensus-kader-report-design.md). Dipakai juga sebagai salah
+	// satu alternatif RequirePermission di endpoint /reports/sensus-kader*
+	// bersama PermReportRegion*/PermReportNational* yang sudah ada.
+	PermReportLdkView   = "report.ldk.view"
+	PermReportLdkExport = "report.ldk.export"
+	PermShortlinkApprove = "shortlink.approve"
 
 	PermEventView   = "event.view"
 	PermEventCreate = "event.create"
