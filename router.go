@@ -132,6 +132,7 @@ import (
 	"fsldk-api/modules/rapimnas/rapimnas_handler"
 	"fsldk-api/modules/rapimnas/rapimnas_repository"
 	"fsldk-api/modules/rapimnas/rapimnas_service"
+	"fsldk-api/modules/rapimnaslomba"
 
 	"fsldk-api/modules/jobqueue"
 	"fsldk-api/modules/jobqueue/jobqueue_handler"
@@ -463,6 +464,7 @@ func setupRouter(db *gorm.DB, cfg config.AppConfig) *gin.Engine {
 	welcomepopup.RegisterPublicRoutes(pub, welcomePopupH)
 	rapimnas.RegisterCMSRoutes(api, rapimnasH, mw)
 	rapimnas.RegisterPublicRoutes(pub, rapimnasH)
+	rapimnaslomba.RegisterRoutes(api, pub, db, mw)
 	jobqueue.RegisterCMSRoutes(api, jobqueueH, mw)
 
 	upload.RegisterCMSRoutes(api, uploadH, mw)
