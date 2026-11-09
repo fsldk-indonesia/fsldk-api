@@ -253,15 +253,16 @@ func (r *RepositoryImpl) ListKadersByOrganizations(ctx context.Context, organiza
 	return out, err
 }
 
-// NextKaderSequence mengembalikan urutan kader nasional berikutnya untuk satu
-// tahun (yearPrefix 3 digit). Memakai MAX urutan (5 digit terakhir dari kode
-// 13 digit), bukan COUNT, agar tetap benar walau ada kode yang pernah dihapus.
-// Tabrakan akibat penerbitan bersamaan ditangkap oleh UNIQUE index uniqueCode.
-func (r *RepositoryImpl) NextKaderSequence(ctx context.Context, yearPrefix string) (int, error) {
+// NextKaderSequence mengembalikan urutan kader berikutnya untuk satu LDK pada
+// satu tahun (codePrefix = 8 digit YYY+PP+LLL). Memakai MAX urutan (5 digit
+// terakhir dari kode 13 digit), bukan COUNT, agar tetap benar walau ada kode yang
+// pernah dihapus. Tabrakan akibat penerbitan bersamaan ditangkap oleh UNIQUE
+// index uniqueCode.
+func (r *RepositoryImpl) NextKaderSequence(ctx context.Context, codePrefix string) (int, error) {
 	var maxSeq int64
 	err := r.db.WithContext(ctx).Table("ms_kader").
 		Select("COALESCE(MAX(CAST(SUBSTRING(uniqueCode, 9) AS UNSIGNED)), 0)").
-		Where("uniqueCode REGEXP ?", "^"+yearPrefix+"[0-9]{10}$").
+		Where("uniqueCode REGEXP ?", "^"+codePrefix+"[0-9]{5}$").
 		Scan(&maxSeq).Error
 	return int(maxSeq) + 1, err
 }

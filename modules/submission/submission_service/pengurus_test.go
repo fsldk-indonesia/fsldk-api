@@ -140,7 +140,7 @@ func (f *fakeSubmissionRepo) ListKadersByOrganizations(ctx context.Context, orga
 	}
 	return out, nil
 }
-func (f *fakeSubmissionRepo) NextKaderSequence(ctx context.Context, yearPrefix string) (int, error) {
+func (f *fakeSubmissionRepo) NextKaderSequence(ctx context.Context, codePrefix string) (int, error) {
 	return 1, nil
 }
 func (f *fakeSubmissionRepo) CreateReview(ctx context.Context, p submission_model.ReviewParams) (int64, error) {

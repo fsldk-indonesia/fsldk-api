@@ -1092,17 +1092,22 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 		return apperror.Internal("Puskomda induk LDK tidak ditemukan")
 	}
 	now := time.Now()
-	// Urutan nasional per tahun; UNIQUE index uniqueCode menjaga tabrakan saat
-	// dua persetujuan bersamaan, jadi coba ulang beberapa kali dengan urutan baru.
+	codePrefix, err := kaderCodePrefix(now.Year(), parent.OrganizationCode, org.OrganizationCode)
+	if err != nil {
+		return apperror.Internal("Kode organisasi tidak valid untuk ID Kader: " + err.Error())
+	}
+	// Urutan per LDK, mulai 00001 tiap ganti tahun; UNIQUE index uniqueCode
+	// menjaga tabrakan saat dua persetujuan bersamaan, jadi coba ulang beberapa
+	// kali dengan urutan baru.
 	var issueErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		seq, err := s.repo.NextKaderSequence(ctx, kaderYearPrefix(now.Year()))
+		seq, err := s.repo.NextKaderSequence(ctx, codePrefix)
 		if err != nil {
 			return apperror.Internal("")
 		}
 		code, err := buildKaderCode(now.Year(), parent.OrganizationCode, org.OrganizationCode, seq)
 		if err != nil {
-			return apperror.Internal("Kode organisasi tidak valid untuk ID Kader: " + err.Error())
+			return apperror.Internal("Gagal menyusun ID Kader: " + err.Error())
 		}
 		issueErr = s.repo.UpdateKaderStatus(ctx, kader.KaderID, constants.KaderStatusActive, sql.NullString{String: code, Valid: true}, sql.NullTime{Time: now, Valid: true})
 		if issueErr == nil {

@@ -2,6 +2,16 @@ package submission_service
 
 import "testing"
 
+func TestKaderCodePrefix(t *testing.T) {
+	got, err := kaderCodePrefix(2026, "P03", "L017")
+	if err != nil || got != "02603017" {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if _, err := kaderCodePrefix(2026, "P03", "LDK-X-001"); err == nil {
+		t.Error("kode LDK lama harus ditolak")
+	}
+}
+
 func TestBuildKaderCode(t *testing.T) {
 	tests := []struct {
 		name    string
