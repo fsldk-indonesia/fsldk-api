@@ -35,6 +35,7 @@ type AnswerRow struct {
 	ValueDate     sql.NullTime    `gorm:"column:valueDate"`
 	ValueOptionID sql.NullInt64   `gorm:"column:valueOptionID"`
 	ValueFileName sql.NullString  `gorm:"column:valueFileName"`
+	ValueOtherText sql.NullString `gorm:"column:valueOtherText"`
 }
 
 // ExportResult adalah berkas hasil ekspor siap dikirim sebagai response.

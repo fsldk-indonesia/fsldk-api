@@ -560,9 +560,13 @@ func answerAsString(a report_dto.AnswerRow, optionValueByID map[int64]string) st
 // submission_service_impl.go buildAnswerParams), di-decode lalu
 // dipetakan ke optionLabel gabungan koma.
 func formatAnswerValue(f submission_form_model.Field, a report_dto.AnswerRow, options []submission_form_model.Option) string {
+	// Opsi "Lainnya" ditampilkan beserta isian manualnya: "Lainnya: <isian>".
 	optionLabel := func(id int64) string {
 		for _, o := range options {
 			if o.OptionID == id {
+				if o.IsOther && a.ValueOtherText.Valid && a.ValueOtherText.String != "" {
+					return o.OptionLabel + ": " + a.ValueOtherText.String
+				}
 				return o.OptionLabel
 			}
 		}

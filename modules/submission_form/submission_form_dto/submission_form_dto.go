@@ -41,6 +41,7 @@ type OptionResponse struct {
 	SortOrder   int      `json:"sortOrder"`
 	IsActive    bool     `json:"isActive"`
 	Score       *float64 `json:"score,omitempty"`
+	IsOther     bool     `json:"isOther"`
 }
 
 // FieldResponse adalah representasi satu field form. UseScoring/ScoringMethod/
@@ -165,6 +166,7 @@ type CreateOptionRequest struct {
 	OptionLabel string   `json:"optionLabel" validate:"required,max=200"`
 	SortOrder   int      `json:"sortOrder"`
 	Score       *float64 `json:"score"`
+	IsOther     bool     `json:"isOther"`
 }
 
 // UpdateOptionRequest adalah body memperbarui pilihan.
@@ -174,6 +176,7 @@ type UpdateOptionRequest struct {
 	SortOrder   int      `json:"sortOrder"`
 	IsActive    bool     `json:"isActive"`
 	Score       *float64 `json:"score"`
+	IsOther     bool     `json:"isOther"`
 }
 
 // PublishImpactResponse adalah jumlah submission yang akan terdampak bila

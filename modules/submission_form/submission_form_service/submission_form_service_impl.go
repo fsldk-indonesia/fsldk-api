@@ -135,6 +135,7 @@ func toOptionResponse(o submission_form_model.Option) submission_form_dto.Option
 		SortOrder:   o.SortOrder,
 		IsActive:    o.IsActive,
 		Score:       floatPtr(o.Score),
+		IsOther:     o.IsOther,
 	}
 }
 
@@ -709,6 +710,26 @@ func validateOptionScore(field submission_form_model.Field, score *float64) erro
 	return nil
 }
 
+// checkOtherOption memastikan opsi "Lainnya" hanya dipasang pada field pilihan
+// dan hanya ada satu per field (exceptOptionID = opsi yang sedang diubah, 0 bila baru).
+func (s *ServiceImpl) checkOtherOption(ctx context.Context, field submission_form_model.Field, exceptOptionID int64) error {
+	switch field.FieldType {
+	case constants.FieldTypeSelect, constants.FieldTypeRadio, constants.FieldTypeMultiselect, constants.FieldTypeCheckbox:
+	default:
+		return apperror.BadRequest("Opsi Lainnya hanya untuk field bertipe pilihan")
+	}
+	existing, err := s.repo.ListOptionsByField(ctx, field.FieldID)
+	if err != nil {
+		return apperror.Internal("")
+	}
+	for _, o := range existing {
+		if o.IsOther && o.OptionID != exceptOptionID {
+			return apperror.Conflict("Field ini sudah memiliki opsi Lainnya")
+		}
+	}
+	return nil
+}
+
 func (s *ServiceImpl) CreateOption(ctx context.Context, fieldID int64, req submission_form_dto.CreateOptionRequest) (submission_form_dto.OptionResponse, error) {
 	field, err := s.repo.FindFieldByID(ctx, fieldID)
 	if err != nil {
@@ -720,7 +741,12 @@ func (s *ServiceImpl) CreateOption(ctx context.Context, fieldID int64, req submi
 	if err := validateOptionScore(field, req.Score); err != nil {
 		return submission_form_dto.OptionResponse{}, err
 	}
-	id, err := s.repo.CreateOption(ctx, fieldID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, nullFloat(req.Score))
+	if req.IsOther {
+		if err := s.checkOtherOption(ctx, field, 0); err != nil {
+			return submission_form_dto.OptionResponse{}, err
+		}
+	}
+	id, err := s.repo.CreateOption(ctx, fieldID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, nullFloat(req.Score), req.IsOther)
 	if err != nil {
 		return submission_form_dto.OptionResponse{}, apperror.Conflict("Nilai pilihan sudah digunakan pada field ini")
 	}
@@ -746,7 +772,12 @@ func (s *ServiceImpl) UpdateOption(ctx context.Context, optionID int64, req subm
 	if err := validateOptionScore(field, req.Score); err != nil {
 		return submission_form_dto.OptionResponse{}, err
 	}
-	if err := s.repo.UpdateOption(ctx, optionID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, req.IsActive, nullFloat(req.Score)); err != nil {
+	if req.IsOther {
+		if err := s.checkOtherOption(ctx, field, optionID); err != nil {
+			return submission_form_dto.OptionResponse{}, err
+		}
+	}
+	if err := s.repo.UpdateOption(ctx, optionID, strings.TrimSpace(req.OptionValue), strings.TrimSpace(req.OptionLabel), req.SortOrder, req.IsActive, nullFloat(req.Score), req.IsOther); err != nil {
 		return submission_form_dto.OptionResponse{}, apperror.Internal("")
 	}
 	o, err := s.repo.FindOptionByID(ctx, optionID)

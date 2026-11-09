@@ -71,6 +71,8 @@ type Option struct {
 	SortOrder   int             `gorm:"column:sortOrder"`
 	IsActive    bool            `gorm:"column:isActive"`
 	Score       sql.NullFloat64 `gorm:"column:score"`
+	// IsOther menandai opsi "Lainnya": bila dipilih, pengisi mengetik jawaban manual.
+	IsOther bool `gorm:"column:isOther"`
 }
 
 // FieldParams menampung data untuk membuat/memperbarui field.
