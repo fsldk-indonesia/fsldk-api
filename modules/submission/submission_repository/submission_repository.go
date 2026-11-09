@@ -52,7 +52,7 @@ type Repository interface {
 	FindKaderByID(ctx context.Context, id int64) (submission_model.Kader, error)
 	UpdateKaderStatus(ctx context.Context, id int64, status string, uniqueCode sql.NullString, issuedDate sql.NullTime) error
 	ListKadersByOrganizations(ctx context.Context, organizationIDs []int64, status string) ([]submission_model.Kader, error)
-	CountKaderCodesForOrgYear(ctx context.Context, codePrefix string) (int, error)
+	NextKaderSequence(ctx context.Context, codePrefix string) (int, error)
 
 	CreateReview(ctx context.Context, p submission_model.ReviewParams) (int64, error)
 	ListReviewsBySubmission(ctx context.Context, submissionID int64) ([]submission_model.Review, error)

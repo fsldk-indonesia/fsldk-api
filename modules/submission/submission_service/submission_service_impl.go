@@ -1084,14 +1084,37 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 	if err != nil {
 		return apperror.Internal("")
 	}
-	prefix := fmt.Sprintf("KDR-%s-%d-", org.OrganizationCode, time.Now().Year())
-	seq, err := s.repo.CountKaderCodesForOrgYear(ctx, prefix)
-	if err != nil {
-		return apperror.Internal("")
+	if !org.ParentOrganizationID.Valid {
+		return apperror.Internal("Puskomda induk LDK tidak ditemukan")
 	}
-	code := fmt.Sprintf("%s%06d", prefix, seq+1)
+	parent, err := s.orgRepo.FindByID(ctx, org.ParentOrganizationID.Int64)
+	if err != nil {
+		return apperror.Internal("Puskomda induk LDK tidak ditemukan")
+	}
 	now := time.Now()
-	if err := s.repo.UpdateKaderStatus(ctx, kader.KaderID, constants.KaderStatusActive, sql.NullString{String: code, Valid: true}, sql.NullTime{Time: now, Valid: true}); err != nil {
+	codePrefix, err := kaderCodePrefix(now.Year(), parent.OrganizationCode, org.OrganizationCode)
+	if err != nil {
+		return apperror.Internal("Kode organisasi tidak valid untuk ID Kader: " + err.Error())
+	}
+	// Urutan per LDK, mulai 00001 tiap ganti tahun; UNIQUE index uniqueCode
+	// menjaga tabrakan saat dua persetujuan bersamaan, jadi coba ulang beberapa
+	// kali dengan urutan baru.
+	var issueErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		seq, err := s.repo.NextKaderSequence(ctx, codePrefix)
+		if err != nil {
+			return apperror.Internal("")
+		}
+		code, err := buildKaderCode(now.Year(), parent.OrganizationCode, org.OrganizationCode, seq)
+		if err != nil {
+			return apperror.Internal("Gagal menyusun ID Kader: " + err.Error())
+		}
+		issueErr = s.repo.UpdateKaderStatus(ctx, kader.KaderID, constants.KaderStatusActive, sql.NullString{String: code, Valid: true}, sql.NullTime{Time: now, Valid: true})
+		if issueErr == nil {
+			break
+		}
+	}
+	if issueErr != nil {
 		return apperror.Internal("Gagal menerbitkan kode kader")
 	}
 	if err := s.repo.UpdateStatus(ctx, sub.SubmissionID, constants.SubmissionStatusActive, sql.NullTime{}, caller.UserID); err != nil {
