@@ -40,6 +40,8 @@ type Answer struct {
 	ValueOptionID sql.NullInt64   `gorm:"column:valueOptionID"`
 	ValueFileURL  sql.NullString  `gorm:"column:valueFileURL"`
 	ValueFileName sql.NullString  `gorm:"column:valueFileName"`
+	// ValueOtherText = isian manual saat opsi "Lainnya" dipilih (field pilihan).
+	ValueOtherText sql.NullString `gorm:"column:valueOtherText"`
 }
 
 // AnswerParams menampung nilai jawaban satu field untuk disimpan (create/update).
@@ -51,6 +53,7 @@ type AnswerParams struct {
 	ValueOptionID sql.NullInt64
 	ValueFileURL  sql.NullString
 	ValueFileName sql.NullString
+	ValueOtherText sql.NullString
 }
 
 // StatusHistory merepresentasikan satu baris tr_submission_status_history.

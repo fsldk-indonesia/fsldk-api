@@ -29,6 +29,8 @@ type AnswerInput struct {
 	ValueOptionIDs []int64  `json:"valueOptionIDs,omitempty"`
 	ValueFileURL   *string  `json:"valueFileURL,omitempty"`
 	ValueFileName  *string  `json:"valueFileName,omitempty"`
+	// ValueOtherText = isian manual bila opsi "Lainnya" dipilih.
+	ValueOtherText *string `json:"valueOtherText,omitempty"`
 }
 
 // SaveAnswersRequest adalah body menyimpan draft jawaban (dapat dipanggil berkali-kali).
@@ -174,6 +176,7 @@ type AnswerResponse struct {
 	ValueOptionIDs []int64  `json:"valueOptionIDs,omitempty"`
 	ValueFileURL   string   `json:"valueFileURL,omitempty"`
 	ValueFileName  string   `json:"valueFileName,omitempty"`
+	ValueOtherText string   `json:"valueOtherText,omitempty"`
 }
 
 // StatusHistoryResponse adalah representasi satu entri riwayat status.

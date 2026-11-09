@@ -216,6 +216,40 @@ func hasValue(a submission_model.Answer) bool {
 		(a.ValueFileURL.Valid && a.ValueFileURL.String != "")
 }
 
+// otherChosen = true bila salah satu opsi terpilih adalah opsi "Lainnya".
+func otherChosen(options []submission_form_model.Option, chosen []int64) bool {
+	for _, o := range options {
+		if !o.IsOther {
+			continue
+		}
+		for _, id := range chosen {
+			if id == o.OptionID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// otherTextMaxLen membatasi isian manual opsi "Lainnya" (kolom VARCHAR(500)).
+const otherTextMaxLen = 500
+
+// normalizeOtherText merapikan isian "Lainnya". Boleh kosong di tahap simpan
+// draf (kelengkapan diperiksa saat Submit lewat collectMissingOtherText).
+func normalizeOtherText(in *string) (sql.NullString, error) {
+	if in == nil {
+		return sql.NullString{}, nil
+	}
+	v := strings.TrimSpace(*in)
+	if v == "" {
+		return sql.NullString{}, nil
+	}
+	if len([]rune(v)) > otherTextMaxLen {
+		return sql.NullString{}, apperror.BadRequest(fmt.Sprintf("Isian Lainnya maksimal %d karakter", otherTextMaxLen))
+	}
+	return sql.NullString{String: v, Valid: true}, nil
+}
+
 func optionExists(options []submission_form_model.Option, id int64) bool {
 	for _, o := range options {
 		if o.OptionID == id {
@@ -618,6 +652,13 @@ func (s *ServiceImpl) buildAnswerParams(ctx context.Context, field submission_fo
 			return p, apperror.BadRequest("Pilihan tidak valid untuk field ini")
 		}
 		p.ValueOptionID = sql.NullInt64{Int64: *input.ValueOptionID, Valid: true}
+		if otherChosen(options, []int64{*input.ValueOptionID}) {
+			other, err := normalizeOtherText(input.ValueOtherText)
+			if err != nil {
+				return p, err
+			}
+			p.ValueOtherText = other
+		}
 	case constants.FieldTypeMultiselect, constants.FieldTypeCheckbox:
 		if len(input.ValueOptionIDs) == 0 {
 			return p, nil
@@ -633,6 +674,13 @@ func (s *ServiceImpl) buildAnswerParams(ctx context.Context, field submission_fo
 		}
 		encoded, _ := json.Marshal(input.ValueOptionIDs)
 		p.ValueText = sql.NullString{String: string(encoded), Valid: true}
+		if otherChosen(options, input.ValueOptionIDs) {
+			other, err := normalizeOtherText(input.ValueOtherText)
+			if err != nil {
+				return p, err
+			}
+			p.ValueOtherText = other
+		}
 	case constants.FieldTypeFileDoc, constants.FieldTypeFileImage:
 		if input.ValueFileURL == nil {
 			return p, nil
@@ -775,7 +823,9 @@ func (s *ServiceImpl) Submit(ctx context.Context, id int64, caller CallerScope) 
 		answerByField[a.FieldID] = a
 	}
 
-	if missing := collectMissingRequiredFields(fields, answerByField, optionValueByID); len(missing) > 0 {
+	missing := collectMissingRequiredFields(fields, answerByField, optionValueByID)
+	missing = append(missing, collectMissingOtherText(fields, answerByField, options, optionValueByID)...)
+	if len(missing) > 0 {
 		return submission_dto.Response{}, apperror.Validation("Beberapa field wajib diisi belum lengkap", missing)
 	}
 
@@ -938,7 +988,7 @@ func (s *ServiceImpl) Get(ctx context.Context, id int64, caller CallerScope) (su
 	answerResponses := make([]submission_dto.AnswerResponse, 0, len(answers))
 	for _, a := range answers {
 		f := fieldByID[a.FieldID]
-		ar := submission_dto.AnswerResponse{FieldID: a.FieldID, FieldCode: f.FieldCode}
+		ar := submission_dto.AnswerResponse{FieldID: a.FieldID, FieldCode: f.FieldCode, ValueOtherText: a.ValueOtherText.String}
 		switch {
 		case a.ValueOptionID.Valid:
 			v := a.ValueOptionID.Int64

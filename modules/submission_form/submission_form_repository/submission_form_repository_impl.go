@@ -250,7 +250,7 @@ func (r *RepositoryImpl) ListFieldsByVersion(ctx context.Context, versionID int6
 
 // ---------- Option ----------
 
-func (r *RepositoryImpl) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64) (int64, error) {
+func (r *RepositoryImpl) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64, isOther bool) (int64, error) {
 	var newID int64
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Table("ms_submission_form_field_option").Create(map[string]interface{}{
@@ -260,6 +260,7 @@ func (r *RepositoryImpl) CreateOption(ctx context.Context, fieldID int64, value,
 			"sortOrder":   sortOrder,
 			"isActive":    true,
 			"score":       score,
+			"isOther":     isOther,
 		}).Error; err != nil {
 			return err
 		}
@@ -277,13 +278,14 @@ func (r *RepositoryImpl) FindOptionByID(ctx context.Context, id int64) (submissi
 	return o, err
 }
 
-func (r *RepositoryImpl) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64) error {
+func (r *RepositoryImpl) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64, isOther bool) error {
 	return r.db.WithContext(ctx).Table("ms_submission_form_field_option").Where("optionID = ?", id).Updates(map[string]interface{}{
 		"optionValue": value,
 		"optionLabel": label,
 		"sortOrder":   sortOrder,
 		"isActive":    isActive,
 		"score":       score,
+		"isOther":     isOther,
 	}).Error
 }
 
@@ -442,6 +444,8 @@ func (r *RepositoryImpl) CloneVersionStructure(ctx context.Context, fromVersionI
 				"optionLabel": opt.OptionLabel,
 				"sortOrder":   opt.SortOrder,
 				"isActive":    opt.IsActive,
+				"score":       opt.Score,
+				"isOther":     opt.IsOther,
 			}).Error; err != nil {
 				return err
 			}

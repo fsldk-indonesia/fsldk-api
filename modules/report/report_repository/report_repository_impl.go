@@ -138,7 +138,7 @@ func (r *RepositoryImpl) AnswersBySubmissionIDs(ctx context.Context, submissionI
 	}
 	var out []report_dto.AnswerRow
 	err := r.db.WithContext(ctx).Table("tr_submission_answer").
-		Select("submissionID, fieldID, valueText, valueNumber, valueDate, valueOptionID, valueFileName").
+		Select("submissionID, fieldID, valueText, valueNumber, valueDate, valueOptionID, valueFileName, valueOtherText").
 		Where("submissionID IN ?", submissionIDs).
 		Find(&out).Error
 	return out, err

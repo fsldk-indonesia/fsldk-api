@@ -152,12 +152,13 @@ func (r *RepositoryImpl) SetSubjectReference(ctx context.Context, id int64, subj
 func (r *RepositoryImpl) UpsertAnswer(ctx context.Context, submissionID int64, p submission_model.AnswerParams) error {
 	return r.db.WithContext(ctx).Exec(
 		`INSERT INTO tr_submission_answer
-			(submissionID, fieldID, valueText, valueNumber, valueDate, valueOptionID, valueFileURL, valueFileName)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			(submissionID, fieldID, valueText, valueNumber, valueDate, valueOptionID, valueFileURL, valueFileName, valueOtherText)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
 			valueText = VALUES(valueText), valueNumber = VALUES(valueNumber), valueDate = VALUES(valueDate),
-			valueOptionID = VALUES(valueOptionID), valueFileURL = VALUES(valueFileURL), valueFileName = VALUES(valueFileName)`,
-		submissionID, p.FieldID, p.ValueText, p.ValueNumber, p.ValueDate, p.ValueOptionID, p.ValueFileURL, p.ValueFileName,
+			valueOptionID = VALUES(valueOptionID), valueFileURL = VALUES(valueFileURL), valueFileName = VALUES(valueFileName),
+			valueOtherText = VALUES(valueOtherText)`,
+		submissionID, p.FieldID, p.ValueText, p.ValueNumber, p.ValueDate, p.ValueOptionID, p.ValueFileURL, p.ValueFileName, p.ValueOtherText,
 	).Error
 }
 

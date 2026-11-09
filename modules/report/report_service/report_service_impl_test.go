@@ -343,13 +343,13 @@ func (f *fakeFormRepoForLevelisasi) DeleteField(ctx context.Context, id int64) e
 func (f *fakeFormRepoForLevelisasi) ListFieldsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Field, error) {
 	return nil, nil
 }
-func (f *fakeFormRepoForLevelisasi) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64) (int64, error) {
+func (f *fakeFormRepoForLevelisasi) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64, isOther bool) (int64, error) {
 	return 0, nil
 }
 func (f *fakeFormRepoForLevelisasi) FindOptionByID(ctx context.Context, id int64) (submission_form_model.Option, error) {
 	return submission_form_model.Option{}, nil
 }
-func (f *fakeFormRepoForLevelisasi) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64) error {
+func (f *fakeFormRepoForLevelisasi) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64, isOther bool) error {
 	return nil
 }
 func (f *fakeFormRepoForLevelisasi) DeleteOption(ctx context.Context, id int64) error {

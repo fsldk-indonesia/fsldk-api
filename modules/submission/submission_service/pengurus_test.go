@@ -252,13 +252,13 @@ func (fakeFormRepo) DeleteField(ctx context.Context, id int64) error { return ni
 func (fakeFormRepo) ListFieldsByVersion(ctx context.Context, versionID int64) ([]submission_form_model.Field, error) {
 	return nil, nil
 }
-func (fakeFormRepo) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64) (int64, error) {
+func (fakeFormRepo) CreateOption(ctx context.Context, fieldID int64, value, label string, sortOrder int, score sql.NullFloat64, isOther bool) (int64, error) {
 	return 0, nil
 }
 func (fakeFormRepo) FindOptionByID(ctx context.Context, id int64) (submission_form_model.Option, error) {
 	return submission_form_model.Option{}, errors.New("not found")
 }
-func (fakeFormRepo) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64) error {
+func (fakeFormRepo) UpdateOption(ctx context.Context, id int64, value, label string, sortOrder int, isActive bool, score sql.NullFloat64, isOther bool) error {
 	return nil
 }
 func (fakeFormRepo) DeleteOption(ctx context.Context, id int64) error { return nil }
