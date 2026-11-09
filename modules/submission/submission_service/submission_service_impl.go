@@ -1092,7 +1092,10 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 		return apperror.Internal("Puskomda induk LDK tidak ditemukan")
 	}
 	now := time.Now()
-	codePrefix, err := kaderCodePrefix(now.Year(), parent.OrganizationCode, org.OrganizationCode)
+	// Segmen tahun = tahun registrasi (saat pendataan diisi), bukan tahun persetujuan,
+	// sehingga kader yang mendaftar akhir tahun tetap berkode tahun pendaftarannya.
+	regYear := kader.CreatedDate.Year()
+	codePrefix, err := kaderCodePrefix(regYear, parent.OrganizationCode, org.OrganizationCode)
 	if err != nil {
 		return apperror.Internal("Kode organisasi tidak valid untuk ID Kader: " + err.Error())
 	}
@@ -1105,7 +1108,7 @@ func (s *ServiceImpl) issueKaderCode(ctx context.Context, sub submission_model.S
 		if err != nil {
 			return apperror.Internal("")
 		}
-		code, err := buildKaderCode(now.Year(), parent.OrganizationCode, org.OrganizationCode, seq)
+		code, err := buildKaderCode(regYear, parent.OrganizationCode, org.OrganizationCode, seq)
 		if err != nil {
 			return apperror.Internal("Gagal menyusun ID Kader: " + err.Error())
 		}
