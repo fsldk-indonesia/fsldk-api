@@ -85,7 +85,13 @@ func (s *ServiceImpl) IsAccessible(ctx context.Context, callerOrganizationID *in
 			}
 			return false, err
 		}
-		return containsTier(wildcardTierAccess, targetType), nil
+		if containsTier(wildcardTierAccess, targetType) {
+			return true, nil
+		}
+		// Wildcard bersifat TAMBAHAN, bukan pengganti cascade organisasi
+		// sendiri: mis. Puskomda Verifikator dengan wildcard LDK tetap
+		// berhak atas Puskomda-nya sendiri (dan LDK anaknya), hanya tidak
+		// atas Puskomda lain — jadi lanjut evaluasi cascade di bawah.
 	}
 	if callerOrganizationID == nil {
 		return false, nil
@@ -125,7 +131,31 @@ func (s *ServiceImpl) TypeCodeByID(ctx context.Context, id int64) (string, error
 func (s *ServiceImpl) resolveAccessible(ctx context.Context, caller CallerScope, f organization_dto.ListFilter) ([]organization_model.Organization, int64, error) {
 	switch {
 	case caller.WildcardTierAccess != "":
-		return s.repo.ListByTypes(ctx, strings.Split(caller.WildcardTierAccess, ","), f)
+		orgs, total, err := s.repo.ListByTypes(ctx, strings.Split(caller.WildcardTierAccess, ","), f)
+		if err != nil || f.Limit != 0 || caller.OrganizationID == nil || caller.OrganizationTypeCode == "" {
+			return orgs, total, err
+		}
+		// Wildcard TAMBAHAN terhadap cascade organisasi sendiri (lihat
+		// IsAccessible): gabungkan organisasi cascade yang tipenya tidak
+		// tercakup wildcard (mis. Puskomda sendiri untuk wildcard LDK).
+		// Hanya untuk daftar tanpa paginasi (switcher/ID set).
+		own := caller
+		own.WildcardTierAccess = ""
+		extra, _, err := s.resolveAccessible(ctx, own, f)
+		if err != nil {
+			return orgs, total, nil
+		}
+		seen := make(map[int64]bool, len(orgs))
+		for _, o := range orgs {
+			seen[o.OrganizationID] = true
+		}
+		for _, o := range extra {
+			if !seen[o.OrganizationID] && !containsTier(caller.WildcardTierAccess, o.OrganizationTypeCode) {
+				orgs = append(orgs, o)
+				total++
+			}
+		}
+		return orgs, total, nil
 	case caller.OrganizationTypeCode == constants.OrgTypePuskomnas:
 		return s.repo.ListAll(ctx, f)
 	case caller.OrganizationTypeCode == constants.OrgTypePuskomda:
