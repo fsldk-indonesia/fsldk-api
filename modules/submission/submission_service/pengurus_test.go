@@ -805,3 +805,42 @@ func TestDeactivateKader_RejectsSelfAction(t *testing.T) {
 		t.Errorf("expected no userRepo.Update() calls, got %+v", userRepo.updates)
 	}
 }
+
+// Super Admin: organisasi sendiri bertipe LDK (atau kosong) tapi wildcard
+// mencakup ketiga tier -- harus diperlakukan sebagai tier tertinggi, bukan
+// ditolak karena allow-list LDK/kosong.
+func TestUpdatePengurusRole_SuperAdminWildcard_CanAssignPuskomdaVerifikator(t *testing.T) {
+	svc, _, userRepo, _ := buildTestService()
+	caller := CallerScope{
+		UserID: callerUserID, OrganizationID: func() *int64 { id := ldkOrgID; return &id }(),
+		OrganizationTypeCode: constants.OrgTypeLDK, WildcardTierAccess: "LDK,PUSKOMDA,PUSKOMNAS",
+	}
+
+	_, err := svc.UpdatePengurusRole(context.Background(), kaderUserID, caller, submission_dto.UpdatePengurusRoleRequest{RoleName: constants.RolePuskomdaVerifikator})
+	if err != nil {
+		t.Fatalf("UpdatePengurusRole() error = %v, want nil for wildcard Super Admin", err)
+	}
+	if len(userRepo.updates) != 1 {
+		t.Errorf("expected 1 userRepo.Update(), got %+v", userRepo.updates)
+	}
+}
+
+func TestPengurusCallerTier(t *testing.T) {
+	cases := []struct {
+		name   string
+		caller CallerScope
+		want   string
+	}{
+		{"ldk no wildcard", CallerScope{OrganizationTypeCode: constants.OrgTypeLDK}, constants.OrgTypeLDK},
+		{"ldk with ldk wildcard", CallerScope{OrganizationTypeCode: constants.OrgTypeLDK, WildcardTierAccess: "LDK"}, constants.OrgTypeLDK},
+		{"puskomda with ldk wildcard", CallerScope{OrganizationTypeCode: constants.OrgTypePuskomda, WildcardTierAccess: "LDK"}, constants.OrgTypePuskomda},
+		{"super admin all tiers", CallerScope{OrganizationTypeCode: constants.OrgTypeLDK, WildcardTierAccess: "LDK,PUSKOMDA,PUSKOMNAS"}, constants.OrgTypePuskomnas},
+		{"super admin no own org", CallerScope{WildcardTierAccess: "LDK,PUSKOMDA,PUSKOMNAS"}, constants.OrgTypePuskomnas},
+		{"nothing", CallerScope{}, ""},
+	}
+	for _, c := range cases {
+		if got := pengurusCallerTier(c.caller); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+}

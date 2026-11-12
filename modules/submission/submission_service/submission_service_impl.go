@@ -50,6 +50,26 @@ var pengurusRolesByTier = map[string][]string{
 	constants.OrgTypePuskomnas: {roleNameKader, constants.RoleLDKAdmin, constants.RolePuskomdaVerifikator, constants.RolePuskomnasVerifikator},
 }
 
+// pengurusCallerTier menentukan tier EFEKTIF caller untuk allow-list Pengurus:
+// tier tertinggi di antara tipe organisasi sendiri dan wildcardTierAccess.
+// Sebelumnya hanya organizationTypeCode sendiri yang dipakai, sehingga Super
+// Admin (organisasi sendiri bertipe LDK/kosong, tapi wildcard LDK+PUSKOMDA+
+// PUSKOMNAS) hanya mendapat allow-list {Kader, LDK Admin} atau kosong dan
+// ditolak "Role tersebut tidak dapat ditetapkan dari portal ini". Role non-
+// Super-Admin tidak terpengaruh: wildcard mereka sudah dibatasi server ke
+// rank role-nya (validateWildcardAgainstRole), jadi tier efektif = tier
+// sendiri.
+func pengurusCallerTier(caller CallerScope) string {
+	rank := map[string]int{constants.OrgTypeLDK: 1, constants.OrgTypePuskomda: 2, constants.OrgTypePuskomnas: 3}
+	best := caller.OrganizationTypeCode
+	for _, t := range strings.Split(caller.WildcardTierAccess, ",") {
+		if rank[t] > rank[best] {
+			best = t
+		}
+	}
+	return best
+}
+
 func pengurusRoleAllowed(callerOrgType, roleName string) bool {
 	for _, r := range pengurusRolesByTier[callerOrgType] {
 		if r == roleName {
@@ -1756,7 +1776,8 @@ func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64
 	if targetUserID == caller.UserID {
 		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role akun Anda sendiri")
 	}
-	if !pengurusRoleAllowed(caller.OrganizationTypeCode, req.RoleName) {
+	callerTier := pengurusCallerTier(caller)
+	if !pengurusRoleAllowed(callerTier, req.RoleName) {
 		return submission_dto.PengurusEntry{}, apperror.Forbidden("Role tersebut tidak dapat ditetapkan dari portal ini")
 	}
 	orgIDs, err := s.resolveScopedOrganizationIDs(ctx, caller)
@@ -1791,7 +1812,7 @@ func (s *ServiceImpl) UpdatePengurusRole(ctx context.Context, targetUserID int64
 	if err != nil {
 		return submission_dto.PengurusEntry{}, apperror.NotFound("Pengguna tidak ditemukan")
 	}
-	if !pengurusRoleAllowed(caller.OrganizationTypeCode, target.RoleName) {
+	if !pengurusRoleAllowed(callerTier, target.RoleName) {
 		return submission_dto.PengurusEntry{}, apperror.Forbidden("Anda tidak dapat mengubah role pengguna ini")
 	}
 	if err := s.setPengurusRole(ctx, targetUserID, homeOrgID, req.RoleName, caller.UserID); err != nil {
